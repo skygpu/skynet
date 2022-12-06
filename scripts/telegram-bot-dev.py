@@ -18,7 +18,6 @@ from pathlib import Path
 import torch
 from torch.multiprocessing.spawn import ProcessRaisedException
 from diffusers import (
-    FlaxStableDiffusionPipeline,
     StableDiffusionPipeline,
     EulerAncestralDiscreteScheduler
 )
@@ -27,7 +26,8 @@ from huggingface_hub import login
 from datetime import datetime
 
 from pymongo import MongoClient
-#  import jax.numpy as jnp
+
+from typing import Tuple
 
 db_user = os.environ['DB_USER']
 db_pass = os.environ['DB_PASS']
@@ -36,25 +36,42 @@ logging.basicConfig(level=logging.INFO)
 
 MEM_FRACTION = .33
 
-HELP_TEXT = '''
-test art bot v0.1a3
+ALGOS = {
+    'stable': 'runwayml/stable-diffusion-v1-5',
+    'midj': 'prompthero/openjourney',
+    'waifu': 'hakurei/waifu-diffusion',
+    'van-gogh': 'dallinmackay/Van-Gogh-diffusion',
+    'pokemon': 'lambdalabs/sd-pokemon-diffusers'
+}
+
+N = '\n'
+HELP_TEXT = f'''
+test art bot v0.1a4
 
 commands work on a user per user basis!
 config is individual to each user!
 
-/txt2img {prompt} - request an image based on a prompt
+/txt2img TEXT - request an image based on a prompt
 
-/redo - redo last primpt
+/redo - redo last prompt
 
 /cool - list of cool words to use
-
 /stats - user statistics
+/donate - see donation info
 
-/config step {number} - set amount of iterations
-/config seed {number} - set the seed, deterministic results!
-/config size {width} {height} - set size in pixels
-/config guidance {number} - prompt text importance
+/config algo NAME - select AI to use one of:
+
+{N.join(ALGOS.keys())}
+
+/config step NUMBER - set amount of iterations
+/config seed NUMBER - set the seed, deterministic results!
+/config size WIDTH HEIGHT - set size in pixels
+/config guidance NUMBER - prompt text importance
 '''
+
+UNKNOWN_CMD_TEXT = 'unknown command! try sending \"/help\"'
+
+DONATION_INFO = '0xf95335682DF281FFaB7E104EB87B69625d9622B6\ngoal: 25/650usd'
 
 COOL_WORDS = [
     'cyberpunk',
@@ -81,8 +98,6 @@ COOL_WORDS = [
 
 GROUP_ID = -1001541979235
 
-ALGOS = ['stable', 'midj']
-
 MP_ENABLED_ROLES = ['god']
 
 MIN_STEP = 1
@@ -97,7 +112,7 @@ DEFAULT_CREDITS = 10
 DEFAULT_ALGO = 'stable'
 DEFAULT_ROLE = 'pleb'
 
-rr_total = 2
+rr_total = 1
 rr_id = 0
 request_counter = 0
 
@@ -123,7 +138,7 @@ def generate_image(
     prompt: str,
     name: str,
     step: int,
-    size: tuple[int, int],
+    size: Tuple[int, int],
     guidance: int,
     seed: int,
     algo: str
@@ -139,16 +154,15 @@ def generate_image(
             revision="fp16",
             safety_checker=None
         )
-        pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
 
-    elif algo == 'midj':
-        import jax as jnp
-        pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-            'flax/midjourney-v4-diffusion',
-            revision="bf16",
-            dtype= jnp.bfloat16,
+    else:
+        pipe = StableDiffusionPipeline.from_pretrained(
+            ALGOS[algo],
+            torch_dtype=torch.float16,
+            safety_checker=None
         )
 
+    pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
     pipe = pipe.to("cuda")
     w, h = size
     print(f'generating image... of size {w, h}')
@@ -249,7 +263,7 @@ if __name__ == '__main__':
     # bot handler
     def img_for_user_with_prompt(
         uid: int,
-        prompt: str, step: int, size: tuple[int, int], guidance: int, seed: int, algo: str
+        prompt: str, step: int, size: Tuple[int, int], guidance: int, seed: int, algo: str
     ):
         name = uuid.uuid4()
 
@@ -269,7 +283,7 @@ if __name__ == '__main__':
         reply_txt +=  f'iterations: {step}\n'
         reply_txt +=  f'size: {size}\n'
         reply_txt +=  f'guidance: {guidance}\n'
-        reply_txt +=  f'stable-diff v1.5 uncensored\n'
+        reply_txt +=  f'algo: {ALGOS[algo]}\n'
         reply_txt +=  f'euler ancestral discrete'
 
         return reply_txt, name
@@ -460,6 +474,30 @@ if __name__ == '__main__':
 
         bot.reply_to(
             message, user_stats_str)
+
+    @bot.message_handler(commands=['donate'])
+    @round_robined
+    def donation_info(message):
+        bot.reply_to(
+            message, DONATION_INFO)
+
+    @bot.message_handler(commands=['say'])
+    @round_robined
+    def say(message):
+        chat = message.chat
+        user = message.from_user
+        db_user = get_or_create_user(user.id)
+
+        if (chat.type == 'group') or (db_user['role'] not in MP_ENABLED_ROLES):
+            return
+
+        bot.send_message(GROUP_ID, message.text[4:])
+
+    @bot.message_handler(func=lambda message: True)
+    @round_robined
+    def echo_message(message):
+        if message.text[0] == '/':
+            bot.reply_to(message, UNKNOWN_CMD_TEXT)
 
 
     login(token=os.environ['HF_TOKEN'])
