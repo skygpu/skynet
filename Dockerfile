@@ -1,6 +1,8 @@
-from pytorch/pytorch:latest
+from pytorch/pytorch:1.11.0-cuda11.3-cudnn8-runtime
 
-run apt-get update && apt-get install -y git curl
+env DEBIAN_FRONTEND=noninteractive
+
+run apt-get update && apt-get install -y git wget
 
 run pip install --upgrade \
     diffusers[torch] \
@@ -8,6 +10,7 @@ run pip install --upgrade \
     huggingface_hub \
     pyTelegramBotAPI \
     pymongo \
+    scipy \
     pdbpp
 
 run mkdir /scripts

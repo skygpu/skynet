@@ -1,3 +1,6 @@
+mkdir -p outputs
+mkdir -p hf_home
+
 docker run \
     -it \
     --rm \
