@@ -1,17 +1,22 @@
-from pytorch/pytorch:1.11.0-cuda11.3-cudnn8-runtime
+from pytorch/pytorch:latest
 
 env DEBIAN_FRONTEND=noninteractive
 
 run apt-get update && apt-get install -y git wget
 
+run conda install xformers -c xformers/label/dev
+
 run pip install --upgrade \
     diffusers[torch] \
+    accelerate \
     transformers \
     huggingface_hub \
     pyTelegramBotAPI \
     pymongo \
     scipy \
     pdbpp
+
+env NVIDIA_VISIBLE_DEVICES=all
 
 run mkdir /scripts
 run mkdir /outputs
