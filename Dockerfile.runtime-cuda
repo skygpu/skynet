@@ -1,0 +1,23 @@
+from nvidia/cuda:11.7.0-devel-ubuntu20.04
+from python:3.10.0
+
+env DEBIAN_FRONTEND=noninteractive
+
+workdir /skynet
+
+copy requirements.* .
+
+run pip install -U pip ninja
+run pip install -r requirements.cuda.0.txt
+run pip install -v -r requirements.cuda.1.txt
+
+run pip install \
+    -r requirements.txt \
+    -r requirements.test.txt
+
+env NVIDIA_VISIBLE_DEVICES=all
+env HF_HOME /hf_home
+
+env PYTORCH_CUDA_ALLOC_CONF max_split_size_mb:128
+
+workdir /scripts
