@@ -1,2 +1,5 @@
+.python-version
 hf_home
 outputs
+**/__pycache__
+*.egg-info

@@ -1,0 +1,8 @@
+pdbpp
+scipy
+accelerate
+transformers
+huggingface_hub
+diffusers[torch]
+torch==1.13.0+cu117
+--extra-index-url https://download.pytorch.org/whl/cu117

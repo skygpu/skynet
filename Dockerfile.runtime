@@ -1,0 +1,13 @@
+from python:3.10.0
+
+env DEBIAN_FRONTEND=noninteractive
+
+workdir /skynet
+
+copy requirements.* ./
+
+run pip install \
+    -r requirements.txt \
+    -r requirements.test.txt
+
+workdir /scripts
