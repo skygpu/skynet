@@ -3,6 +3,9 @@
 API_TOKEN = '5880619053:AAFge2UfObw1kCn9Kb7AAyqaIHs_HgM0Fx0'
 
 DB_HOST = 'ancap.tech:34508'
+DB_USER = 'skynet'
+DB_PASS = 'password'
+DB_NAME = 'skynet'
 
 ALGOS = {
     'stable': 'runwayml/stable-diffusion-v1-5',

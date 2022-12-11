@@ -1,2 +1,5 @@
 pytest
+psycopg2
 pytest-trio
+
+git+https://github.com/tgoodlet/pytest-dockerctl.git@master#egg=pytest-dockerctl

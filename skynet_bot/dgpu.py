@@ -65,58 +65,53 @@ async def open_dgpu_node(
         return img
 
 
-    with (
-        pynng.Req0(dial=rpc_address) as rpc_sock,
-        pynng.Bus0(dial=dgpu_address) as dgpu_sock
-    ):
-        async def _rpc_call(*args, **kwargs):
-            return await rpc_call(rpc_sock, *args, **kwargs)
+    async with open_skynet_rpc() as rpc_call:
+        with pynng.Bus0(dial=dgpu_address) as dgpu_sock:
+            async def _process_dgpu_req(req: DGPUBusRequest):
+                img = await gpu_compute_one(
+                    ImageGenRequest(**req.params))
+                await dgpu_sock.asend(
+                    bytes.fromhex(req.rid) + img)
 
-        async def _process_dgpu_req(req: DGPUBusRequest):
-            img = await gpu_compute_one(
-                ImageGenRequest(**req.params))
-            await dgpu_sock.asend(
-                bytes.fromhex(req.rid) + img)
+            res = await rpc_call(
+                name.hex, 'dgpu_online', {'max_tasks': dgpu_max_tasks})
+            logging.info(res)
+            assert 'ok' in res.result
 
-        res = await _rpc_call(
-            name.hex, 'dgpu_online', {'max_tasks': dgpu_max_tasks})
-        logging.info(res)
-        assert 'ok' in res.result
-
-        async with (
-            tractor.open_actor_cluster(
-                modules=['skynet_bot.gpu'],
-                count=dgpu_max_tasks,
-                names=[i for i in range(dgpu_max_tasks)]
-                ) as portal_map,
-            trio.open_nursery() as n
-        ):
-            logging.info(f'starting {dgpu_max_tasks} gpu workers')
-            async with tractor.gather_contexts((
-                portal.open_context(
-                    open_gpu_worker, algo, 1.0 / dgpu_max_tasks)
-                for portal in portal_map.values()
-            )) as contexts:
-                contexts = {i: ctx for i, ctx in enumerate(contexts)}
-                for i, ctx in contexts.items():
-                    n.start_soon(
-                        gpu_streamer, ctx, i)
-                try:
-                    while True:
-                        msg = await dgpu_sock.arecv()
-                        req = DGPUBusRequest(
-                            **json.loads(msg.decode()))
-
-                        if req.nid != name.hex:
-                            continue
-
-                        logging.info(f'dgpu: {name}, req: {req}')
+            async with (
+                tractor.open_actor_cluster(
+                    modules=['skynet_bot.gpu'],
+                    count=dgpu_max_tasks,
+                    names=[i for i in range(dgpu_max_tasks)]
+                    ) as portal_map,
+                trio.open_nursery() as n
+            ):
+                logging.info(f'starting {dgpu_max_tasks} gpu workers')
+                async with tractor.gather_contexts((
+                    portal.open_context(
+                        open_gpu_worker, algo, 1.0 / dgpu_max_tasks)
+                    for portal in portal_map.values()
+                )) as contexts:
+                    contexts = {i: ctx for i, ctx in enumerate(contexts)}
+                    for i, ctx in contexts.items():
                         n.start_soon(
-                            _process_dgpu_req, req)
+                            gpu_streamer, ctx, i)
+                    try:
+                        while True:
+                            msg = await dgpu_sock.arecv()
+                            req = DGPUBusRequest(
+                                **json.loads(msg.decode()))
 
-                except KeyboardInterrupt:
-                    ...
+                            if req.nid != name.hex:
+                                continue
 
-        res = await _rpc_call(name.hex, 'dgpu_offline')
-        logging.info(res)
-        assert 'ok' in res.result
+                            logging.info(f'dgpu: {name}, req: {req}')
+                            n.start_soon(
+                                _process_dgpu_req, req)
+
+                    except KeyboardInterrupt:
+                        ...
+
+            res = await rpc_call(name.hex, 'dgpu_offline')
+            logging.info(res)
+            assert 'ok' in res.result
