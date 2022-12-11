@@ -11,6 +11,49 @@ import triopg
 from .constants import *
 
 
+DB_INIT_SQL = '''
+CREATE SCHEMA IF NOT EXISTS skynet;
+
+CREATE TABLE IF NOT EXISTS skynet.user(
+   id SERIAL PRIMARY KEY NOT NULL,
+   tg_id INT,
+   wp_id VARCHAR(128),
+   mx_id VARCHAR(128),
+   ig_id VARCHAR(128),
+   generated INT NOT NULL,
+   joined DATE NOT NULL,
+   last_prompt TEXT,
+   role VARCHAR(128) NOT NULL
+);
+ALTER TABLE skynet.user
+    ADD CONSTRAINT tg_unique
+    UNIQUE (tg_id);
+ALTER TABLE skynet.user
+    ADD CONSTRAINT wp_unique
+    UNIQUE (wp_id);
+ALTER TABLE skynet.user
+    ADD CONSTRAINT mx_unique
+    UNIQUE (mx_id);
+ALTER TABLE skynet.user
+    ADD CONSTRAINT ig_unique
+    UNIQUE (ig_id);
+
+CREATE TABLE IF NOT EXISTS skynet.user_config(
+    id SERIAL NOT NULL,
+    algo VARCHAR(128) NOT NULL,
+    step INT NOT NULL,
+    width INT NOT NULL,
+    height INT NOT NULL,
+    seed INT,
+    guidance INT NOT NULL,
+    upscaler VARCHAR(128)
+);
+ALTER TABLE skynet.user_config
+    ADD FOREIGN KEY(id)
+    REFERENCES skynet.user(id);
+'''
+
+
 def try_decode_uid(uid: str):
     try:
         proto, uid = uid.split('+')
@@ -24,14 +67,18 @@ def try_decode_uid(uid: str):
 
 @acm
 async def open_database_connection(
-    db_user: str,
-    db_pass: str,
+    db_user: str = DB_USER,
+    db_pass: str = DB_PASS,
     db_host: str = DB_HOST,
+    db_name: str = DB_NAME
 ):
     async with triopg.create_pool(
-        dsn=f'postgres://{db_user}:{db_pass}@{db_host}/skynet_art_bot'
-    ) as conn:
-        yield conn
+        dsn=f'postgres://{db_user}:{db_pass}@{db_host}/{db_name}'
+    ) as pool_conn:
+        async with pool_conn.acquire() as conn:
+            await conn.execute(DB_INIT_SQL)
+
+        yield pool_conn
 
 
 async def get_user(conn, uid: str):
