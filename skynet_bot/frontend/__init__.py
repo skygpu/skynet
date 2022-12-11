@@ -2,10 +2,13 @@
 
 import json
 
-from typing import Union
+from typing import Union, Optional
+from pathlib import Path
 from contextlib import asynccontextmanager as acm
 
 import pynng
+
+from pynng import TLSConfig
 
 from ..types import SkynetRPCRequest, SkynetRPCResponse
 from ..constants import *
@@ -48,8 +51,33 @@ async def rpc_call(
 
 
 @acm
-async def open_skynet_rpc(rpc_address: str = DEFAULT_RPC_ADDR):
-    with pynng.Req0(dial=rpc_address) as sock:
+async def open_skynet_rpc(
+    rpc_address: str = DEFAULT_RPC_ADDR,
+    security: bool = False,
+    cert_name: Optional[str] = None,
+    key_name: Optional[str] = None
+):
+    tls_config = None
+    if security:
+        # load tls certs
+        if not key_name:
+            key_name = certs_name
+        certs_dir = Path(DEFAULT_CERTS_DIR).resolve()
+        skynet_cert = (certs_dir / 'brain.cert').read_text()
+        tls_cert = (certs_dir / f'{cert_name}.cert').read_text()
+        tls_key = (certs_dir / f'{key_name}.key').read_text()
+        rpc_address = 'tls+' + rpc_address
+        tls_config = TLSConfig(
+            TLSConfig.MODE_CLIENT,
+            own_key_string=tls_key,
+            own_cert_string=tls_cert,
+            ca_string=skynet_cert)
+
+    with pynng.Req0() as sock:
+        if security:
+            sock.tls_config = tls_config
+
+        sock.dial(rpc_address)
         async def _rpc_call(*args, **kwargs):
             return await rpc_call(sock, *args, **kwargs)
 

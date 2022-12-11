@@ -6,12 +6,15 @@ import base64
 import logging
 
 from uuid import UUID
+from pathlib import Path
 from functools import partial
 from collections import OrderedDict
 
 import trio
 import pynng
 import trio_asyncio
+
+from pynng import TLSConfig
 
 from .db import *
 from .types import *
@@ -241,10 +244,32 @@ async def run_skynet(
     db_host: str = DB_HOST,
     rpc_address: str = DEFAULT_RPC_ADDR,
     dgpu_address: str = DEFAULT_DGPU_ADDR,
-    task_status = trio.TASK_STATUS_IGNORED
+    task_status = trio.TASK_STATUS_IGNORED,
+    security: bool = True
 ):
     logging.basicConfig(level=logging.INFO)
     logging.info('skynet is starting')
+
+    tls_config = None
+    if security:
+        # load tls certs
+        certs_dir = Path(DEFAULT_CERTS_DIR).resolve()
+        tls_key = (certs_dir / DEFAULT_CERT_SKYNET_PRIV).read_text()
+        tls_cert = (certs_dir / DEFAULT_CERT_SKYNET_PUB).read_text()
+        tls_whitelist = [
+            (cert_path).read_text()
+            for cert_path in (certs_dir / 'whitelist').glob('*.cert')]
+
+        logging.info(f'tls_key: {tls_key}')
+        logging.info(f'tls_cert: {tls_cert}')
+        logging.info(f'tls_whitelist len: {len(tls_whitelist)}')
+
+        rpc_address = 'tls+' + rpc_address
+        dgpu_address = 'tls+' + dgpu_address
+        tls_config = TLSConfig(
+            TLSConfig.MODE_SERVER,
+            own_key_string=tls_key,
+            own_cert_string=tls_cert)
 
     async with (
         trio.open_nursery() as n,
@@ -253,9 +278,16 @@ async def run_skynet(
     ):
         logging.info('connected to db.')
         with (
-            pynng.Rep0(listen=rpc_address) as rpc_sock,
-            pynng.Bus0(listen=dgpu_address) as dgpu_bus
+            pynng.Rep0() as rpc_sock,
+            pynng.Bus0() as dgpu_bus
         ):
+            if security:
+                rpc_sock.tls_config = tls_config
+                dgpu_bus.tls_config = tls_config
+
+            rpc_sock.listen(rpc_address)
+            dgpu_bus.listen(dgpu_address)
+
             n.start_soon(
                 rpc_service, rpc_sock, dgpu_bus, db_pool)
             task_status.started()

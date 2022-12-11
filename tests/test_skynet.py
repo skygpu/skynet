@@ -3,6 +3,8 @@
 import logging
 
 import trio
+import pynng
+import pytest
 import trio_asyncio
 
 from skynet_bot.types import *
@@ -10,8 +12,20 @@ from skynet_bot.brain import run_skynet
 from skynet_bot.frontend import open_skynet_rpc
 
 
+async def test_skynet_attempt_insecure(skynet_running):
+    with pytest.raises(pynng.exceptions.NNGException) as e:
+        async with open_skynet_rpc():
+            ...
+
+    assert str(e.value) == 'Connection shutdown'
+
+
 async def test_skynet_dgpu_connection_simple(skynet_running):
-    async with open_skynet_rpc() as rpc_call:
+    async with open_skynet_rpc(
+        security=True,
+        cert_name='whitelist/testing',
+        key_name='testing'
+    ) as rpc_call:
         # check 0 nodes are connected
         res = await rpc_call('dgpu-0', 'dgpu_workers')
         logging.info(res)
