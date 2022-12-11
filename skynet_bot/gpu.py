@@ -45,11 +45,13 @@ async def open_gpu_worker(
     start_algo: str,
     mem_fraction: float
 ):
+    log = tractor.log.get_logger(name='gpu', _root_name='skynet')
+    log.info(f'starting gpu worker with algo {start_algo}...')
     current_algo = start_algo
     with torch.no_grad():
         pipe = pipeline_for(current_algo, mem_fraction)
+        log.info('pipeline loaded')
         await ctx.started()
-
         async with ctx.open_stream() as bus:
             async for ireq in bus:
                 if ireq.algo != current_algo:

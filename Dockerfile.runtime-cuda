@@ -5,7 +5,7 @@ env DEBIAN_FRONTEND=noninteractive
 
 workdir /skynet
 
-copy requirements.* .
+copy requirements.* ./
 
 run pip install -U pip ninja
 run pip install -r requirements.cuda.0.txt

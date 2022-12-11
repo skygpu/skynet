@@ -93,8 +93,9 @@ async def open_dgpu_node(
         ):
             logging.info(f'starting {dgpu_max_tasks} gpu workers')
             async with tractor.gather_contexts((
-                ctx.open_context(
+                portal.open_context(
                     open_gpu_worker, algo, 1.0 / dgpu_max_tasks)
+                for portal in portal_map.values()
             )) as contexts:
                 contexts = {i: ctx for i, ctx in enumerate(contexts)}
                 for i, ctx in contexts.items():
