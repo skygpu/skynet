@@ -29,7 +29,6 @@ def postgres_db(dockerctl):
 
     with dockerctl.run(
         'postgres',
-        command='postgres',
         ports={'5432/tcp': None},
         environment={
             'POSTGRES_PASSWORD': rpassword
