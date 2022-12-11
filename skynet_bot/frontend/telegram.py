@@ -24,7 +24,9 @@ async def run_skynet_telegram(
     logging.basicConfig(level=logging.INFO)
     bot = AsyncTeleBot(tg_token)
 
-    with open_skynet_rpc() as rpc_call:
+    with open_skynet_rpc(
+        security=True, cert_name='telegram-frontend'
+    ) as rpc_call:
 
         async def _rpc_call(
             uid: int,
@@ -69,7 +71,7 @@ async def run_skynet_telegram(
                     'config', {'attr': attr, 'val': val})
 
             except BaseException as e:
-                reply_text = e.message
+                reply_text = str(e.value)
 
             finally:
                 await bot.reply_to(message, reply_txt)

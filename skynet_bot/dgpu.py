@@ -16,10 +16,13 @@ from .frontend import rpc_call
 
 
 async def open_dgpu_node(
+    cert_name: str,
+    key_name: Optional[str],
     rpc_address: str = DEFAULT_RPC_ADDR,
     dgpu_address: str = DEFAULT_DGPU_ADDR,
     dgpu_max_tasks: int = DEFAULT_DGPU_MAX_TASKS,
-    initial_algos: str = DEFAULT_INITAL_ALGOS
+    initial_algos: str = DEFAULT_INITAL_ALGOS,
+    security: bool = True
 ):
     logging.basicConfig(level=logging.INFO)
 
@@ -65,7 +68,11 @@ async def open_dgpu_node(
         return img
 
 
-    async with open_skynet_rpc() as rpc_call:
+    async with open_skynet_rpc(
+        security=security,
+        cert_name=cert_name,
+        key_name=key_name
+    ) as rpc_call:
         with pynng.Bus0(dial=dgpu_address) as dgpu_sock:
             async def _process_dgpu_req(req: DGPUBusRequest):
                 img = await gpu_compute_one(
