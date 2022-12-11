@@ -5,4 +5,4 @@ aiohttp
 msgspec
 trio_asyncio
 
-git+https://github.com/goodboy/tractor.git@master#egg=tractor
+git+https://github.com/goodboy/tractor.git@piker_pin#egg=tractor

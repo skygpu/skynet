@@ -1,5 +1,6 @@
 pdbpp
 scipy
+triton
 accelerate
 transformers
 huggingface_hub
