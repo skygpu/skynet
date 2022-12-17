@@ -8,6 +8,7 @@ import logging
 from uuid import UUID
 from pathlib import Path
 from functools import partial
+from contextlib import asynccontextmanager as acm
 from collections import OrderedDict
 
 import trio
@@ -17,7 +18,7 @@ import trio_asyncio
 from pynng import TLSConfig
 
 from .db import *
-from .types import *
+from .structs import *
 from .constants import *
 
 
@@ -27,18 +28,47 @@ class SkynetDGPUOffline(BaseException):
 class SkynetDGPUOverloaded(BaseException):
     ...
 
+class SkynetDGPUComputeError(BaseException):
+    ...
 
-async def rpc_service(sock, dgpu_bus, db_pool):
+class SkynetShutdownRequested(BaseException):
+    ...
+
+@acm
+async def open_rpc_service(sock, dgpu_bus, db_pool):
     nodes = OrderedDict()
     wip_reqs = {}
     fin_reqs = {}
+    next_worker: Optional[int] = None
 
-    def is_worker_busy(nid: int):
-        for task in nodes[nid]['tasks']:
-            if task != None:
-                return False
+    def connect_node(uid):
+        nonlocal next_worker
+        nodes[uid] = {
+            'task': None
+        }
+        logging.info(f'dgpu online: {uid}')
 
-        return True
+        if not next_worker:
+            next_worker = 0
+
+    def disconnect_node(uid):
+        nonlocal next_worker
+        if uid not in nodes:
+            return
+        i = list(nodes.keys()).index(uid)
+        del nodes[uid]
+
+        if i < next_worker:
+            next_worker -= 1
+
+        if len(nodes) == 0:
+            logging.info('nw: None')
+            next_worker = None
+
+        logging.warning(f'dgpu offline: {uid}')
+
+    def is_worker_busy(nid: str):
+        return nodes[nid]['task'] != None
 
     def are_all_workers_busy():
         for nid in nodes.keys():
@@ -47,30 +77,55 @@ async def rpc_service(sock, dgpu_bus, db_pool):
 
         return True
 
-    next_worker: Optional[int] = None
     def get_next_worker():
         nonlocal next_worker
+        logging.info('get next_worker called')
+        logging.info(f'pre next_worker: {next_worker}')
 
-        if not next_worker:
+        if next_worker == None:
             raise SkynetDGPUOffline
 
         if are_all_workers_busy():
             raise SkynetDGPUOverloaded
 
-        while is_worker_busy(next_worker):
+
+        nid = list(nodes.keys())[next_worker]
+        while is_worker_busy(nid):
             next_worker += 1
 
             if next_worker >= len(nodes):
                 next_worker = 0
 
-        return next_worker
+            nid = list(nodes.keys())[next_worker]
+
+        next_worker += 1
+        if next_worker >= len(nodes):
+            next_worker = 0
+
+        logging.info(f'post next_worker: {next_worker}')
+
+        return nid
 
     async def dgpu_image_streamer():
         nonlocal wip_reqs, fin_reqs
         while True:
             msg = await dgpu_bus.arecv_msg()
             rid = UUID(bytes=msg.bytes[:16]).hex
-            img = msg.bytes[16:].hex()
+            raw_msg = msg.bytes[16:]
+            logging.info(f'streamer got back {rid} of size {len(raw_msg)}')
+            match raw_msg[:5]:
+                case b'error':
+                    img = raw_msg.decode()
+
+                case b'ack':
+                    img = raw_msg
+
+                case _:
+                    img = base64.b64encode(raw_msg).hex()
+
+            if rid not in wip_reqs:
+                continue
+
             fin_reqs[rid] = img
             event = wip_reqs[rid]
             event.set()
@@ -79,13 +134,14 @@ async def rpc_service(sock, dgpu_bus, db_pool):
     async def dgpu_stream_one_img(req: ImageGenRequest):
         nonlocal wip_reqs, fin_reqs, next_worker
         nid = get_next_worker()
-        logging.info(f'dgpu_stream_one_img {next_worker} {nid}')
+        idx = list(nodes.keys()).index(nid)
+        logging.info(f'dgpu_stream_one_img {idx}/{len(nodes)} {nid}')
         rid = uuid.uuid4().hex
-        event = trio.Event()
-        wip_reqs[rid] = event
+        ack_event = trio.Event()
+        img_event = trio.Event()
+        wip_reqs[rid] = ack_event
 
-        tid = nodes[nid]['tasks'].index(None)
-        nodes[nid]['tasks'][tid] = rid
+        nodes[nid]['task'] = rid
 
         dgpu_req = DGPUBusRequest(
             rid=rid,
@@ -98,14 +154,37 @@ async def rpc_service(sock, dgpu_bus, db_pool):
         await dgpu_bus.asend(
             json.dumps(dgpu_req.to_dict()).encode())
 
-        await event.wait()
+        with trio.move_on_after(4):
+            await ack_event.wait()
 
-        nodes[nid]['tasks'][tid] = None
+        logging.info(f'ack event: {ack_event.is_set()}')
+
+        if not ack_event.is_set():
+            disconnect_node(nid)
+            raise SkynetDGPUOffline('dgpu failed to acknowledge request')
+
+        ack = fin_reqs[rid]
+        if ack != b'ack':
+            disconnect_node(nid)
+            raise SkynetDGPUOffline('dgpu failed to acknowledge request')
+
+        wip_reqs[rid] = img_event
+        with trio.move_on_after(30):
+            await img_event.wait()
+
+        if not img_event.is_set():
+            disconnect_node(nid)
+            raise SkynetDGPUComputeError('30 seconds timeout while processing request')
+
+        nodes[nid]['task'] = None
 
         img = fin_reqs[rid]
         del fin_reqs[rid]
 
-        logging.info(f'done streaming {img}')
+        logging.info(f'done streaming {len(img)} bytes')
+
+        if 'error' in img:
+            raise SkynetDGPUComputeError(img)
 
         return rid, img
 
@@ -122,6 +201,10 @@ async def rpc_service(sock, dgpu_bus, db_pool):
                         user_config = {**(await get_user_config(conn, user))}
                         del user_config['id']
                         prompt = req.params['prompt']
+                        user_config= {
+                            key : req.params.get(key, val) 
+                            for key, val in user_config.items()
+                        }
                         req = ImageGenRequest(
                             prompt=prompt,
                             **user_config
@@ -165,9 +248,10 @@ async def rpc_service(sock, dgpu_bus, db_pool):
                     case _:
                         logging.warn('unknown method')
 
-        except SkynetDGPUOffline:
+        except SkynetDGPUOffline as e:
             result = {
-                'error': 'skynet_dgpu_offline'
+                'error': 'skynet_dgpu_offline',
+                'message': str(e)
             }
 
         except SkynetDGPUOverloaded:
@@ -176,22 +260,22 @@ async def rpc_service(sock, dgpu_bus, db_pool):
                 'nodes': len(nodes)
             }
 
-        except BaseException as e:
-            logging.error(e)
+        except SkynetDGPUComputeError as e:
             result = {
-                'error': 'skynet_internal_error'
+                'error': 'skynet_dgpu_compute_error',
+                'message': str(e)
             }
 
         await rpc_ctx.asend(
             json.dumps(
                 SkynetRPCResponse(result=result).to_dict()).encode())
 
-
-    async with trio.open_nursery() as n:
-        n.start_soon(dgpu_image_streamer)
+    async def request_service(n):
+        nonlocal next_worker
         while True:
             ctx = sock.new_context()
             msg = await ctx.arecv_msg()
+
             content = msg.bytes.decode()
             req = SkynetRPCRequest(**json.loads(content))
 
@@ -199,27 +283,14 @@ async def rpc_service(sock, dgpu_bus, db_pool):
 
             result = {}
 
-            if req.method == 'dgpu_online':
-                nodes[req.uid] = {
-                    'tasks': [None for _ in range(req.params['max_tasks'])],
-                    'max_tasks': req.params['max_tasks']
-                }
-                logging.info(f'dgpu online: {req.uid}')
+            if req.method == 'skynet_shutdown':
+                raise SkynetShutdownRequested
 
-                if not next_worker:
-                    next_worker = 0
+            elif req.method == 'dgpu_online':
+                connect_node(req.uid)
 
             elif req.method == 'dgpu_offline':
-                i = list(nodes.keys()).index(req.uid)
-                del nodes[req.uid]
-
-                if i < next_worker:
-                    next_worker -= 1
-
-                if len(nodes) == 0:
-                    next_worker = None
-
-                logging.info(f'dgpu offline: {req.uid}')
+                disconnect_node(req.uid)
 
             elif req.method == 'dgpu_workers':
                 result = len(nodes)
@@ -238,13 +309,22 @@ async def rpc_service(sock, dgpu_bus, db_pool):
                         result={'ok': result}).to_dict()).encode())
 
 
+    async with trio.open_nursery() as n:
+        n.start_soon(dgpu_image_streamer)
+        n.start_soon(request_service, n)
+        logging.info('starting rpc service')
+        yield
+        logging.info('stopping rpc service')
+        n.cancel_scope.cancel()
+
+
+@acm
 async def run_skynet(
     db_user: str = DB_USER,
     db_pass: str = DB_PASS,
     db_host: str = DB_HOST,
     rpc_address: str = DEFAULT_RPC_ADDR,
     dgpu_address: str = DEFAULT_DGPU_ADDR,
-    task_status = trio.TASK_STATUS_IGNORED,
     security: bool = True
 ):
     logging.basicConfig(level=logging.INFO)
@@ -260,8 +340,8 @@ async def run_skynet(
             (cert_path).read_text()
             for cert_path in (certs_dir / 'whitelist').glob('*.cert')]
 
-        logging.info(f'tls_key: {tls_key}')
-        logging.info(f'tls_cert: {tls_cert}')
+        cert_start = tls_cert.index('\n') + 1
+        logging.info(f'tls_cert: {tls_cert[cert_start:cert_start+64]}...')
         logging.info(f'tls_whitelist len: {len(tls_whitelist)}')
 
         rpc_address = 'tls+' + rpc_address
@@ -271,16 +351,14 @@ async def run_skynet(
             own_key_string=tls_key,
             own_cert_string=tls_cert)
 
-    async with (
-        trio.open_nursery() as n,
-        open_database_connection(
-            db_user, db_pass, db_host) as db_pool
+    with (
+        pynng.Rep0() as rpc_sock,
+        pynng.Bus0() as dgpu_bus
     ):
-        logging.info('connected to db.')
-        with (
-            pynng.Rep0() as rpc_sock,
-            pynng.Bus0() as dgpu_bus
-        ):
+        async with open_database_connection(
+            db_user, db_pass, db_host) as db_pool:
+
+            logging.info('connected to db.')
             if security:
                 rpc_sock.tls_config = tls_config
                 dgpu_bus.tls_config = tls_config
@@ -288,13 +366,11 @@ async def run_skynet(
             rpc_sock.listen(rpc_address)
             dgpu_bus.listen(dgpu_address)
 
-            n.start_soon(
-                rpc_service, rpc_sock, dgpu_bus, db_pool)
-            task_status.started()
-
             try:
-                await trio.sleep_forever()
+                async with open_rpc_service(rpc_sock, dgpu_bus, db_pool):
+                    yield
 
-            except KeyboardInterrupt:
+            except SkynetShutdownRequested:
                 ...
 
+        logging.info('disconnected from db.')

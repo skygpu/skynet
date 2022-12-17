@@ -1,5 +1,8 @@
 .python-version
 hf_home
 outputs
+secrets
 **/__pycache__
 *.egg-info
+**/*.key
+**/*.cert

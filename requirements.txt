@@ -5,5 +5,3 @@ aiohttp
 msgspec
 pyOpenSSL
 trio_asyncio
-
-git+https://github.com/goodboy/tractor.git@piker_pin#egg=tractor
