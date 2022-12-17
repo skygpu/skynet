@@ -1,5 +1,6 @@
+pdbpp
 pytest
 psycopg2
 pytest-trio
 
-git+https://github.com/tgoodlet/pytest-dockerctl.git@master#egg=pytest-dockerctl
+git+https://github.com/guilledk/pytest-dockerctl.git@host_network#egg=pytest-dockerctl

@@ -10,7 +10,7 @@ import pynng
 
 from pynng import TLSConfig
 
-from ..types import SkynetRPCRequest, SkynetRPCResponse
+from ..structs import SkynetRPCRequest, SkynetRPCResponse
 from ..constants import *
 
 

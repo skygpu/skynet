@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-API_TOKEN = '5880619053:AAFge2UfObw1kCn9Kb7AAyqaIHs_HgM0Fx0'
+DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
 DB_HOST = 'ancap.tech:34508'
 DB_USER = 'skynet'
@@ -8,8 +8,8 @@ DB_PASS = 'password'
 DB_NAME = 'skynet'
 
 ALGOS = {
-    'stable': 'runwayml/stable-diffusion-v1-5',
     'midj': 'prompthero/openjourney',
+    'stable': 'runwayml/stable-diffusion-v1-5',
     'hdanime': 'Linaqruf/anything-v3.0',
     'waifu': 'hakurei/waifu-diffusion',
     'ghibli': 'nitrosocke/Ghibli-Diffusion',
@@ -122,7 +122,7 @@ DEFAULT_CERT_DGPU = 'dgpu.key'
 DEFAULT_RPC_ADDR = 'tcp://127.0.0.1:41000'
 
 DEFAULT_DGPU_ADDR = 'tcp://127.0.0.1:41069'
-DEFAULT_DGPU_MAX_TASKS = 3
+DEFAULT_DGPU_MAX_TASKS = 2
 DEFAULT_INITAL_ALGOS = ['midj', 'stable', 'ink']
 
 DATE_FORMAT = '%B the %dth %Y, %H:%M:%S'

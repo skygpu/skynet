@@ -7,6 +7,9 @@ from contextlib import asynccontextmanager as acm
 
 import trio
 import triopg
+import trio_asyncio
+
+from asyncpg.exceptions import UndefinedColumnError
 
 from .constants import *
 
@@ -72,13 +75,22 @@ async def open_database_connection(
     db_host: str = DB_HOST,
     db_name: str = DB_NAME
 ):
-    async with triopg.create_pool(
-        dsn=f'postgres://{db_user}:{db_pass}@{db_host}/{db_name}'
-    ) as pool_conn:
-        async with pool_conn.acquire() as conn:
-            await conn.execute(DB_INIT_SQL)
+    async with trio_asyncio.open_loop() as loop:
+        async with triopg.create_pool(
+            dsn=f'postgres://{db_user}:{db_pass}@{db_host}/{db_name}'
+        ) as pool_conn:
+            async with pool_conn.acquire() as conn:
+                res = await conn.execute(f'''
+                    select distinct table_schema
+                    from information_schema.tables
+                    where table_schema = \'{db_name}\'
+                ''')
+                if '1' in res:
+                    logging.info('schema already in db, skipping init')
+                else:
+                    await conn.execute(DB_INIT_SQL)
 
-        yield pool_conn
+            yield pool_conn
 
 
 async def get_user(conn, uid: str):
@@ -135,6 +147,7 @@ async def new_user(conn, uid: str):
                 tg_id, generated, joined, last_prompt, role)
 
             VALUES($1, $2, $3, $4, $5)
+            ON CONFLICT DO NOTHING
         ''')
         await stmt.fetch(
             tg_id, 0, date, None, DEFAULT_ROLE
@@ -147,6 +160,7 @@ async def new_user(conn, uid: str):
                 id, algo, step, width, height, seed, guidance, upscaler)
 
             VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT DO NOTHING
         ''')
         user = await stmt.fetch(
             new_uid,

@@ -7,9 +7,9 @@ import pynng
 import pytest
 import trio_asyncio
 
-from skynet_bot.types import *
-from skynet_bot.brain import run_skynet
-from skynet_bot.frontend import open_skynet_rpc
+from skynet.brain import run_skynet
+from skynet.structs import *
+from skynet.frontend import open_skynet_rpc
 
 
 async def test_skynet_attempt_insecure(skynet_running):
@@ -40,7 +40,7 @@ async def test_skynet_dgpu_connection_simple(skynet_running):
 
         # connect 1 dgpu
         res = await rpc_call(
-            'dgpu-0', 'dgpu_online', {'max_tasks': 3})
+            'dgpu-0', 'dgpu_online')
         logging.info(res)
         assert 'ok' in res.result
 

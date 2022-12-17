@@ -1,21 +1,25 @@
 #!/usr/bin/python
 
+import os
+import json
 import time
 import random
 import string
 import logging
 
 from functools import partial
+from pathlib import Path
 
 import trio
 import pytest
 import psycopg2
 import trio_asyncio
 
+from docker.types import Mount, DeviceRequest
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
-from skynet_bot.constants import *
-from skynet_bot.brain import run_skynet
+from skynet.constants import *
+from skynet.brain import run_skynet
 
 
 @pytest.fixture(scope='session')
@@ -29,6 +33,7 @@ def postgres_db(dockerctl):
 
     with dockerctl.run(
         'postgres',
+        name='skynet-test-postgres',
         ports={'5432/tcp': None},
         environment={
             'POSTGRES_PASSWORD': rpassword
@@ -67,6 +72,8 @@ def postgres_db(dockerctl):
             cursor.execute(
                 f'GRANT ALL PRIVILEGES ON DATABASE {DB_NAME} TO {DB_USER}')
 
+        conn.close()
+
         logging.info('done.')
         yield container, password, host
 
@@ -74,16 +81,44 @@ def postgres_db(dockerctl):
 @pytest.fixture
 async def skynet_running(postgres_db):
     db_container, db_pass, db_host = postgres_db
-    async with (
-        trio_asyncio.open_loop(),
-        trio.open_nursery() as n
+
+    async with run_skynet(
+        db_pass=db_pass,
+        db_host=db_host
     ):
-        await n.start(
-            partial(run_skynet,
-                db_pass=db_pass,
-                db_host=db_host))
-
         yield
-        n.cancel_scope.cancel()
 
 
+@pytest.fixture
+def dgpu_workers(request, dockerctl, skynet_running):
+    devices = [DeviceRequest(capabilities=[['gpu']])]
+    mounts = [Mount(
+        '/skynet', str(Path().resolve()), type='bind')]
+
+    num_containers, initial_algos = request.param
+
+    cmd = f'''
+    pip install -e . && \
+    skynet run dgpu --algos=\'{json.dumps(initial_algos)}\'
+    '''
+
+    logging.info(f'launching: \n{cmd}')
+
+    with dockerctl.run(
+        DOCKER_RUNTIME_CUDA,
+        name='skynet-test-runtime-cuda',
+        command=['bash', '-c', cmd],
+        environment={
+            'HF_TOKEN': os.environ['HF_TOKEN'],
+            'HF_HOME': '/skynet/hf_home'
+        },
+        network='host',
+        mounts=mounts,
+        device_requests=devices,
+        num=num_containers
+    ) as containers:
+        yield containers
+
+        #for i, container in enumerate(containers):
+        #    logging.info(f'container {i} logs:')
+        #    logging.info(container.logs().decode())

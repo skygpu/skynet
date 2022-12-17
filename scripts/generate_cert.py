@@ -8,7 +8,7 @@ import sys
 
 from OpenSSL import crypto, SSL
 
-from skynet_bot.constants import DEFAULT_CERTS_DIR
+from skynet.constants import DEFAULT_CERTS_DIR
 
 
 def input_or_skip(txt, default):
