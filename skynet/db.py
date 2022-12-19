@@ -58,13 +58,16 @@ ALTER TABLE skynet.user_config
 
 
 def try_decode_uid(uid: str):
+    if isinstance(uid, int):
+        return None, uid
+
     try:
         proto, uid = uid.split('+')
         uid = int(uid)
         return proto, uid
 
     except ValueError:
-        logging.warning(f'got non numeric uid?: {uid}')
+        logging.warning(f'got non chat proto uid?: {uid}')
         return None, None
 
 
@@ -132,28 +135,38 @@ async def new_user(conn, uid: str):
 
     logging.info(f'new user! {uid}')
 
-    tg_id = None
     date = datetime.utcnow()
 
     proto, pid = try_decode_uid(uid)
 
-    match proto:
-        case 'tg':
-            tg_id = pid
-
     async with conn.transaction():
-        stmt = await conn.prepare('''
-            INSERT INTO skynet.user(
-                tg_id, generated, joined, last_prompt, role)
+        match proto:
+            case 'tg':
+                tg_id = pid
+                stmt = await conn.prepare('''
+                    INSERT INTO skynet.user(
+                        tg_id, generated, joined, last_prompt, role)
 
-            VALUES($1, $2, $3, $4, $5)
-            ON CONFLICT DO NOTHING
-        ''')
-        await stmt.fetch(
-            tg_id, 0, date, None, DEFAULT_ROLE
-        )
+                    VALUES($1, $2, $3, $4, $5)
+                    ON CONFLICT DO NOTHING
+                ''')
+                await stmt.fetch(
+                    tg_id, 0, date, None, DEFAULT_ROLE
+                )
+                new_uid = await get_user(conn, uid)
 
-        new_uid = await get_user(conn, uid)
+            case None:
+                stmt = await conn.prepare('''
+                    INSERT INTO skynet.user(
+                        id, generated, joined, last_prompt, role)
+
+                    VALUES($1, $2, $3, $4, $5)
+                    ON CONFLICT DO NOTHING
+                ''')
+                await stmt.fetch(
+                    pid, 0, date, None, DEFAULT_ROLE
+                )
+                new_uid = pid
 
         stmt = await conn.prepare('''
             INSERT INTO skynet.user_config(

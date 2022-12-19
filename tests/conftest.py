@@ -97,17 +97,22 @@ def dgpu_workers(request, dockerctl, skynet_running):
 
     num_containers, initial_algos = request.param
 
-    cmd = f'''
-    pip install -e . && \
-    skynet run dgpu --algos=\'{json.dumps(initial_algos)}\'
-    '''
+    cmds = []
+    for i in range(num_containers):
+        cmd = f'''
+        pip install -e . && \
+        skynet run dgpu \
+        --algos=\'{json.dumps(initial_algos)}\' \
+        --uid=dgpu-{i}
+        '''
+        cmds.append(['bash', '-c', cmd])
 
     logging.info(f'launching: \n{cmd}')
 
     with dockerctl.run(
         DOCKER_RUNTIME_CUDA,
         name='skynet-test-runtime-cuda',
-        command=['bash', '-c', cmd],
+        commands=cmds,
         environment={
             'HF_TOKEN': os.environ['HF_TOKEN'],
             'HF_HOME': '/skynet/hf_home'

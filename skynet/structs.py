@@ -18,6 +18,8 @@
 Built-in (extension) types.
 """
 import sys
+import json
+
 from typing import Optional, Union
 from pprint import pformat
 
@@ -83,14 +85,50 @@ class Struct(
             setattr(self, fname, ftype(getattr(self, fname)))
 
 # proto
+from OpenSSL.crypto import PKey, X509, verify, sign
 
-class SkynetRPCRequest(Struct):
+
+class AuthenticatedStruct(Struct):
+    cert: Optional[str] = None
+    sig: Optional[str] = None
+
+    def to_unsigned_dict(self) -> dict:
+        self_dict = self.to_dict()
+
+        if 'sig' in self_dict:
+            del self_dict['sig']
+
+        if 'cert' in self_dict:
+            del self_dict['cert']
+
+        return self_dict
+
+    def unsigned_to_bytes(self) -> bytes:
+        return json.dumps(
+            self.to_unsigned_dict()).encode()
+
+    def sign(self, key: PKey, cert: str):
+        self.cert = cert
+        self.sig = sign(
+            key, self.unsigned_to_bytes(), 'sha256').hex()
+
+    def verify(self, cert: X509):
+        if not self.sig:
+            raise ValueError('Tried to verify unsigned request')
+
+        return verify(
+            cert, bytes.fromhex(self.sig), self.unsigned_to_bytes(), 'sha256')
+
+
+class SkynetRPCRequest(AuthenticatedStruct):
     uid: Union[str, int]  # user unique id
     method: str  # rpc method name
     params: dict  # variable params
 
-class SkynetRPCResponse(Struct):
+
+class SkynetRPCResponse(AuthenticatedStruct):
     result: dict
+
 
 class ImageGenRequest(Struct):
     prompt: str
@@ -102,8 +140,15 @@ class ImageGenRequest(Struct):
     algo: str
     upscaler: Optional[str]
 
-class DGPUBusRequest(Struct):
+
+class DGPUBusRequest(AuthenticatedStruct):
     rid: str  # req id
     nid: str  # node id
     task: str
+    params: dict
+
+
+class DGPUBusResponse(AuthenticatedStruct):
+    rid: str  # req id
+    nid: str  # node id
     params: dict

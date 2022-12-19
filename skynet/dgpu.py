@@ -5,6 +5,7 @@ import io
 import trio
 import json
 import uuid
+import base64
 import random
 import logging
 
@@ -16,10 +17,16 @@ import pynng
 import torch
 
 from pynng import TLSConfig
+from OpenSSL.crypto import (
+    load_privatekey,
+    load_certificate,
+    FILETYPE_PEM
+)
 from diffusers import (
     StableDiffusionPipeline,
     EulerAncestralDiscreteScheduler
 )
+from diffusers.models import UNet2DConditionModel
 
 from .structs import *
 from .constants import *
@@ -58,6 +65,7 @@ class DGPUComputeError(BaseException):
 
 async def open_dgpu_node(
     cert_name: str,
+    unique_id: str,
     key_name: Optional[str],
     rpc_address: str = DEFAULT_RPC_ADDR,
     dgpu_address: str = DEFAULT_DGPU_ADDR,
@@ -122,6 +130,7 @@ async def open_dgpu_node(
 
 
     async with open_skynet_rpc(
+        unique_id,
         security=security,
         cert_name=cert_name,
         key_name=key_name
@@ -131,16 +140,23 @@ async def open_dgpu_node(
         if security:
             # load tls certs
             if not key_name:
-                key_name = certs_name
+                key_name = cert_name
+
             certs_dir = Path(DEFAULT_CERTS_DIR).resolve()
 
             skynet_cert_path = certs_dir / 'brain.cert'
             tls_cert_path = certs_dir / f'{cert_name}.cert'
             tls_key_path = certs_dir / f'{key_name}.key'
 
-            skynet_cert = skynet_cert_path.read_text()
-            tls_cert = tls_cert_path.read_text()
-            tls_key = tls_key_path.read_text()
+            cert_name = tls_cert_path.stem
+
+            skynet_cert_data = skynet_cert_path.read_text()
+            skynet_cert = load_certificate(FILETYPE_PEM, skynet_cert_data)
+
+            tls_cert_data = tls_cert_path.read_text()
+
+            tls_key_data = tls_key_path.read_text()
+            tls_key = load_privatekey(FILETYPE_PEM, tls_key_data)
 
             logging.info(f'skynet cert: {skynet_cert_path}')
             logging.info(f'dgpu cert:  {tls_cert_path}')
@@ -149,17 +165,16 @@ async def open_dgpu_node(
             dgpu_address = 'tls+' + dgpu_address
             tls_config = TLSConfig(
                 TLSConfig.MODE_CLIENT,
-                own_key_string=tls_key,
-                own_cert_string=tls_cert,
-                ca_string=skynet_cert)
+                own_key_string=tls_key_data,
+                own_cert_string=tls_cert_data,
+                ca_string=skynet_cert_data)
 
         logging.info(f'connecting to {dgpu_address}')
         with pynng.Bus0() as dgpu_sock:
             dgpu_sock.tls_config = tls_config
             dgpu_sock.dial(dgpu_address)
 
-            res = await rpc_call(name.hex, 'dgpu_online')
-            logging.info(res)
+            res = await rpc_call('dgpu_online')
             assert 'ok' in res.result
 
             try:
@@ -168,30 +183,55 @@ async def open_dgpu_node(
                     req = DGPUBusRequest(
                         **json.loads(msg.decode()))
 
-                    if req.nid != name.hex:
-                        logging.info('witnessed request {req.rid}, for {req.nid}')
+                    if req.nid != unique_id:
+                        logging.info(
+                            f'witnessed msg {req.rid}, node involved: {req.nid}')
                         continue
+
+                    if security:
+                        req.verify(skynet_cert)
+
+                    ack_resp = DGPUBusResponse(
+                        rid=req.rid,
+                        nid=req.nid,
+                        params={'ack': {}}
+                    )
+
+                    if security:
+                        ack_resp.sign(tls_key, cert_name)
 
                     # send ack
                     await dgpu_sock.asend(
-                        bytes.fromhex(req.rid) + b'ack')
+                        json.dumps(ack_resp.to_dict()).encode())
 
                     logging.info(f'sent ack, processing {req.rid}...')
 
                     try:
                         img = await gpu_compute_one(
                             ImageGenRequest(**req.params))
+                        img_resp = DGPUBusResponse(
+                            rid=req.rid,
+                            nid=req.nid,
+                            params={'img': base64.b64encode(img).hex()}
+                        )
 
                     except DGPUComputeError as e:
-                        img = b'error' + str(e).encode()
+                        img_resp = DGPUBusResponse(
+                            rid=req.rid,
+                            nid=req.nid,
+                            params={'error': str(e)}
+                        )
 
+                    if security:
+                        img_resp.sign(tls_key, cert_name)
+
+                    # send final image
                     await dgpu_sock.asend(
-                        bytes.fromhex(req.rid) + img)
+                        json.dumps(img_resp.to_dict()).encode())
 
             except KeyboardInterrupt:
                 logging.info('interrupt caught, stopping...')
 
             finally:
-                res = await rpc_call(name.hex, 'dgpu_offline')
-                logging.info(res)
+                res = await rpc_call('dgpu_offline')
                 assert 'ok' in res.result

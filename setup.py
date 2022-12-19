@@ -10,6 +10,8 @@ setup(
     entry_points={
         'console_scripts': [
             'skynet = skynet.cli:skynet',
+            'txt2img = skynet.cli:txt2img',
+            'upscale = skynet.cli:upscale'
         ]
     },
     install_requires=['click']

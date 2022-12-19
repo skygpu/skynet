@@ -16,6 +16,11 @@ import pynng
 import trio_asyncio
 
 from pynng import TLSConfig
+from OpenSSL.crypto import (
+    load_privatekey,
+    load_certificate,
+    FILETYPE_PEM
+)
 
 from .db import *
 from .structs import *
@@ -34,12 +39,14 @@ class SkynetDGPUComputeError(BaseException):
 class SkynetShutdownRequested(BaseException):
     ...
 
+
 @acm
-async def open_rpc_service(sock, dgpu_bus, db_pool):
+async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
     nodes = OrderedDict()
     wip_reqs = {}
     fin_reqs = {}
     next_worker: Optional[int] = None
+    security = len(tls_whitelist) > 0
 
     def connect_node(uid):
         nonlocal next_worker
@@ -109,27 +116,20 @@ async def open_rpc_service(sock, dgpu_bus, db_pool):
     async def dgpu_image_streamer():
         nonlocal wip_reqs, fin_reqs
         while True:
-            msg = await dgpu_bus.arecv_msg()
-            rid = UUID(bytes=msg.bytes[:16]).hex
-            raw_msg = msg.bytes[16:]
-            logging.info(f'streamer got back {rid} of size {len(raw_msg)}')
-            match raw_msg[:5]:
-                case b'error':
-                    img = raw_msg.decode()
+            msg = DGPUBusResponse(
+                **json.loads(
+                    (await dgpu_bus.arecv()).decode()))
 
-                case b'ack':
-                    img = raw_msg
+            if security:
+                msg.verify(tls_whitelist[msg.cert])
 
-                case _:
-                    img = base64.b64encode(raw_msg).hex()
-
-            if rid not in wip_reqs:
+            if msg.rid not in wip_reqs:
                 continue
 
-            fin_reqs[rid] = img
-            event = wip_reqs[rid]
+            fin_reqs[msg.rid] = msg
+            event = wip_reqs[msg.rid]
             event.set()
-            del wip_reqs[rid]
+            del wip_reqs[msg.rid]
 
     async def dgpu_stream_one_img(req: ImageGenRequest):
         nonlocal wip_reqs, fin_reqs, next_worker
@@ -151,6 +151,9 @@ async def open_rpc_service(sock, dgpu_bus, db_pool):
 
         logging.info(f'dgpu_bus req: {dgpu_req}')
 
+        if security:
+            dgpu_req.sign(tls_key, 'skynet')
+
         await dgpu_bus.asend(
             json.dumps(dgpu_req.to_dict()).encode())
 
@@ -163,8 +166,8 @@ async def open_rpc_service(sock, dgpu_bus, db_pool):
             disconnect_node(nid)
             raise SkynetDGPUOffline('dgpu failed to acknowledge request')
 
-        ack = fin_reqs[rid]
-        if ack != b'ack':
+        ack_msg = fin_reqs[rid]
+        if 'ack' not in ack_msg.params:
             disconnect_node(nid)
             raise SkynetDGPUOffline('dgpu failed to acknowledge request')
 
@@ -178,15 +181,13 @@ async def open_rpc_service(sock, dgpu_bus, db_pool):
 
         nodes[nid]['task'] = None
 
-        img = fin_reqs[rid]
+        img_resp = fin_reqs[rid]
         del fin_reqs[rid]
 
-        logging.info(f'done streaming {len(img)} bytes')
+        if 'error' in img_resp.params:
+            raise SkynetDGPUComputeError(img_resp.params['error'])
 
-        if 'error' in img:
-            raise SkynetDGPUComputeError(img)
-
-        return rid, img
+        return rid, img_resp.params['img']
 
     async def handle_user_request(rpc_ctx, req):
         try:
@@ -266,9 +267,13 @@ async def open_rpc_service(sock, dgpu_bus, db_pool):
                 'message': str(e)
             }
 
+        resp = SkynetRPCResponse(result=result)
+
+        if security:
+            resp.sign(tls_key, 'skynet')
+
         await rpc_ctx.asend(
-            json.dumps(
-                SkynetRPCResponse(result=result).to_dict()).encode())
+            json.dumps(resp.to_dict()).encode())
 
     async def request_service(n):
         nonlocal next_worker
@@ -279,7 +284,19 @@ async def open_rpc_service(sock, dgpu_bus, db_pool):
             content = msg.bytes.decode()
             req = SkynetRPCRequest(**json.loads(content))
 
-            logging.info(req)
+            if security:
+                if req.cert not in tls_whitelist:
+                    logging.warning(
+                        f'{req.cert} not in tls whitelist and security=True')
+                    continue
+
+                try:
+                    req.verify(tls_whitelist[req.cert])
+
+                except ValueError:
+                    logging.warning(
+                        f'{req.cert} sent an unauthenticated msg with security=True')
+                    continue
 
             result = {}
 
@@ -303,10 +320,14 @@ async def open_rpc_service(sock, dgpu_bus, db_pool):
                     handle_user_request, ctx, req)
                 continue
 
+            resp = SkynetRPCResponse(
+                result={'ok': result})
+
+            if security:
+                resp.sign(tls_key, 'skynet')
+
             await ctx.asend(
-                json.dumps(
-                    SkynetRPCResponse(
-                        result={'ok': result}).to_dict()).encode())
+                json.dumps(resp.to_dict()).encode())
 
 
     async with trio.open_nursery() as n:
@@ -334,22 +355,28 @@ async def run_skynet(
     if security:
         # load tls certs
         certs_dir = Path(DEFAULT_CERTS_DIR).resolve()
-        tls_key = (certs_dir / DEFAULT_CERT_SKYNET_PRIV).read_text()
-        tls_cert = (certs_dir / DEFAULT_CERT_SKYNET_PUB).read_text()
-        tls_whitelist = [
-            (cert_path).read_text()
-            for cert_path in (certs_dir / 'whitelist').glob('*.cert')]
 
-        cert_start = tls_cert.index('\n') + 1
-        logging.info(f'tls_cert: {tls_cert[cert_start:cert_start+64]}...')
+        tls_key_data = (certs_dir / DEFAULT_CERT_SKYNET_PRIV).read_text()
+        tls_key = load_privatekey(FILETYPE_PEM, tls_key_data)
+
+        tls_cert_data = (certs_dir / DEFAULT_CERT_SKYNET_PUB).read_text()
+        tls_cert = load_certificate(FILETYPE_PEM, tls_cert_data)
+
+        tls_whitelist = {}
+        for cert_path in (certs_dir / 'whitelist').glob('*.cert'):
+            tls_whitelist[cert_path.stem] = load_certificate(
+                FILETYPE_PEM, cert_path.read_text())
+
+        cert_start = tls_cert_data.index('\n') + 1
+        logging.info(f'tls_cert: {tls_cert_data[cert_start:cert_start+64]}...')
         logging.info(f'tls_whitelist len: {len(tls_whitelist)}')
 
         rpc_address = 'tls+' + rpc_address
         dgpu_address = 'tls+' + dgpu_address
         tls_config = TLSConfig(
             TLSConfig.MODE_SERVER,
-            own_key_string=tls_key,
-            own_cert_string=tls_cert)
+            own_key_string=tls_key_data,
+            own_cert_string=tls_cert_data)
 
     with (
         pynng.Rep0() as rpc_sock,
@@ -367,7 +394,8 @@ async def run_skynet(
             dgpu_bus.listen(dgpu_address)
 
             try:
-                async with open_rpc_service(rpc_sock, dgpu_bus, db_pool):
+                async with open_rpc_service(
+                    rpc_sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                     yield
 
             except SkynetShutdownRequested:

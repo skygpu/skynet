@@ -9,6 +9,11 @@ from contextlib import asynccontextmanager as acm
 import pynng
 
 from pynng import TLSConfig
+from OpenSSL.crypto import (
+    load_privatekey,
+    load_certificate,
+    FILETYPE_PEM
+)
 
 from ..structs import SkynetRPCRequest, SkynetRPCResponse
 from ..constants import *
@@ -30,56 +35,73 @@ class ConfigSizeDivisionByEight(BaseException):
     ...
 
 
-async def rpc_call(
-    sock,
-    uid: Union[int, str],
-    method: str,
-    params: dict = {}
-):
-    req = SkynetRPCRequest(
-        uid=uid,
-        method=method,
-        params=params
-    )
-    await sock.asend(
-        json.dumps(
-            req.to_dict()).encode())
-
-    return SkynetRPCResponse(
-        **json.loads(
-            (await sock.arecv_msg()).bytes.decode()))
-
-
 @acm
 async def open_skynet_rpc(
+    unique_id: str,
     rpc_address: str = DEFAULT_RPC_ADDR,
     security: bool = False,
     cert_name: Optional[str] = None,
     key_name: Optional[str] = None
 ):
     tls_config = None
+
     if security:
         # load tls certs
         if not key_name:
-            key_name = certs_name
+            key_name = cert_name
+
         certs_dir = Path(DEFAULT_CERTS_DIR).resolve()
-        skynet_cert = (certs_dir / 'brain.cert').read_text()
-        tls_cert = (certs_dir / f'{cert_name}.cert').read_text()
-        tls_key = (certs_dir / f'{key_name}.key').read_text()
+
+        skynet_cert_data = (certs_dir / 'brain.cert').read_text()
+        skynet_cert = load_certificate(FILETYPE_PEM, skynet_cert_data)
+
+        tls_cert_path = certs_dir / f'{cert_name}.cert'
+        tls_cert_data = tls_cert_path.read_text()
+        tls_cert = load_certificate(FILETYPE_PEM, tls_cert_data)
+        cert_name = tls_cert_path.stem
+
+        tls_key_data = (certs_dir / f'{key_name}.key').read_text()
+        tls_key = load_privatekey(FILETYPE_PEM, tls_key_data)
+
         rpc_address = 'tls+' + rpc_address
         tls_config = TLSConfig(
             TLSConfig.MODE_CLIENT,
-            own_key_string=tls_key,
-            own_cert_string=tls_cert,
-            ca_string=skynet_cert)
+            own_key_string=tls_key_data,
+            own_cert_string=tls_cert_data,
+            ca_string=skynet_cert_data)
 
     with pynng.Req0() as sock:
         if security:
             sock.tls_config = tls_config
 
         sock.dial(rpc_address)
-        async def _rpc_call(*args, **kwargs):
-            return await rpc_call(sock, *args, **kwargs)
+
+        async def _rpc_call(
+            method: str,
+            params: dict = {},
+            uid: Optional[Union[int, str]] = None
+        ):
+            req = SkynetRPCRequest(
+                uid=uid if uid else unique_id,
+                method=method,
+                params=params
+            )
+
+            if security:
+                req.sign(tls_key, cert_name)
+
+            await sock.asend(
+                json.dumps(
+                    req.to_dict()).encode())
+
+            resp = SkynetRPCResponse(
+                **json.loads(
+                    (await sock.arecv_msg()).bytes.decode()))
+
+            if security:
+                resp.verify(skynet_cert)
+
+            return resp
 
         yield _rpc_call
 

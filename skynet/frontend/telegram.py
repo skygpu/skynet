@@ -18,14 +18,19 @@ PREFIX = 'tg'
 
 
 async def run_skynet_telegram(
-    tg_token: str
+    tg_token: str,
+    key_name: str = 'telegram-frontend',
+    cert_name: str = 'whitelist/telegram-frontend'
 ):
 
     logging.basicConfig(level=logging.INFO)
     bot = AsyncTeleBot(tg_token)
 
     with open_skynet_rpc(
-        security=True, cert_name='telegram-frontend'
+        'skynet-telegram-0',
+        security=True,
+        cert_name=cert,
+        key_name=key
     ) as rpc_call:
 
         async def _rpc_call(
@@ -33,7 +38,8 @@ async def run_skynet_telegram(
             method: str,
             params: dict
         ):
-            return await rpc_call(f'{PREFIX}+{uid}', method, params)
+            return await rpc_call(
+                method, params, uid=f'{PREFIX}+{uid}')
 
         @bot.message_handler(commands=['help'])
         async def send_help(message):
