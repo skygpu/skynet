@@ -64,18 +64,19 @@ def upscale(
     torch.backends.cudnn.allow_tf32 = True
 
     login(token=hf_token)
-    params = {
-        'torch_dtype': torch.float16,
-        'safety_checker': None
-    }
 
     pipe = StableDiffusionUpscalePipeline.from_pretrained(
-        'stabilityai/stable-diffusion-x4-upscaler', **params)
+        'stabilityai/stable-diffusion-x4-upscaler',
+        revision="fp16", torch_dtype=torch.float16)
+    pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
+        pipe.scheduler.config)
+    pipe = pipe.to('cuda')
 
     prompt = prompt
     image = pipe(
         prompt,
-        image=Image.open(img_path)
+        image=Image.open(img_path).convert("RGB"),
+        num_inference_steps=steps
     ).images[0]
 
     image.save(output)

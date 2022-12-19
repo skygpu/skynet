@@ -56,7 +56,7 @@ def pipeline_for(algo: str, mem_fraction: float = 1.0):
 
     pipe.enable_vae_slicing()
 
-    return pipe.to("cuda")
+    return pipe.to('cuda')
 
 
 class DGPUComputeError(BaseException):
