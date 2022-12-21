@@ -1,8 +1,10 @@
 from setuptools import setup, find_packages
 
+from skynet.constants import VERSION
+
 setup(
     name='skynet',
-    version='0.1.0a6',
+    version=VERSION,
     description='Decentralized compute platform',
     author='Guillermo Rodriguez',
     author_email='guillermo@telos.net',

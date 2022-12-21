@@ -8,10 +8,12 @@ from functools import partial
 
 import trio
 import click
+import trio_asyncio
 
 from . import utils
 from .dgpu import open_dgpu_node
 from .brain import run_skynet
+from .constants import ALGOS
 
 from .frontend.telegram import run_skynet_telegram
 
@@ -61,16 +63,16 @@ def run(*args, **kwargs):
 @click.option(
     '--host', '-h', default='localhost:5432')
 @click.option(
-    '--pass', '-p', default='password')
-def skynet(
+    '--passwd', '-p', default='password')
+def brain(
     loglevel: str,
     host: str,
-    passw: str
+    passwd: str
 ):
     async def _run_skynet():
         async with run_skynet(
             db_host=host,
-            db_pass=passw
+            db_pass=passwd
         ):
             await trio.sleep_forever()
 
@@ -86,13 +88,13 @@ def skynet(
 @click.option(
     '--cert', '-c', default='whitelist/dgpu')
 @click.option(
-    '--algos', '-a', default=None)
+    '--algos', '-a', default=json.dumps(['midj']))
 def dgpu(
     loglevel: str,
     uid: str,
     key: str,
     cert: str,
-    algos: Optional[str]
+    algos: str
 ):
     trio.run(
         partial(

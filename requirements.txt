@@ -5,3 +5,4 @@ aiohttp
 msgspec
 pyOpenSSL
 trio_asyncio
+pyTelegramBotAPI

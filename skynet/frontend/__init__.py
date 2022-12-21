@@ -90,13 +90,14 @@ async def open_skynet_rpc(
             if security:
                 req.sign(tls_key, cert_name)
 
-            await sock.asend(
+            ctx = sock.new_context()
+            await ctx.asend(
                 json.dumps(
                     req.to_dict()).encode())
 
             resp = SkynetRPCResponse(
-                **json.loads(
-                    (await sock.arecv_msg()).bytes.decode()))
+                **json.loads((await ctx.arecv()).decode()))
+            ctx.close()
 
             if security:
                 resp.verify(skynet_cert)
