@@ -2,6 +2,7 @@
 
 import logging
 
+from typing import Optional
 from datetime import datetime
 from contextlib import asynccontextmanager as acm
 
@@ -19,7 +20,7 @@ CREATE SCHEMA IF NOT EXISTS skynet;
 
 CREATE TABLE IF NOT EXISTS skynet.user(
    id SERIAL PRIMARY KEY NOT NULL,
-   tg_id INT,
+   tg_id BIGINT,
    wp_id VARCHAR(128),
    mx_id VARCHAR(128),
    ig_id VARCHAR(128),
@@ -47,7 +48,7 @@ CREATE TABLE IF NOT EXISTS skynet.user_config(
     step INT NOT NULL,
     width INT NOT NULL,
     height INT NOT NULL,
-    seed INT,
+    seed BIGINT,
     guidance INT NOT NULL,
     upscaler VARCHAR(128)
 );
@@ -124,7 +125,7 @@ async def get_user_config(conn, user: int):
 
 
 async def get_last_prompt_of(conn, user: int):
-    stms = await conn.prepare(
+    stmt = await conn.prepare(
         'SELECT last_prompt FROM skynet.user WHERE id = $1')
     return await stmt.fetchval(user)
 
@@ -198,7 +199,12 @@ async def get_or_create_user(conn, uid: str):
     return user
 
 async def update_user(conn, user: int, attr: str, val):
-    ...
+    stmt = await conn.prepare(f'''
+        UPDATE skynet.user
+        SET {attr} = $2
+        WHERE id = $1
+    ''')
+    await stmt.fetch(user, val)
 
 async def update_user_config(conn, user: int, attr: str, val):
     stmt = await conn.prepare(f'''
@@ -218,3 +224,18 @@ async def get_user_stats(conn, user: int):
     assert len(records) == 1
     record = records[0]
     return record
+
+async def update_user_stats(
+    conn,
+    user: int,
+    last_prompt: Optional[str] = None
+):
+    stmt = await conn.prepare('''
+        UPDATE skynet.user
+        SET generated = generated + 1
+        WHERE id = $1
+    ''')
+    await stmt.fetch(user)
+
+    if last_prompt:
+        await update_user(conn, user, 'last_prompt', last_prompt)

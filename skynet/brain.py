@@ -4,6 +4,7 @@ import json
 import uuid
 import base64
 import logging
+import traceback
 
 from uuid import UUID
 from pathlib import Path
@@ -90,10 +91,10 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
         logging.info(f'pre next_worker: {next_worker}')
 
         if next_worker == None:
-            raise SkynetDGPUOffline
+            raise SkynetDGPUOffline('No workers connected, try again later')
 
         if are_all_workers_busy():
-            raise SkynetDGPUOverloaded
+            raise SkynetDGPUOverloaded('All workers are busy at the moment')
 
 
         nid = list(nodes.keys())[next_worker]
@@ -175,6 +176,8 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
         with trio.move_on_after(30):
             await img_event.wait()
 
+        logging.info(f'img event: {ack_event.is_set()}')
+
         if not img_event.is_set():
             disconnect_node(nid)
             raise SkynetDGPUComputeError('30 seconds timeout while processing request')
@@ -187,7 +190,7 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
         if 'error' in img_resp.params:
             raise SkynetDGPUComputeError(img_resp.params['error'])
 
-        return rid, img_resp.params['img']
+        return rid, img_resp.params['img'], img_resp.params['meta']
 
     async def handle_user_request(rpc_ctx, req):
         try:
@@ -202,39 +205,54 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                         user_config = {**(await get_user_config(conn, user))}
                         del user_config['id']
                         prompt = req.params['prompt']
-                        user_config= {
-                            key : req.params.get(key, val) 
-                            for key, val in user_config.items()
-                        }
                         req = ImageGenRequest(
                             prompt=prompt,
                             **user_config
                         )
-                        rid, img = await dgpu_stream_one_img(req)
+                        rid, img, meta = await dgpu_stream_one_img(req)
+                        logging.info(f'done streaming {rid}')
                         result = {
                             'id': rid,
-                            'img': img
+                            'img': img,
+                            'meta': meta
                         }
+
+                        await update_user_stats(conn, user, last_prompt=prompt)
+                        logging.info('updated user stats.')
 
                     case 'redo':
                         logging.info('redo')
-                        user_config = await get_user_config(conn, user)
+                        user_config = {**(await get_user_config(conn, user))}
+                        del user_config['id']
                         prompt = await get_last_prompt_of(conn, user)
-                        req = ImageGenRequest(
-                            prompt=prompt,
-                            **user_config
-                        )
-                        rid, img = await dgpu_stream_one_img(req)
-                        result = {
-                            'id': rid,
-                            'img': img
-                        }
+
+                        if prompt:
+                            req = ImageGenRequest(
+                                prompt=prompt,
+                                **user_config
+                            )
+                            rid, img, meta = await dgpu_stream_one_img(req)
+                            result = {
+                                'id': rid,
+                                'img': img,
+                                'meta': meta
+                            }
+                            await update_user_stats(conn, user)
+                            logging.info('updated user stats.')
+
+                        else:
+                            result = {
+                                'error': 'skynet_no_last_prompt',
+                                'message': 'No prompt to redo, do txt2img first'
+                            }
 
                     case 'config':
                         logging.info('config')
                         if req.params['attr'] in CONFIG_ATTRS:
+                            logging.info(f'update: {req.params}')
                             await update_user_config(
                                 conn, user, req.params['attr'], req.params['val'])
+                            logging.info('done')
 
                     case 'stats':
                         logging.info('stats')
@@ -255,9 +273,10 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                 'message': str(e)
             }
 
-        except SkynetDGPUOverloaded:
+        except SkynetDGPUOverloaded as e:
             result = {
                 'error': 'skynet_dgpu_overloaded',
+                'message': str(e),
                 'nodes': len(nodes)
             }
 
@@ -266,14 +285,23 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                 'error': 'skynet_dgpu_compute_error',
                 'message': str(e)
             }
+        except BaseException as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
+            result = {
+                'error': 'skynet_internal_error',
+                'message': str(e)
+            }
 
         resp = SkynetRPCResponse(result=result)
 
         if security:
             resp.sign(tls_key, 'skynet')
 
+        logging.info('sending response')
         await rpc_ctx.asend(
             json.dumps(resp.to_dict()).encode())
+        rpc_ctx.close()
+        logging.info('done')
 
     async def request_service(n):
         nonlocal next_worker
@@ -328,6 +356,8 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
 
             await ctx.asend(
                 json.dumps(resp.to_dict()).encode())
+
+            ctx.close()
 
 
     async with trio.open_nursery() as n:

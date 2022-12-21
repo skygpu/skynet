@@ -109,7 +109,6 @@ async def open_dgpu_node(
                 'generated': 0
             }
 
-        seed = ireq.seed if ireq.seed else random.randint(0, 2 ** 64)
         try:
             image = models[ireq.algo]['pipe'](
                 ireq.prompt,
@@ -117,7 +116,7 @@ async def open_dgpu_node(
                 height=ireq.height,
                 guidance_scale=ireq.guidance,
                 num_inference_steps=ireq.step,
-                generator=torch.Generator("cuda").manual_seed(seed)
+                generator=torch.Generator("cuda").manual_seed(ireq.seed)
             ).images[0]
             return image.tobytes()
 
@@ -207,12 +206,18 @@ async def open_dgpu_node(
                     logging.info(f'sent ack, processing {req.rid}...')
 
                     try:
-                        img = await gpu_compute_one(
-                            ImageGenRequest(**req.params))
+                        img_req = ImageGenRequest(**req.params)
+                        if not img_req.seed:
+                            img_req.seed = random.randint(0, 2 ** 64)
+
+                        img = await gpu_compute_one(img_req)
                         img_resp = DGPUBusResponse(
                             rid=req.rid,
                             nid=req.nid,
-                            params={'img': base64.b64encode(img).hex()}
+                            params={
+                                'img': base64.b64encode(img).hex(),
+                                'meta': img_req.to_dict()
+                            }
                         )
 
                     except DGPUComputeError as e:

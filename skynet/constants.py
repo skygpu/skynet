@@ -1,8 +1,10 @@
 #!/usr/bin/python
 
+VERSION = '0.1a6'
+
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
-DB_HOST = 'ancap.tech:34508'
+DB_HOST = 'localhost:5432'
 DB_USER = 'skynet'
 DB_PASS = 'password'
 DB_NAME = 'skynet'
@@ -21,7 +23,7 @@ ALGOS = {
 
 N = '\n'
 HELP_TEXT = f'''
-test art bot v0.1a4
+test art bot v{VERSION}
 
 commands work on a user per user basis!
 config is individual to each user!
@@ -47,7 +49,7 @@ config is individual to each user!
 /config guidance NUMBER - prompt text importance
 '''
 
-UNKNOWN_CMD_TEXT = 'unknown command! try sending \"/help\"'
+UNKNOWN_CMD_TEXT = 'Unknown command! Try sending \"/help\"'
 
 DONATION_INFO = '0xf95335682DF281FFaB7E104EB87B69625d9622B6\ngoal: 25/650usd'
 
@@ -74,22 +76,24 @@ COOL_WORDS = [
     'michelangelo'
 ]
 
-HELP_STEP = '''
-diffusion models are iterative processes – a repeated cycle that starts with a\
+HELP_TOPICS = {
+    'step': '''
+Diffusion models are iterative processes – a repeated cycle that starts with a\
  random noise generated from text input. With each step, some noise is removed\
 , resulting in a higher-quality image over time. The repetition stops when the\
  desired number of steps completes.
 
-around 25 sampling steps are usually enough to achieve high-quality images. Us\
+Around 25 sampling steps are usually enough to achieve high-quality images. Us\
 ing more may produce a slightly different picture, but not necessarily better \
 quality.
-'''
+''',
 
-HELP_GUIDANCE = '''
-the guidance scale is a parameter that controls how much the image generation\
+'guidance': '''
+The guidance scale is a parameter that controls how much the image generation\
  process follows the text prompt. The higher the value, the more image sticks\
  to a given text input.
 '''
+}
 
 HELP_UNKWNOWN_PARAM = 'don\'t have any info on that.'
 
