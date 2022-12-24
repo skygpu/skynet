@@ -70,7 +70,7 @@ async def open_skynet_rpc(
             own_cert_string=tls_cert_data,
             ca_string=skynet_cert_data)
 
-    with pynng.Req0() as sock:
+    with pynng.Req0(recv_max_size=0) as sock:
         if security:
             sock.tls_config = tls_config
 

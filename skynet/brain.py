@@ -406,8 +406,8 @@ async def run_skynet(
             own_cert_string=tls_cert_data)
 
     with (
-        pynng.Rep0() as rpc_sock,
-        pynng.Bus0() as dgpu_bus
+        pynng.Rep0(recv_max_size=0) as rpc_sock,
+        pynng.Bus0(recv_max_size=0) as dgpu_bus
     ):
         async with open_database_connection(
             db_user, db_pass, db_host) as db_pool:

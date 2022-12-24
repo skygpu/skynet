@@ -177,7 +177,7 @@ async def open_dgpu_node(
                 ca_string=skynet_cert_data)
 
         logging.info(f'connecting to {dgpu_address}')
-        with pynng.Bus0() as dgpu_sock:
+        with pynng.Bus0(recv_max_size=0) as dgpu_sock:
             dgpu_sock.tls_config = tls_config
             dgpu_sock.dial(dgpu_address)
 
