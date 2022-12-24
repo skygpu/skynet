@@ -1,4 +1,6 @@
 #!/usr/bin/python
+import importlib.util
+torch_enabled = importlib.util.find_spec('torch') != None
 
 import os
 import json
@@ -10,8 +12,10 @@ import trio
 import click
 import trio_asyncio
 
-from . import utils
-from .dgpu import open_dgpu_node
+if torch_enabled:
+    from . import utils
+    from .dgpu import open_dgpu_node
+
 from .brain import run_skynet
 from .constants import ALGOS
 
