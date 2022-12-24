@@ -82,6 +82,10 @@ async def run_skynet_telegram(
 
         @bot.message_handler(commands=['txt2img'])
         async def send_txt2img(message):
+            chat = message.chat
+            if chat.type != 'group' and chat.id != GROUP_ID:
+                return
+
             prompt = ' '.join(message.text.split(' ')[1:])
 
             if len(prompt) == 0:
@@ -122,6 +126,10 @@ async def run_skynet_telegram(
 
         @bot.message_handler(commands=['redo'])
         async def redo_txt2img(message):
+            chat = message.chat
+            if chat.type != 'group' and chat.id != GROUP_ID:
+                return
+
             resp = await _rpc_call(message.from_user.id, 'redo')
 
             resp_txt = ''
