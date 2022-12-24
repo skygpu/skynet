@@ -140,6 +140,7 @@ async def run_skynet_telegram(
                 img_raw = base64.b64decode(bytes.fromhex(resp.result['img']))
                 logging.info(f'got image of size: {len(img_raw)}')
                 size = (512, 512)
+                logging.info(resp.result['meta'])
                 if resp.result['meta']['upscaler'] == 'x4':
                     size = (2048, 2048)
 
