@@ -185,6 +185,16 @@ async def run_skynet_telegram(
             await bot.reply_to(
                 message, DONATION_INFO)
 
+        @bot.message_handler(commands=['say'])
+        async def say(message):
+            chat = message.chat
+            user = message.from_user
+
+            if (chat.type == 'group') or (user.id != 383385940):
+                return
+
+            await bot.send_message(GROUP_ID, message.text[4:])
+
 
         @bot.message_handler(func=lambda message: True)
         async def echo_message(message):
