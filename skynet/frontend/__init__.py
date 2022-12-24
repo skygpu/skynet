@@ -117,49 +117,50 @@ def validate_user_config_request(req: str):
         try:
             attr = params[1]
 
-            if attr == 'algo':
-                val = params[2]
-                if val not in ALGOS:
-                    raise ConfigUnknownAlgorithm(f'no algo named {val}')
+            match attr:
+                case 'algo':
+                    val = params[2]
+                    if val not in ALGOS:
+                        raise ConfigUnknownAlgorithm(f'no algo named {val}')
 
-            elif attr == 'step':
-                val = int(params[2])
-                val = max(min(val, MAX_STEP), MIN_STEP)
-
-            elif attr  == 'width':
-                val = max(min(int(params[2]), MAX_WIDTH), 16)
-                if val % 8 != 0:
-                    raise ConfigSizeDivisionByEight(
-                        'size must be divisible by 8!')
-
-            elif attr  == 'height':
-                val = max(min(int(params[2]), MAX_HEIGHT), 16)
-                if val % 8 != 0:
-                    raise ConfigSizeDivisionByEight(
-                        'size must be divisible by 8!')
-
-            elif attr == 'seed':
-                val = params[2]
-                if val == 'auto':
-                    val = None
-                else:
+                case 'step':
                     val = int(params[2])
+                    val = max(min(val, MAX_STEP), MIN_STEP)
 
-            elif attr == 'guidance':
-                val = float(params[2])
-                val = max(min(val, MAX_GUIDANCE), 0)
+                case 'width':
+                    val = max(min(int(params[2]), MAX_WIDTH), 16)
+                    if val % 8 != 0:
+                        raise ConfigSizeDivisionByEight(
+                            'size must be divisible by 8!')
 
-            elif attr == 'upscaler':
-                val = params[2]
-                if val == 'off':
-                    val = None
-                elif val != 'x4':
-                    raise ConfigUnknownUpscaler(
-                        f'\"{val}\" is not a valid upscaler')
+                case 'height':
+                    val = max(min(int(params[2]), MAX_HEIGHT), 16)
+                    if val % 8 != 0:
+                        raise ConfigSizeDivisionByEight(
+                            'size must be divisible by 8!')
 
-            else:
-                raise ConfigUnknownAttribute(
-                    f'\"{attr}\" not a configurable parameter')
+                case 'seed':
+                    val = params[2]
+                    if val == 'auto':
+                        val = None
+                    else:
+                        val = int(params[2])
+
+                case 'guidance':
+                    val = float(params[2])
+                    val = max(min(val, MAX_GUIDANCE), 0)
+
+                case 'upscaler':
+                    val = params[2]
+                    if val == 'off':
+                        val = None
+                    elif val != 'x4':
+                        raise ConfigUnknownUpscaler(
+                            f'\"{val}\" is not a valid upscaler')
+
+                case _:
+                    raise ConfigUnknownAttribute(
+                        f'\"{attr}\" not a configurable parameter')
 
             return attr, val, f'config updated! {attr} to {val}'
 

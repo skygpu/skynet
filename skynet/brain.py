@@ -204,11 +204,8 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                         logging.info('txt2img')
                         user_config = {**(await get_user_config(conn, user))}
                         del user_config['id']
-                        prompt = req.params['prompt']
-                        req = ImageGenRequest(
-                            prompt=prompt,
-                            **user_config
-                        )
+                        user_config.update((k, req.params[k]) for k in req.params)
+                        req = ImageGenRequest(**user_config)
                         rid, img, meta = await dgpu_stream_one_img(req)
                         logging.info(f'done streaming {rid}')
                         result = {
@@ -217,7 +214,7 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                             'meta': meta
                         }
 
-                        await update_user_stats(conn, user, last_prompt=prompt)
+                        await update_user_stats(conn, user, last_prompt=user_config['prompt'])
                         logging.info('updated user stats.')
 
                     case 'redo':

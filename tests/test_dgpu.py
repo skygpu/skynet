@@ -6,6 +6,7 @@ import json
 import base64
 import logging
 
+from typing import Optional
 from hashlib import sha256
 from functools import partial
 
@@ -42,7 +43,8 @@ async def check_request_img(
     uid: int = 0,
     width: int = 512,
     height: int = 512,
-    expect_unique=True
+    expect_unique = True,
+    upscaler: Optional[str] = None
 ):
     global _images
 
@@ -60,11 +62,15 @@ async def check_request_img(
                 'guidance': 7.5,
                 'seed': None,
                 'algo': list(ALGOS.keys())[i],
-                'upscaler': None
+                'upscaler': upscaler
             })
 
         if 'error' in res.result:
             raise SkynetDGPUComputeError(json.dumps(res.result))
+
+        if upscaler == 'x4':
+            width *= 4
+            height *= 4
 
         img_raw = base64.b64decode(bytes.fromhex(res.result['img']))
         img_sha = sha256(img_raw).hexdigest()
@@ -79,6 +85,8 @@ async def check_request_img(
         logging.info(f'img sha256: {img_sha} size: {len(img_raw)}')
 
         assert len(img_raw) > 100000
+
+        return img
 
 
 @pytest.mark.parametrize(
@@ -121,6 +129,27 @@ async def test_dgpu_workers(dgpu_workers):
 
         await check_request_img(0)
         await check_request_img(1)
+
+
+@pytest.mark.parametrize(
+    'dgpu_workers', [(1, ['midj'])], indirect=True)
+async def test_dgpu_worker_upscale(dgpu_workers):
+    '''Generate two images in a single dgpu worker using
+    two different models.
+    '''
+
+    async with open_skynet_rpc(
+        'test-ctx',
+        security=True,
+        cert_name='whitelist/testing',
+        key_name='testing'
+    ) as test_rpc:
+        await wait_for_dgpus(test_rpc, 1)
+        logging.error('UPSCALE')
+
+        img = await check_request_img(0, upscaler='x4')
+
+        assert img.size == (2048, 2048)
 
 
 @pytest.mark.parametrize(

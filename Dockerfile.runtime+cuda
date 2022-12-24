@@ -3,6 +3,9 @@ from python:3.10.0
 
 env DEBIAN_FRONTEND=noninteractive
 
+run apt-get update && \
+    apt-get install -y ffmpeg libsm6 libxext6
+
 workdir /skynet
 
 copy requirements.cuda* ./
@@ -27,3 +30,4 @@ env HF_HOME /hf_home
 
 copy scripts scripts
 copy tests tests
+
