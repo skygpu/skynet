@@ -118,6 +118,7 @@ async def open_dgpu_node(
             ).images[0]
 
             if ireq.upscaler == 'x4':
+                logging.info(f'size: {len(image.tobytes())}')
                 logging.info('performing upscale...')
                 input_img = image.convert('RGB')
                 up_img, _ = upscaler.enhance(

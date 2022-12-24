@@ -101,7 +101,11 @@ async def run_skynet_telegram(
             else:
                 logging.info(resp.result['id'])
                 img_raw = base64.b64decode(bytes.fromhex(resp.result['img']))
-                img = Image.frombytes('RGB', (512, 512), img_raw)
+                size = (512, 512)
+                if resp.result['meta']['upscaler'] == 'x4':
+                    size = (2048, 2048)
+
+                img = Image.frombytes('RGB', size, img_raw)
 
                 await bot.send_photo(
                     message.chat.id,
