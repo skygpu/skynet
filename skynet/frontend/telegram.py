@@ -23,7 +23,11 @@ PREFIX = 'tg'
 
 
 def prepare_metainfo_caption(meta: dict) -> str:
-    meta_str = f'prompt: \"{meta["prompt"]}\"\n'
+    prompt = meta["prompt"]
+    if len(prompt) > 256:
+        prompt = prompt[:256]
+
+    meta_str = f'prompt: \"{prompt}\"\n'
     meta_str += f'seed: {meta["seed"]}\n'
     meta_str += f'step: {meta["step"]}\n'
     meta_str += f'guidance: {meta["guidance"]}\n'
