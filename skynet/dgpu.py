@@ -26,37 +26,34 @@ from diffusers import (
     StableDiffusionPipeline,
     EulerAncestralDiscreteScheduler
 )
+from realesrgan import RealESRGANer
+from basicsr.archs.rrdbnet_arch import RRDBNet
 from diffusers.models import UNet2DConditionModel
 
+from .utils import (
+    pipeline_for,
+    convert_from_cv2_to_image, convert_from_image_to_cv2
+)
 from .structs import *
 from .constants import *
 from .frontend import open_skynet_rpc
 
 
-def pipeline_for(algo: str, mem_fraction: float = 1.0):
-    assert torch.cuda.is_available()
-    torch.cuda.empty_cache()
-    torch.cuda.set_per_process_memory_fraction(mem_fraction)
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
-
-    params = {
-        'torch_dtype': torch.float16,
-        'safety_checker': None
-    }
-
-    if algo == 'stable':
-        params['revision'] = 'fp16'
-
-    pipe = StableDiffusionPipeline.from_pretrained(
-        ALGOS[algo], **params)
-
-    pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
-        pipe.scheduler.config)
-
-    pipe.enable_vae_slicing()
-
-    return pipe.to('cuda')
+def init_upscaler(model_path: str = 'weights/RealESRGAN_x4plus.pth'):
+    return RealESRGANer(
+        scale=4,
+        model_path=model_path,
+        dni_weight=None,
+        model=RRDBNet(
+            num_in_ch=3,
+            num_out_ch=3,
+            num_feat=64,
+            num_block=23,
+            num_grow_ch=32,
+            scale=4
+        ),
+        half=True
+    )
 
 
 class DGPUComputeError(BaseException):
@@ -79,6 +76,7 @@ async def open_dgpu_node(
 
     logging.info(f'loading models...')
 
+    upscaler = init_upscaler()
     initial_algos = (
         initial_algos
         if initial_algos else DEFAULT_INITAL_ALGOS
@@ -91,8 +89,8 @@ async def open_dgpu_node(
         }
         logging.info(f'loaded {algo}.')
 
-    logging.info('memory summary:\n')
-    logging.info(torch.cuda.memory_summary())
+    logging.info('memory summary:')
+    logging.info('\n' + torch.cuda.memory_summary())
 
     async def gpu_compute_one(ireq: ImageGenRequest):
         if ireq.algo not in models:
@@ -118,6 +116,15 @@ async def open_dgpu_node(
                 num_inference_steps=ireq.step,
                 generator=torch.Generator("cuda").manual_seed(ireq.seed)
             ).images[0]
+
+            if ireq.upscaler == 'x4':
+                logging.info('performing upscale...')
+                up_img, _ = upscaler.enhance(
+                    convert_from_image_to_cv2(image), outscale=4)
+
+                image = convert_from_cv2_to_image(up_img)
+                logging.info('done')
+
             return image.tobytes()
 
         except BaseException as e:

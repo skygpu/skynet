@@ -1,5 +1,7 @@
 scipy
 triton
+basicsr
+realesrgan
 accelerate
 transformers
 huggingface_hub

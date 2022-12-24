@@ -1,5 +1,6 @@
 trio
 pynng
+numpy
 triopg
 aiohttp
 msgspec

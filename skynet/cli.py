@@ -38,19 +38,14 @@ def txt2img(*args, **kwargs):
     utils.txt2img(os.environ['HF_TOKEN'], **kwargs)
 
 @click.command()
-@click.option(
-    '--prompt', '-p', default='a red old tractor in a sunny wheat field')
 @click.option('--input', '-i', default='input.png')
 @click.option('--output', '-o', default='output.png')
-@click.option('--steps', '-s', default=26)
-def upscale(prompt, input, output, steps):
-    assert 'HF_TOKEN' in os.environ
+@click.option('--model', '-m', default='weights/RealESRGAN_x4plus.pth')
+def upscale(input, output, model):
     utils.upscale(
-        os.environ['HF_TOKEN'],
-        prompt=prompt,
         img_path=input,
         output=output,
-        steps=steps)
+        model_path=model)
 
 
 @skynet.group()

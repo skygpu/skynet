@@ -26,13 +26,7 @@ from pprint import pformat
 import msgspec
 
 
-class Struct(
-    msgspec.Struct,
-
-    # https://jcristharif.com/msgspec/structs.html#tagged-unions
-    # tag='pikerstruct',
-    # tag=True,
-):
+class Struct(msgspec.Struct):
     '''
     A "human friendlier" (aka repl buddy) struct subtype.
     '''
@@ -88,7 +82,7 @@ class Struct(
 from OpenSSL.crypto import PKey, X509, verify, sign
 
 
-class AuthenticatedStruct(Struct):
+class AuthenticatedStruct(Struct, kw_only=True):
     cert: Optional[str] = None
     sig: Optional[str] = None
 
