@@ -117,9 +117,9 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
     async def dgpu_image_streamer():
         nonlocal wip_reqs, fin_reqs
         while True:
-            msg = DGPUBusResponse(
-                **json.loads(
-                    (await dgpu_bus.arecv()).decode()))
+            raw_msg = (await dgpu_bus.arecv()).decode()
+            logging.info(f'streamer got {len(raw_msg)} bytes.')
+            msg = DGPUBusResponse(**json.loads(raw_msg))
 
             if security:
                 msg.verify(tls_whitelist[msg.cert])

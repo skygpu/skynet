@@ -119,8 +119,9 @@ async def open_dgpu_node(
 
             if ireq.upscaler == 'x4':
                 logging.info('performing upscale...')
+                input_img = image.convert('RGB')
                 up_img, _ = upscaler.enhance(
-                    convert_from_image_to_cv2(image), outscale=4)
+                    convert_from_image_to_cv2(input_img), outscale=4)
 
                 image = convert_from_cv2_to_image(up_img)
                 logging.info('done')
@@ -238,9 +239,12 @@ async def open_dgpu_node(
                     if security:
                         img_resp.sign(tls_key, cert_name)
 
+                    raw_msg = json.dumps(img_resp.to_dict()).encode()
+
                     # send final image
-                    await dgpu_sock.asend(
-                        json.dumps(img_resp.to_dict()).encode())
+                    logging.info('sending img back...')
+                    await dgpu_sock.asend(raw_msg)
+                    logging.info(f'sent {len(raw_msg)} bytes.')
 
             except KeyboardInterrupt:
                 logging.info('interrupt caught, stopping...')
