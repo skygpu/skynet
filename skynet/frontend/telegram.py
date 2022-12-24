@@ -36,7 +36,8 @@ def prepare_metainfo_caption(meta: dict) -> str:
 async def run_skynet_telegram(
     tg_token: str,
     key_name: str = 'telegram-frontend',
-    cert_name: str = 'whitelist/telegram-frontend'
+    cert_name: str = 'whitelist/telegram-frontend',
+    rpc_address: str = DEFAULT_RPC_ADDR
 ):
 
     logging.basicConfig(level=logging.INFO)
@@ -44,6 +45,7 @@ async def run_skynet_telegram(
 
     async with open_skynet_rpc(
         'skynet-telegram-0',
+        rpc_address=rpc_address,
         security=True,
         cert_name=cert_name,
         key_name=key_name

@@ -17,7 +17,7 @@ if torch_enabled:
     from .dgpu import open_dgpu_node
 
 from .brain import run_skynet
-from .constants import ALGOS
+from .constants import ALGOS, DEFAULT_RPC_ADDR, DEFAULT_DGPU_ADDR
 
 from .frontend.telegram import run_skynet_telegram
 
@@ -60,18 +60,26 @@ def run(*args, **kwargs):
 @run.command()
 @click.option('--loglevel', '-l', default='warning', help='Logging level')
 @click.option(
-    '--host', '-h', default='localhost:5432')
+    '--host', '-H', default=DEFAULT_RPC_ADDR)
 @click.option(
-    '--passwd', '-p', default='password')
+    '--host-dgpu', '-D', default=DEFAULT_DGPU_ADDR)
+@click.option(
+    '--db-host', '-h', default='localhost:5432')
+@click.option(
+    '--db-pass', '-p', default='password')
 def brain(
     loglevel: str,
     host: str,
-    passwd: str
+    host_dgpu: str,
+    db_host: str,
+    db_pass: str
 ):
     async def _run_skynet():
         async with run_skynet(
-            db_host=host,
-            db_pass=passwd
+            db_host=db_host,
+            db_pass=db_pass,
+            rpc_address=host,
+            dgpu_address=host_dgpu
         ):
             await trio.sleep_forever()
 
@@ -88,12 +96,18 @@ def brain(
     '--cert', '-c', default='whitelist/dgpu')
 @click.option(
     '--algos', '-a', default=json.dumps(['midj']))
+@click.option(
+    '--rpc', '-r', default=DEFAULT_RPC_ADDR)
+@click.option(
+    '--dgpu', '-d', default=DEFAULT_DGPU_ADDR)
 def dgpu(
     loglevel: str,
     uid: str,
     key: str,
     cert: str,
-    algos: str
+    algos: str,
+    rpc: str,
+    dgpu: str
 ):
     trio.run(
         partial(
@@ -101,6 +115,8 @@ def dgpu(
             cert,
             uid,
             key_name=key,
+            rpc_address=rpc,
+            dgpu_address=dgpu,
             initial_algos=json.loads(algos)
     ))
 
@@ -111,10 +127,13 @@ def dgpu(
     '--key', '-k', default='telegram-frontend')
 @click.option(
     '--cert', '-c', default='whitelist/telegram-frontend')
+@click.option(
+    '--rpc', '-r', default=DEFAULT_RPC_ADDR)
 def telegram(
     loglevel: str,
     key: str,
-    cert: str
+    cert: str,
+    rpc: str
 ):
     assert 'TG_TOKEN' in os.environ
     trio_asyncio.run(
@@ -122,5 +141,6 @@ def telegram(
             run_skynet_telegram,
             os.environ['TG_TOKEN'],
             key_name=key,
-            cert_name=cert
+            cert_name=cert,
+            rpc_address=rpc
     ))

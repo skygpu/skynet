@@ -137,6 +137,7 @@ async def open_dgpu_node(
 
     async with open_skynet_rpc(
         unique_id,
+        rpc_address=rpc_address,
         security=security,
         cert_name=cert_name,
         key_name=key_name
