@@ -1,6 +1,7 @@
 trio
 pynng
 numpy
+Pillow
 triopg
 aiohttp
 msgspec
