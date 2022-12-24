@@ -127,7 +127,10 @@ async def open_dgpu_node(
                 image = convert_from_cv2_to_image(up_img)
                 logging.info('done')
 
-            return image.tobytes()
+            raw_img = image.tobytes()
+            logging.info(f'final img size {len(raw_img)} bytes.')
+
+            return raw_img
 
         except BaseException as e:
             logging.error(e)
