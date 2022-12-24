@@ -28,6 +28,8 @@ def prepare_metainfo_caption(meta: dict) -> str:
     meta_str += f'step: {meta["step"]}\n'
     meta_str += f'guidance: {meta["guidance"]}\n'
     meta_str += f'algo: \"{meta["algo"]}\"\n'
+    if meta['upscaler']:
+        meta_str += f'upscaler: \"{meta["upscaler"]}\"\n'
     meta_str += f'sampler: k_euler_ancestral\n'
     meta_str += f'skynet v{VERSION}'
     return meta_str
@@ -101,6 +103,7 @@ async def run_skynet_telegram(
             else:
                 logging.info(resp.result['id'])
                 img_raw = base64.b64decode(bytes.fromhex(resp.result['img']))
+                print(f'got image of size: {len(img_raw)}')
                 size = (512, 512)
                 if resp.result['meta']['upscaler'] == 'x4':
                     size = (2048, 2048)
