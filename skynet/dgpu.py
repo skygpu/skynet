@@ -8,6 +8,7 @@ import uuid
 import base64
 import random
 import logging
+import traceback
 
 from typing import List, Optional
 from pathlib import Path
@@ -34,9 +35,9 @@ from .utils import (
     pipeline_for,
     convert_from_cv2_to_image, convert_from_image_to_cv2
 )
-from .structs import *
-from .constants import *
+from .protobuf import *
 from .frontend import open_skynet_rpc
+from .constants import *
 
 
 def init_upscaler(model_path: str = 'weights/RealESRGAN_x4plus.pth'):
@@ -92,7 +93,7 @@ async def open_dgpu_node(
     logging.info('memory summary:')
     logging.info('\n' + torch.cuda.memory_summary())
 
-    async def gpu_compute_one(ireq: ImageGenRequest):
+    async def gpu_compute_one(ireq: Text2ImageParameters):
         if ireq.algo not in models:
             least_used = list(models.keys())[0]
             for model in models:
@@ -110,10 +111,10 @@ async def open_dgpu_node(
         try:
             image = models[ireq.algo]['pipe'](
                 ireq.prompt,
-                width=ireq.width,
-                height=ireq.height,
+                width=int(ireq.width),
+                height=int(ireq.height),
                 guidance_scale=ireq.guidance,
-                num_inference_steps=ireq.step,
+                num_inference_steps=int(ireq.step),
                 generator=torch.Generator("cuda").manual_seed(ireq.seed)
             ).images[0]
 
@@ -191,9 +192,8 @@ async def open_dgpu_node(
 
             try:
                 while True:
-                    msg = await dgpu_sock.arecv()
-                    req = DGPUBusRequest(
-                        **json.loads(msg.decode()))
+                    req = DGPUBusMessage()
+                    req.ParseFromString(await dgpu_sock.arecv())
 
                     if req.nid != unique_id:
                         logging.info(
@@ -201,54 +201,60 @@ async def open_dgpu_node(
                         continue
 
                     if security:
-                        req.verify(skynet_cert)
+                        verify_protobuf_msg(req, skynet_cert)
 
-                    ack_resp = DGPUBusResponse(
+                    ack_resp = DGPUBusMessage(
                         rid=req.rid,
-                        nid=req.nid,
-                        params={'ack': {}}
+                        nid=req.nid
                     )
+                    ack_resp.params.update({'ack': {}})
 
                     if security:
-                        ack_resp.sign(tls_key, cert_name)
+                        ack_resp.auth.cert = cert_name
+                        ack_resp.auth.sig = sign_protobuf_msg(ack_resp, tls_key)
 
                     # send ack
-                    await dgpu_sock.asend(
-                        json.dumps(ack_resp.to_dict()).encode())
+                    await dgpu_sock.asend(ack_resp.SerializeToString())
 
                     logging.info(f'sent ack, processing {req.rid}...')
 
                     try:
-                        img_req = ImageGenRequest(**req.params)
+                        img_req = Text2ImageParameters(**req.params)
                         if not img_req.seed:
                             img_req.seed = random.randint(0, 2 ** 64)
 
                         img = await gpu_compute_one(img_req)
-                        img_resp = DGPUBusResponse(
+                        img_resp = DGPUBusMessage(
                             rid=req.rid,
                             nid=req.nid,
-                            params={
-                                'img': base64.b64encode(img).hex(),
-                                'meta': img_req.to_dict()
-                            }
+                            method='binary-reply'
                         )
+                        img_resp.params.update({
+                            'len': len(img),
+                            'meta': img_req.to_dict()
+                        })
 
                     except DGPUComputeError as e:
-                        img_resp = DGPUBusResponse(
+                        traceback.print_exception(type(e), e, e.__traceback__)
+                        img_resp = DGPUBusMessage(
                             rid=req.rid,
-                            nid=req.nid,
-                            params={'error': str(e)}
+                            nid=req.nid
                         )
+                        img_resp.params.update({'error': str(e)})
+
 
                     if security:
-                        img_resp.sign(tls_key, cert_name)
-
-                    raw_msg = json.dumps(img_resp.to_dict()).encode()
+                        img_resp.auth.cert = cert_name
+                        img_resp.auth.sig = sign_protobuf_msg(img_resp, tls_key)
 
                     # send final image
                     logging.info('sending img back...')
+                    raw_msg = img_resp.SerializeToString()
                     await dgpu_sock.asend(raw_msg)
                     logging.info(f'sent {len(raw_msg)} bytes.')
+                    if img_resp.method == 'binary-reply':
+                        await dgpu_sock.asend(img)
+                        logging.info(f'sent {len(img)} bytes.')
 
             except KeyboardInterrupt:
                 logging.info('interrupt caught, stopping...')

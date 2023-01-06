@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 import io
-import base64
+import zlib
 import logging
 
 from datetime import datetime
@@ -110,7 +110,7 @@ async def run_skynet_telegram(
 
             else:
                 logging.info(resp.result['id'])
-                img_raw = base64.b64decode(bytes.fromhex(resp.result['img']))
+                img_raw = zlib.decompress(bytes.fromhex(resp.result['img']))
                 logging.info(f'got image of size: {len(img_raw)}')
                 size = (512, 512)
                 if resp.result['meta']['upscaler'] == 'x4':
@@ -141,7 +141,7 @@ async def run_skynet_telegram(
                 resp_txt = resp.result['message']
 
             else:
-                img_raw = base64.b64decode(bytes.fromhex(resp.result['img']))
+                img_raw = zlib.decompress(bytes.fromhex(resp.result['img']))
                 logging.info(f'got image of size: {len(img_raw)}')
                 size = (512, 512)
                 logging.info(resp.result['meta'])
