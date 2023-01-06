@@ -59,8 +59,10 @@ ALTER TABLE skynet.user_config
 
 
 def try_decode_uid(uid: str):
-    if isinstance(uid, int):
-        return None, uid
+    try:
+        return None, int(uid)
+    except ValueError:
+        ...
 
     try:
         proto, uid = uid.split('+')

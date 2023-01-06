@@ -3,7 +3,7 @@
 import io
 import time
 import json
-import base64
+import zlib
 import logging
 
 from typing import Optional
@@ -12,10 +12,10 @@ from functools import partial
 
 import trio
 import pytest
-import tractor
 import trio_asyncio
 
 from PIL import Image
+from google.protobuf.json_format import MessageToDict
 
 from skynet.brain import SkynetDGPUComputeError
 from skynet.constants import *
@@ -40,7 +40,7 @@ async def wait_for_dgpus(rpc, amount: int, timeout: float = 30.0):
 _images = set()
 async def check_request_img(
     i: int,
-    uid: int = 0,
+    uid: str = '1',
     width: int = 512,
     height: int = 512,
     expect_unique = True,
@@ -66,13 +66,13 @@ async def check_request_img(
             })
 
         if 'error' in res.result:
-            raise SkynetDGPUComputeError(json.dumps(res.result))
+            raise SkynetDGPUComputeError(MessageToDict(res.result))
 
         if upscaler == 'x4':
             width *= 4
             height *= 4
 
-        img_raw = base64.b64decode(bytes.fromhex(res.result['img']))
+        img_raw = zlib.decompress(bytes.fromhex(res.result['img']))
         img_sha = sha256(img_raw).hexdigest()
         img = Image.frombytes(
             'RGB', (width, height), img_raw)
