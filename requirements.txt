@@ -5,6 +5,7 @@ Pillow
 triopg
 aiohttp
 msgspec
+protobuf
 pyOpenSSL
 trio_asyncio
 pyTelegramBotAPI

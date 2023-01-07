@@ -15,8 +15,12 @@ from OpenSSL.crypto import (
     FILETYPE_PEM
 )
 
-from ..structs import SkynetRPCRequest, SkynetRPCResponse
+from google.protobuf.struct_pb2 import Struct
+
 from ..constants import *
+
+from ..protobuf.auth import *
+from ..protobuf.skynet_pb2 import SkynetRPCRequest, SkynetRPCResponse
 
 
 class ConfigRequestFormatError(BaseException):
@@ -79,28 +83,26 @@ async def open_skynet_rpc(
         async def _rpc_call(
             method: str,
             params: dict = {},
-            uid: Optional[Union[int, str]] = None
+            uid: Optional[str] = None
         ):
-            req = SkynetRPCRequest(
-                uid=uid if uid else unique_id,
-                method=method,
-                params=params
-            )
+            req = SkynetRPCRequest()
+            req.uid = uid if uid else unique_id
+            req.method = method
+            req.params.update(params)
 
             if security:
-                req.sign(tls_key, cert_name)
+                req.auth.cert = cert_name
+                req.auth.sig = sign_protobuf_msg(req, tls_key)
 
             ctx = sock.new_context()
-            await ctx.asend(
-                json.dumps(
-                    req.to_dict()).encode())
+            await ctx.asend(req.SerializeToString())
 
-            resp = SkynetRPCResponse(
-                **json.loads((await ctx.arecv()).decode()))
+            resp = SkynetRPCResponse()
+            resp.ParseFromString(await ctx.arecv())
             ctx.close()
 
             if security:
-                resp.verify(skynet_cert)
+                verify_protobuf_msg(resp, skynet_cert)
 
             return resp
 
