@@ -113,10 +113,10 @@ async def run_skynet_telegram(
                 logging.info(result['id'])
                 img_raw = zlib.decompress(bytes.fromhex(result['img']))
                 logging.info(f'got image of size: {len(img_raw)}')
-                size = (512, 512)
                 meta = result['meta']['meta']
+                size = (int(meta['width']), int(meta['height']))
                 if meta['upscaler'] == 'x4':
-                    size = (2048, 2048)
+                    size = (size[0] * 4, size[1] * 4)
 
                 img = Image.frombytes('RGB', size, img_raw)
 
@@ -147,10 +147,10 @@ async def run_skynet_telegram(
                 logging.info(result['id'])
                 img_raw = zlib.decompress(bytes.fromhex(result['img']))
                 logging.info(f'got image of size: {len(img_raw)}')
-                size = (512, 512)
                 meta = result['meta']['meta']
+                size = (int(meta['width']), int(meta['height']))
                 if meta['upscaler'] == 'x4':
-                    size = (2048, 2048)
+                    size = (size[0] * 4, size[1] * 4)
 
                 img = Image.frombytes('RGB', size, img_raw)
 
@@ -176,7 +176,7 @@ async def run_skynet_telegram(
                     'config', {'attr': attr, 'val': val})
 
             except BaseException as e:
-                reply_text = str(e.value)
+                reply_txt = str(e)
 
             finally:
                 await bot.reply_to(message, reply_txt)
