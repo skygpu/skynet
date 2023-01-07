@@ -2,10 +2,9 @@
 
 import gc
 import io
-import trio
+import time
 import json
 import uuid
-import base64
 import random
 import logging
 import traceback
@@ -14,6 +13,7 @@ from typing import List, Optional
 from pathlib import Path
 from contextlib import AsyncExitStack
 
+import trio
 import pynng
 import torch
 
@@ -141,13 +141,16 @@ async def open_dgpu_node(
             torch.cuda.empty_cache()
 
 
-    async with open_skynet_rpc(
-        unique_id,
-        rpc_address=rpc_address,
-        security=security,
-        cert_name=cert_name,
-        key_name=key_name
-    ) as rpc_call:
+    async with (
+        open_skynet_rpc(
+            unique_id,
+            rpc_address=rpc_address,
+            security=security,
+            cert_name=cert_name,
+            key_name=key_name
+        ) as rpc_call,
+        trio.open_nursery() as n
+    ):
 
         tls_config = None
         if security:
@@ -182,6 +185,14 @@ async def open_dgpu_node(
                 own_cert_string=tls_cert_data,
                 ca_string=skynet_cert_data)
 
+        async def heartbeat_service():
+            while True:
+                await trio.sleep(60)
+                before = time.time()
+                res = await rpc_call('heartbeat')
+                now = res.result['ok']['time']
+                logging.info(f'heartbeat ping: {int((now - before) * 1000)}')
+
         logging.info(f'connecting to {dgpu_address}')
         with pynng.Bus0(recv_max_size=0) as dgpu_sock:
             dgpu_sock.tls_config = tls_config
@@ -189,6 +200,8 @@ async def open_dgpu_node(
 
             res = await rpc_call('dgpu_online')
             assert 'ok' in res.result
+
+            n.start_soon(heartbeat_service)
 
             try:
                 while True:

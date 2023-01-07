@@ -306,3 +306,18 @@ async def test_dgpu_timeout_while_processing(dgpu_workers):
             ec, out = dgpu_workers[0].exec_run(
                 ['pkill', '-TERM', '-f', 'skynet'])
             assert ec == 0
+
+
+@pytest.mark.parametrize(
+    'dgpu_workers', [(1, ['midj'])], indirect=True)
+async def test_dgpu_heartbeat(dgpu_workers):
+    '''
+    '''
+    async with open_skynet_rpc(
+        'test-ctx',
+        security=True,
+        cert_name='whitelist/testing',
+        key_name='testing'
+    ) as test_rpc:
+        await wait_for_dgpus(test_rpc, 1)
+        await trio.sleep(120)

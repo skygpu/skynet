@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import time
 import json
 import uuid
 import zlib
@@ -333,25 +334,30 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
 
             result = {}
 
-            if req.method == 'skynet_shutdown':
-                raise SkynetShutdownRequested
+            match req.method:
+                case 'skynet_shutdown':
+                    raise SkynetShutdownRequested
 
-            elif req.method == 'dgpu_online':
-                connect_node(req.uid)
+                case 'dgpu_online':
+                    connect_node(req.uid)
 
-            elif req.method == 'dgpu_offline':
-                disconnect_node(req.uid)
+                case 'dgpu_offline':
+                    disconnect_node(req.uid)
 
-            elif req.method == 'dgpu_workers':
-                result = len(nodes)
+                case 'dgpu_workers':
+                    result = len(nodes)
 
-            elif req.method == 'dgpu_next':
-                result = next_worker
+                case 'dgpu_next':
+                    result = next_worker
 
-            else:
-                n.start_soon(
-                    handle_user_request, ctx, req)
-                continue
+                case 'heartbeat':
+                    logging.info('beat')
+                    result = {'time': time.time()}
+
+                case _:
+                    n.start_soon(
+                        handle_user_request, ctx, req)
+                    continue
 
             resp = SkynetRPCResponse()
             resp.result.update({'ok': result})
