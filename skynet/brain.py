@@ -48,6 +48,7 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
     nodes = OrderedDict()
     wip_reqs = {}
     fin_reqs = {}
+    heartbeats = {}
     next_worker: Optional[int] = None
     security = len(tls_whitelist) > 0
 
@@ -116,8 +117,23 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
 
         return nid
 
-    async def dgpu_image_streamer():
-        nonlocal wip_reqs, fin_reqs
+    async def dgpu_heartbeat_service():
+        nonlocal heartbeats
+        while True:
+            await trio.sleep(60)
+            rid = uuid.uuid4().hex
+            beat_msg = DGPUBusMessage(
+                rid=rid,
+                nid='',
+                method='heartbeat'
+            )
+            heartbeats.clear()
+            heartbeats[rid] = int(time.time() * 1000)
+            await dgpu_bus.asend(beat_msg.SerializeToString())
+            logging.info('sent heartbeat')
+
+    async def dgpu_bus_streamer():
+        nonlocal wip_reqs, fin_reqs, heartbeats
         while True:
             raw_msg = await dgpu_bus.arecv()
             logging.info(f'streamer got {len(raw_msg)} bytes.')
@@ -128,6 +144,12 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                 verify_protobuf_msg(msg, tls_whitelist[msg.auth.cert])
 
             rid = msg.rid
+
+            if msg.method == 'heartbeat':
+                sent_time = heartbeats[rid]
+                delta = msg.params['time'] - sent_time
+                logging.info(f'got heartbeat reply from {msg.nid}, ping: {delta}')
+                continue
 
             if rid not in wip_reqs:
                 continue
@@ -372,7 +394,8 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
 
 
     async with trio.open_nursery() as n:
-        n.start_soon(dgpu_image_streamer)
+        n.start_soon(dgpu_bus_streamer)
+        n.start_soon(dgpu_heartbeat_service)
         n.start_soon(request_service, n)
         logging.info('starting rpc service')
         yield
