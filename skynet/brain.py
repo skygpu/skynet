@@ -2,7 +2,7 @@
 
 import json
 import uuid
-import base64
+import zlib
 import logging
 import traceback
 
@@ -24,8 +24,9 @@ from OpenSSL.crypto import (
 )
 
 from .db import *
-from .structs import *
 from .constants import *
+
+from .protobuf import *
 
 
 class SkynetDGPUOffline(BaseException):
@@ -117,22 +118,30 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
     async def dgpu_image_streamer():
         nonlocal wip_reqs, fin_reqs
         while True:
-            raw_msg = (await dgpu_bus.arecv()).decode()
+            raw_msg = await dgpu_bus.arecv()
             logging.info(f'streamer got {len(raw_msg)} bytes.')
-            msg = DGPUBusResponse(**json.loads(raw_msg))
+            msg = DGPUBusMessage()
+            msg.ParseFromString(raw_msg)
 
             if security:
-                msg.verify(tls_whitelist[msg.cert])
+                verify_protobuf_msg(msg, tls_whitelist[msg.auth.cert])
 
-            if msg.rid not in wip_reqs:
+            rid = msg.rid
+
+            if rid not in wip_reqs:
                 continue
 
-            fin_reqs[msg.rid] = msg
-            event = wip_reqs[msg.rid]
-            event.set()
-            del wip_reqs[msg.rid]
+            if msg.method == 'binary-reply':
+                logging.info('bin reply, recv extra data')
+                raw_img = await dgpu_bus.arecv()
+                msg = (msg, raw_img)
 
-    async def dgpu_stream_one_img(req: ImageGenRequest):
+            fin_reqs[rid] = msg
+            event = wip_reqs[rid]
+            event.set()
+            del wip_reqs[rid]
+
+    async def dgpu_stream_one_img(req: Text2ImageParameters):
         nonlocal wip_reqs, fin_reqs, next_worker
         nid = get_next_worker()
         idx = list(nodes.keys()).index(nid)
@@ -144,19 +153,17 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
 
         nodes[nid]['task'] = rid
 
-        dgpu_req = DGPUBusRequest(
+        dgpu_req = DGPUBusMessage(
             rid=rid,
             nid=nid,
-            task='diffuse',
-            params=req.to_dict())
-
-        logging.info(f'dgpu_bus req: {dgpu_req}')
+            method='diffuse')
+        dgpu_req.params.update(req.to_dict())
 
         if security:
-            dgpu_req.sign(tls_key, 'skynet')
+            dgpu_req.auth.cert = 'skynet'
+            dgpu_req.auth.sig = sign_protobuf_msg(dgpu_req, tls_key)
 
-        await dgpu_bus.asend(
-            json.dumps(dgpu_req.to_dict()).encode())
+        await dgpu_bus.asend(dgpu_req.SerializeToString())
 
         with trio.move_on_after(4):
             await ack_event.wait()
@@ -184,13 +191,14 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
 
         nodes[nid]['task'] = None
 
-        img_resp = fin_reqs[rid]
+        resp = fin_reqs[rid]
         del fin_reqs[rid]
+        if isinstance(resp, tuple):
+            meta, img = resp
+            return rid, img, meta.params
 
-        if 'error' in img_resp.params:
-            raise SkynetDGPUComputeError(img_resp.params['error'])
+        raise SkynetDGPUComputeError(MessageToDict(resp.params))
 
-        return rid, img_resp.params['img'], img_resp.params['meta']
 
     async def handle_user_request(rpc_ctx, req):
         try:
@@ -204,13 +212,14 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                         logging.info('txt2img')
                         user_config = {**(await get_user_config(conn, user))}
                         del user_config['id']
-                        user_config.update((k, req.params[k]) for k in req.params)
-                        req = ImageGenRequest(**user_config)
+                        user_config.update(MessageToDict(req.params))
+
+                        req = Text2ImageParameters(**user_config)
                         rid, img, meta = await dgpu_stream_one_img(req)
                         logging.info(f'done streaming {rid}')
                         result = {
                             'id': rid,
-                            'img': img,
+                            'img': zlib.compress(img).hex(),
                             'meta': meta
                         }
 
@@ -224,14 +233,14 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                         prompt = await get_last_prompt_of(conn, user)
 
                         if prompt:
-                            req = ImageGenRequest(
+                            req = Text2ImageParameters(
                                 prompt=prompt,
                                 **user_config
                             )
                             rid, img, meta = await dgpu_stream_one_img(req)
                             result = {
                                 'id': rid,
-                                'img': img,
+                                'img': zlib.compress(img).hex(),
                                 'meta': meta
                             }
                             await update_user_stats(conn, user)
@@ -289,14 +298,15 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                 'message': str(e)
             }
 
-        resp = SkynetRPCResponse(result=result)
+        resp = SkynetRPCResponse()
+        resp.result.update(result)
 
         if security:
-            resp.sign(tls_key, 'skynet')
+            resp.auth.cert = 'skynet'
+            resp.auth.sig = sign_protobuf_msg(resp, tls_key)
 
         logging.info('sending response')
-        await rpc_ctx.asend(
-            json.dumps(resp.to_dict()).encode())
+        await rpc_ctx.asend(resp.SerializeToString())
         rpc_ctx.close()
         logging.info('done')
 
@@ -304,19 +314,17 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
         nonlocal next_worker
         while True:
             ctx = sock.new_context()
-            msg = await ctx.arecv_msg()
-
-            content = msg.bytes.decode()
-            req = SkynetRPCRequest(**json.loads(content))
+            req = SkynetRPCRequest()
+            req.ParseFromString(await ctx.arecv())
 
             if security:
-                if req.cert not in tls_whitelist:
+                if req.auth.cert not in tls_whitelist:
                     logging.warning(
                         f'{req.cert} not in tls whitelist and security=True')
                     continue
 
                 try:
-                    req.verify(tls_whitelist[req.cert])
+                    verify_protobuf_msg(req, tls_whitelist[req.auth.cert])
 
                 except ValueError:
                     logging.warning(
@@ -345,14 +353,14 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                     handle_user_request, ctx, req)
                 continue
 
-            resp = SkynetRPCResponse(
-                result={'ok': result})
+            resp = SkynetRPCResponse()
+            resp.result.update({'ok': result})
 
             if security:
-                resp.sign(tls_key, 'skynet')
+                resp.auth.cert = 'skynet'
+                resp.auth.sig = sign_protobuf_msg(resp, tls_key)
 
-            await ctx.asend(
-                json.dumps(resp.to_dict()).encode())
+            await ctx.asend(resp.SerializeToString())
 
             ctx.close()
 

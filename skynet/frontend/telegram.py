@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 import io
-import base64
+import zlib
 import logging
 
 from datetime import datetime
@@ -105,22 +105,24 @@ async def run_skynet_telegram(
             logging.info(f'resp to {message.id} arrived')
 
             resp_txt = ''
+            result = MessageToDict(resp.result)
             if 'error' in resp.result:
                 resp_txt = resp.result['message']
 
             else:
-                logging.info(resp.result['id'])
-                img_raw = base64.b64decode(bytes.fromhex(resp.result['img']))
+                logging.info(result['id'])
+                img_raw = zlib.decompress(bytes.fromhex(result['img']))
                 logging.info(f'got image of size: {len(img_raw)}')
                 size = (512, 512)
-                if resp.result['meta']['upscaler'] == 'x4':
+                meta = result['meta']['meta']
+                if meta['upscaler'] == 'x4':
                     size = (2048, 2048)
 
                 img = Image.frombytes('RGB', size, img_raw)
 
                 await bot.send_photo(
                     message.chat.id,
-                    caption=prepare_metainfo_caption(resp.result['meta']),
+                    caption=prepare_metainfo_caption(meta),
                     photo=img,
                     reply_to_message_id=message.id
                 )
@@ -137,22 +139,24 @@ async def run_skynet_telegram(
             resp = await _rpc_call(message.from_user.id, 'redo')
 
             resp_txt = ''
+            result = MessageToDict(resp.result)
             if 'error' in resp.result:
                 resp_txt = resp.result['message']
 
             else:
-                img_raw = base64.b64decode(bytes.fromhex(resp.result['img']))
+                logging.info(result['id'])
+                img_raw = zlib.decompress(bytes.fromhex(result['img']))
                 logging.info(f'got image of size: {len(img_raw)}')
                 size = (512, 512)
-                logging.info(resp.result['meta'])
-                if resp.result['meta']['upscaler'] == 'x4':
+                meta = result['meta']['meta']
+                if meta['upscaler'] == 'x4':
                     size = (2048, 2048)
 
                 img = Image.frombytes('RGB', size, img_raw)
 
                 await bot.send_photo(
                     message.chat.id,
-                    caption=prepare_metainfo_caption(resp.result['meta']),
+                    caption=prepare_metainfo_caption(meta),
                     photo=img,
                     reply_to_message_id=message.id
                 )
