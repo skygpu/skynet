@@ -16,7 +16,7 @@ class Struct:
 
 
 @dataclass
-class Text2ImageParameters(Struct):
+class DiffusionParameters(Struct):
     algo: str
     prompt: str
     step: int
@@ -24,4 +24,5 @@ class Text2ImageParameters(Struct):
     height: int
     guidance: float
     seed: Optional[int]
+    image: bool  # if true indicates a bytestream is next msg
     upscaler: Optional[str]

@@ -42,6 +42,28 @@ def txt2img(*args, **kwargs):
     utils.txt2img(os.environ['HF_TOKEN'], **kwargs)
 
 @click.command()
+@click.option('--model', '-m', default='midj')
+@click.option(
+    '--prompt', '-p', default='a red old tractor in a sunny wheat field')
+@click.option('--input', '-i', default='input.png')
+@click.option('--output', '-o', default='output.png')
+@click.option('--guidance', '-g', default=10.0)
+@click.option('--steps', '-s', default=26)
+@click.option('--seed', '-S', default=None)
+def img2img(model, prompt, input, output, guidance, steps, seed):
+    assert 'HF_TOKEN' in os.environ
+    utils.img2img(
+        os.environ['HF_TOKEN'],
+        model=model,
+        prompt=prompt,
+        img_path=input,
+        output=output,
+        guidance=guidance,
+        steps=steps,
+        seed=seed
+    )
+
+@click.command()
 @click.option('--input', '-i', default='input.png')
 @click.option('--output', '-o', default='output.png')
 @click.option('--model', '-m', default='weights/RealESRGAN_x4plus.pth')
