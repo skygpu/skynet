@@ -169,7 +169,7 @@ async def run_skynet_telegram(
                 if meta['upscaler'] == 'x4':
                     size = (size[0] * 4, size[1] * 4)
 
-                img = Image.frombytes('RGB', size, img_raw)
+                img = Image.open(io.BytesIO(img_raw))
 
                 await bot.send_photo(
                     message.chat.id,
@@ -203,7 +203,7 @@ async def run_skynet_telegram(
                 if meta['upscaler'] == 'x4':
                     size = (size[0] * 4, size[1] * 4)
 
-                img = Image.frombytes('RGB', size, img_raw)
+                img = Image.open(io.BytesIO(img_raw))
 
                 await bot.send_photo(
                     message.chat.id,
