@@ -321,3 +321,59 @@ async def test_dgpu_heartbeat(dgpu_workers):
     ) as test_rpc:
         await wait_for_dgpus(test_rpc, 1)
         await trio.sleep(120)
+
+
+@pytest.mark.parametrize(
+    'dgpu_workers', [(1, ['midj'])], indirect=True)
+async def test_dgpu_img2img(dgpu_workers):
+
+    async with open_skynet_rpc(
+        '1',
+        security=True,
+        cert_name='whitelist/testing',
+        key_name='testing'
+    ) as rpc_call:
+        await wait_for_dgpus(rpc_call, 1)
+
+
+        res = await rpc_call(
+            'txt2img', {
+                'prompt': 'red old tractor in a sunny wheat field',
+                'step': 28,
+                'width': 512, 'height': 512,
+                'guidance': 7.5,
+                'seed': None,
+                'algo': list(ALGOS.keys())[0],
+                'upscaler': None
+            })
+
+        if 'error' in res.result:
+            raise SkynetDGPUComputeError(MessageToDict(res.result))
+
+        img_raw = res.result['img']
+        img = zlib.decompress(bytes.fromhex(img_raw))
+        logging.info(img[:10])
+        img = Image.open(io.BytesIO(img))
+
+        img.save('txt2img.png')
+
+        res = await rpc_call(
+            'img2img', {
+                'prompt': 'red sports car in a sunny wheat field',
+                'step': 28,
+                'img': img_raw,
+                'guidance': 12,
+                'seed': None,
+                'algo': list(ALGOS.keys())[0],
+                'upscaler': 'x4'
+            })
+
+        if 'error' in res.result:
+            raise SkynetDGPUComputeError(MessageToDict(res.result))
+
+        img_raw = res.result['img']
+        img = zlib.decompress(bytes.fromhex(img_raw))
+        logging.info(img[:10])
+        img = Image.open(io.BytesIO(img))
+
+        img.save('img2img.png')

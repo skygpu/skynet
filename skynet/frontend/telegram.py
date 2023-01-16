@@ -130,6 +130,57 @@ async def run_skynet_telegram(
 
             await bot.reply_to(message, resp_txt)
 
+        @bot.message_handler(commands=['img2img'], content_types=['photo'])
+        async def send_img2img(message):
+            chat = message.chat
+            if chat.type != 'group' and chat.id != GROUP_ID:
+                return
+
+            prompt = ' '.join(message.caption.split(' ')[1:])
+
+            if len(prompt) == 0:
+                await bot.reply_to(message, 'Empty text prompt ignored.')
+                return
+
+            file_id = message.photo[-1].file_id
+            file_path = bot.get_file(file_id).file_path
+            file_raw = bot.download_file(file_path)
+            img = zlib.compress(file_raw)
+
+            logging.info(f'mid: {message.id}')
+            resp = await _rpc_call(
+                message.from_user.id,
+                'img2img',
+                {'prompt': prompt, 'img': img.hex()}
+            )
+            logging.info(f'resp to {message.id} arrived')
+
+            resp_txt = ''
+            result = MessageToDict(resp.result)
+            if 'error' in resp.result:
+                resp_txt = resp.result['message']
+
+            else:
+                logging.info(result['id'])
+                img_raw = zlib.decompress(bytes.fromhex(result['img']))
+                logging.info(f'got image of size: {len(img_raw)}')
+                meta = result['meta']['meta']
+                size = (int(meta['width']), int(meta['height']))
+                if meta['upscaler'] == 'x4':
+                    size = (size[0] * 4, size[1] * 4)
+
+                img = Image.frombytes('RGB', size, img_raw)
+
+                await bot.send_photo(
+                    message.chat.id,
+                    caption=prepare_metainfo_caption(meta),
+                    photo=img,
+                    reply_to_message_id=message.id
+                )
+                return
+
+            await bot.reply_to(message, resp_txt)
+
         @bot.message_handler(commands=['redo'])
         async def redo_txt2img(message):
             chat = message.chat

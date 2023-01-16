@@ -164,7 +164,7 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
             event.set()
             del wip_reqs[rid]
 
-    async def dgpu_stream_one_img(req: Text2ImageParameters):
+    async def dgpu_stream_one_img(req: DiffusionParameters, img_buf=None):
         nonlocal wip_reqs, fin_reqs, next_worker
         nid = get_next_worker()
         idx = list(nodes.keys()).index(nid)
@@ -186,7 +186,13 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
             dgpu_req.auth.cert = 'skynet'
             dgpu_req.auth.sig = sign_protobuf_msg(dgpu_req, tls_key)
 
-        await dgpu_bus.asend(dgpu_req.SerializeToString())
+        msg = dgpu_req.SerializeToString()
+        if img_buf:
+            logging.info(f'sending img of size {len(img_buf)} as attachment')
+            logging.info(img_buf[:10])
+            msg = f'BINEXT%$%$'.encode() + msg + b'%$%$' + img_buf
+
+        await dgpu_bus.asend(msg)
 
         with trio.move_on_after(4):
             await ack_event.wait()
@@ -237,12 +243,38 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                         del user_config['id']
                         user_config.update(MessageToDict(req.params))
 
-                        req = Text2ImageParameters(**user_config)
+                        req = DiffusionParameters(**user_config, image=False)
                         rid, img, meta = await dgpu_stream_one_img(req)
                         logging.info(f'done streaming {rid}')
                         result = {
                             'id': rid,
-                            'img': zlib.compress(img).hex(),
+                            'img': img.hex(),
+                            'meta': meta
+                        }
+
+                        await update_user_stats(conn, user, last_prompt=user_config['prompt'])
+                        logging.info('updated user stats.')
+
+                    case 'img2img':
+                        logging.info('img2img')
+                        user_config = {**(await get_user_config(conn, user))}
+                        del user_config['id']
+
+                        params = MessageToDict(req.params)
+                        img_buf = bytes.fromhex(params['img'])
+                        del params['img']
+                        user_config.update(params)
+
+                        req = DiffusionParameters(**user_config, image=True)
+
+                        if not req.image:
+                            raise AssertionError('Didn\'t enable image flag for img2img?')
+
+                        rid, img, meta = await dgpu_stream_one_img(req, img_buf=img_buf)
+                        logging.info(f'done streaming {rid}')
+                        result = {
+                            'id': rid,
+                            'img': img.hex(),
                             'meta': meta
                         }
 
@@ -256,14 +288,14 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                         prompt = await get_last_prompt_of(conn, user)
 
                         if prompt:
-                            req = Text2ImageParameters(
+                            req = DiffusionParameters(
                                 prompt=prompt,
                                 **user_config
                             )
                             rid, img, meta = await dgpu_stream_one_img(req)
                             result = {
                                 'id': rid,
-                                'img': zlib.compress(img).hex(),
+                                'img': img.hex(),
                                 'meta': meta
                             }
                             await update_user_stats(conn, user)

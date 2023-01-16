@@ -13,6 +13,7 @@ setup(
         'console_scripts': [
             'skynet = skynet.cli:skynet',
             'txt2img = skynet.cli:txt2img',
+            'img2img = skynet.cli:img2img',
             'upscale = skynet.cli:upscale'
         ]
     },

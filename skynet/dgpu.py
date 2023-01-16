@@ -6,10 +6,12 @@ import trio
 import json
 import uuid
 import time
+import zlib
 import random
 import logging
 import traceback
 
+from PIL import Image
 from typing import List, Optional
 from pathlib import Path
 from contextlib import ExitStack
@@ -25,6 +27,7 @@ from OpenSSL.crypto import (
 )
 from diffusers import (
     StableDiffusionPipeline,
+    StableDiffusionImg2ImgPipeline,
     EulerAncestralDiscreteScheduler
 )
 from realesrgan import RealESRGANer
@@ -138,8 +141,9 @@ async def open_dgpu_node(
     logging.info('memory summary:')
     logging.info('\n' + torch.cuda.memory_summary())
 
-    async def gpu_compute_one(ireq: Text2ImageParameters):
-        if ireq.algo not in models:
+    async def gpu_compute_one(ireq: DiffusionParameters, image=None):
+        algo = ireq.algo + 'img' if image else ireq.algo
+        if algo not in models:
             least_used = list(models.keys())[0]
             for model in models:
                 if models[least_used]['generated'] > models[model]['generated']:
@@ -148,16 +152,23 @@ async def open_dgpu_node(
             del models[least_used]
             gc.collect()
 
-            models[ireq.algo] = {
-                'pipe': pipeline_for(ireq.algo),
+            models[algo] = {
+                'pipe': pipeline_for(ireq.algo, image=True if image else False),
                 'generated': 0
             }
 
+        _params = {}
+        if ireq.image:
+            _params['image'] = image
+
+        else:
+            _params['width'] = int(ireq.width)
+            _params['height'] = int(ireq.height)
+
         try:
-            image = models[ireq.algo]['pipe'](
+            image = models[algo]['pipe'](
                 ireq.prompt,
-                width=int(ireq.width),
-                height=int(ireq.height),
+                **_params,
                 guidance_scale=ireq.guidance,
                 num_inference_steps=int(ireq.step),
                 generator=torch.Generator("cuda").manual_seed(ireq.seed)
@@ -173,7 +184,9 @@ async def open_dgpu_node(
                 image = convert_from_cv2_to_image(up_img)
                 logging.info('done')
 
-            raw_img = image.tobytes()
+            img_byte_arr = io.BytesIO()
+            image.save(img_byte_arr, format='PNG')
+            raw_img = img_byte_arr.getvalue()
             logging.info(f'final img size {len(raw_img)} bytes.')
 
             return raw_img
@@ -256,8 +269,19 @@ async def open_dgpu_node(
 
         try:
             while True:
+                msg = await dgpu_bus.arecv()
+
+                img = None
+                if b'BINEXT' in msg:
+                    header, msg, img_raw = msg.split(b'%$%$')
+                    logging.info(f'got img attachment of size {len(img_raw)}')
+                    logging.info(img_raw[:10])
+                    raw_img = zlib.decompress(img_raw)
+                    logging.info(raw_img[:10])
+                    img = Image.open(io.BytesIO(raw_img))
+
                 req = DGPUBusMessage()
-                req.ParseFromString(await dgpu_bus.arecv())
+                req.ParseFromString(msg)
                 last_msg = time.time()
 
                 if req.method == 'heartbeat':
@@ -301,11 +325,12 @@ async def open_dgpu_node(
                 logging.info(f'sent ack, processing {req.rid}...')
 
                 try:
-                    img_req = Text2ImageParameters(**req.params)
+                    img_req = DiffusionParameters(**req.params)
+
                     if not img_req.seed:
                         img_req.seed = random.randint(0, 2 ** 64)
 
-                    img = await gpu_compute_one(img_req)
+                    img = await gpu_compute_one(img_req, image=img)
                     img_resp = DGPUBusMessage(
                         rid=req.rid,
                         nid=req.nid,
@@ -335,7 +360,7 @@ async def open_dgpu_node(
                 await dgpu_bus.asend(raw_msg)
                 logging.info(f'sent {len(raw_msg)} bytes.')
                 if img_resp.method == 'binary-reply':
-                    await dgpu_bus.asend(img)
+                    await dgpu_bus.asend(zlib.compress(img))
                     logging.info(f'sent {len(img)} bytes.')
 
         except KeyboardInterrupt:

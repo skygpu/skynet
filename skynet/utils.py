@@ -12,7 +12,7 @@ from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from diffusers import (
     StableDiffusionPipeline,
-    StableDiffusionUpscalePipeline,
+    StableDiffusionImg2ImgPipeline,
     EulerAncestralDiscreteScheduler
 )
 from realesrgan import RealESRGANer
@@ -31,7 +31,7 @@ def convert_from_image_to_cv2(img: Image) -> np.ndarray:
     return np.asarray(img)
 
 
-def pipeline_for(algo: str, mem_fraction: float = 1.0):
+def pipeline_for(algo: str, mem_fraction: float = 1.0, image=False):
     assert torch.cuda.is_available()
     torch.cuda.empty_cache()
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
@@ -46,13 +46,19 @@ def pipeline_for(algo: str, mem_fraction: float = 1.0):
     if algo == 'stable':
         params['revision'] = 'fp16'
 
-    pipe = StableDiffusionPipeline.from_pretrained(
+    if image:
+        pipe_class = StableDiffusionImg2ImgPipeline
+    else:
+        pipe_class = StableDiffusionPipeline
+
+    pipe = pipe_class.from_pretrained(
         ALGOS[algo], **params)
 
     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
         pipe.scheduler.config)
 
-    pipe.enable_vae_slicing()
+    if not image:
+        pipe.enable_vae_slicing()
 
     return pipe.to('cuda')
 
@@ -82,6 +88,39 @@ def txt2img(
         prompt,
         width=width,
         height=height,
+        guidance_scale=guidance, num_inference_steps=steps,
+        generator=torch.Generator("cuda").manual_seed(seed)
+    ).images[0]
+
+    image.save(output)
+
+
+def img2img(
+    hf_token: str,
+    model: str = 'midj',
+    prompt: str = 'a red old tractor in a sunny wheat field',
+    img_path: str = 'input.png',
+    output: str = 'output.png',
+    guidance: float = 10,
+    steps: int = 28,
+    seed: Optional[int] = None
+):
+    assert torch.cuda.is_available()
+    torch.cuda.empty_cache()
+    torch.cuda.set_per_process_memory_fraction(1.0)
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
+    login(token=hf_token)
+    pipe = pipeline_for(model, image=True)
+
+    input_img = Image.open(img_path).convert('RGB')
+
+    seed = seed if seed else random.randint(0, 2 ** 64)
+    prompt = prompt
+    image = pipe(
+        prompt,
+        image=input_img,
         guidance_scale=guidance, num_inference_steps=steps,
         generator=torch.Generator("cuda").manual_seed(seed)
     ).images[0]
