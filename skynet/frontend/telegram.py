@@ -141,8 +141,8 @@ async def run_skynet_telegram(
                 return
 
             file_id = message.photo[-1].file_id
-            file_path = bot.get_file(file_id).file_path
-            file_raw = bot.download_file(file_path)
+            file_path = (await bot.get_file(file_id)).file_path
+            file_raw = await bot.download_file(file_path)
             img = zlib.compress(file_raw)
 
             logging.info(f'mid: {message.id}')
