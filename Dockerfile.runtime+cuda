@@ -11,8 +11,9 @@ workdir /skynet
 copy requirements.cuda* ./
 
 run pip install -U pip ninja
-run pip install -r requirements.cuda.0.txt
+run pip install -v -r requirements.cuda.0.txt
 run pip install -v -r requirements.cuda.1.txt
+run pip install -v -r requirements.cuda.2.txt
 
 copy requirements.test.txt requirements.test.txt
 copy requirements.txt requirements.txt
