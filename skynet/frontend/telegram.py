@@ -113,12 +113,7 @@ async def run_skynet_telegram(
                 logging.info(result['id'])
                 img_raw = zlib.decompress(bytes.fromhex(result['img']))
                 logging.info(f'got image of size: {len(img_raw)}')
-                meta = result['meta']['meta']
-                size = (int(meta['width']), int(meta['height']))
-                if meta['upscaler'] == 'x4':
-                    size = (size[0] * 4, size[1] * 4)
-
-                img = Image.frombytes('RGB', size, img_raw)
+                img = Image.open(io.BytesIO(img_raw))
 
                 await bot.send_photo(
                     message.chat.id,
@@ -164,11 +159,6 @@ async def run_skynet_telegram(
                 logging.info(result['id'])
                 img_raw = zlib.decompress(bytes.fromhex(result['img']))
                 logging.info(f'got image of size: {len(img_raw)}')
-                meta = result['meta']['meta']
-                size = (int(meta['width']), int(meta['height']))
-                if meta['upscaler'] == 'x4':
-                    size = (size[0] * 4, size[1] * 4)
-
                 img = Image.open(io.BytesIO(img_raw))
 
                 await bot.send_photo(
@@ -198,11 +188,6 @@ async def run_skynet_telegram(
                 logging.info(result['id'])
                 img_raw = zlib.decompress(bytes.fromhex(result['img']))
                 logging.info(f'got image of size: {len(img_raw)}')
-                meta = result['meta']['meta']
-                size = (int(meta['width']), int(meta['height']))
-                if meta['upscaler'] == 'x4':
-                    size = (size[0] * 4, size[1] * 4)
-
                 img = Image.open(io.BytesIO(img_raw))
 
                 await bot.send_photo(
