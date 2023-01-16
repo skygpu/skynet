@@ -125,10 +125,13 @@ async def run_skynet_telegram(
 
             await bot.reply_to(message, resp_txt)
 
-        @bot.message_handler(commands=['img2img'], content_types=['photo'])
+        @bot.message_handler(func=lambda message: True, content_types=['photo'])
         async def send_img2img(message):
             chat = message.chat
             if chat.type != 'group' and chat.id != GROUP_ID:
+                return
+
+            if not message.caption.startswith('/img2img'):
                 return
 
             prompt = ' '.join(message.caption.split(' ')[1:])
