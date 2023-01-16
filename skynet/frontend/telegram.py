@@ -117,7 +117,7 @@ async def run_skynet_telegram(
 
                 await bot.send_photo(
                     message.chat.id,
-                    caption=prepare_metainfo_caption(meta),
+                    caption=prepare_metainfo_caption(result['meta']['meta']),
                     photo=img,
                     reply_to_message_id=message.id
                 )
@@ -163,7 +163,7 @@ async def run_skynet_telegram(
 
                 await bot.send_photo(
                     message.chat.id,
-                    caption=prepare_metainfo_caption(meta),
+                    caption=prepare_metainfo_caption(result['meta']['meta']),
                     photo=img,
                     reply_to_message_id=message.id
                 )
@@ -192,7 +192,7 @@ async def run_skynet_telegram(
 
                 await bot.send_photo(
                     message.chat.id,
-                    caption=prepare_metainfo_caption(meta),
+                    caption=prepare_metainfo_caption(result['meta']['meta']),
                     photo=img,
                     reply_to_message_id=message.id
                 )
