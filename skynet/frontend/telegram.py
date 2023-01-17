@@ -22,12 +22,18 @@ from . import *
 PREFIX = 'tg'
 
 
-def prepare_metainfo_caption(meta: dict) -> str:
+def prepare_metainfo_caption(tguser, meta: dict) -> str:
     prompt = meta["prompt"]
     if len(prompt) > 256:
         prompt = prompt[:256]
 
-    meta_str = f'prompt: \"{prompt}\"\n'
+    if tguser.username:
+        user = tguser.username
+    else:
+        user = f'{tguser.first_name} id: {tguser.id}'
+
+    meta_str = f'by {user}\n'
+    meta_str += f'prompt: \"{prompt}\"\n'
     meta_str += f'seed: {meta["seed"]}\n'
     meta_str += f'step: {meta["step"]}\n'
     meta_str += f'guidance: {meta["guidance"]}\n'
@@ -87,8 +93,8 @@ async def run_skynet_telegram(
         @bot.message_handler(commands=['txt2img'])
         async def send_txt2img(message):
             chat = message.chat
-            if chat.type != 'group' and chat.id != GROUP_ID:
-                return
+            # if chat.type != 'group' and chat.id != GROUP_ID:
+            #     return
 
             prompt = ' '.join(message.text.split(' ')[1:])
 
@@ -116,8 +122,8 @@ async def run_skynet_telegram(
                 img = Image.open(io.BytesIO(img_raw))
 
                 await bot.send_photo(
-                    message.chat.id,
-                    caption=prepare_metainfo_caption(result['meta']['meta']),
+                    GROUP_ID,
+                    caption=prepare_metainfo_caption(message.from_user, result['meta']['meta']),
                     photo=img,
                     reply_to_message_id=message.id
                 )
@@ -128,8 +134,8 @@ async def run_skynet_telegram(
         @bot.message_handler(func=lambda message: True, content_types=['photo'])
         async def send_img2img(message):
             chat = message.chat
-            if chat.type != 'group' and chat.id != GROUP_ID:
-                return
+            # if chat.type != 'group' and chat.id != GROUP_ID:
+            #     return
 
             if not message.caption.startswith('/img2img'):
                 return
@@ -165,8 +171,8 @@ async def run_skynet_telegram(
                 img = Image.open(io.BytesIO(img_raw))
 
                 await bot.send_photo(
-                    message.chat.id,
-                    caption=prepare_metainfo_caption(result['meta']['meta']),
+                    GROUP_ID,
+                    caption=prepare_metainfo_caption(message.from_user, result['meta']['meta']),
                     photo=img,
                     reply_to_message_id=message.id
                 )
@@ -177,8 +183,8 @@ async def run_skynet_telegram(
         @bot.message_handler(commands=['redo'])
         async def redo_txt2img(message):
             chat = message.chat
-            if chat.type != 'group' and chat.id != GROUP_ID:
-                return
+            # if chat.type != 'group' and chat.id != GROUP_ID:
+            #     return
 
             resp = await _rpc_call(message.from_user.id, 'redo')
 
@@ -194,8 +200,8 @@ async def run_skynet_telegram(
                 img = Image.open(io.BytesIO(img_raw))
 
                 await bot.send_photo(
-                    message.chat.id,
-                    caption=prepare_metainfo_caption(result['meta']['meta']),
+                    GROUP_ID,
+                    caption=prepare_metainfo_caption(message.from_user, result['meta']['meta']),
                     photo=img,
                     reply_to_message_id=message.id
                 )
