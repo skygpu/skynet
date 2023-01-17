@@ -279,6 +279,13 @@ async def open_dgpu_node(
                     raw_img = zlib.decompress(img_raw)
                     logging.info(raw_img[:10])
                     img = Image.open(io.BytesIO(raw_img))
+                    w, h = img.size
+                    logging.info(f'user sent img of size {img.size}')
+
+                    if w > 512 or h > 512:
+                        img.thumbnail((512, 512))
+                        logging.info(f'resized it to {img.size}')
+
 
                 req = DGPUBusMessage()
                 req.ParseFromString(msg)
