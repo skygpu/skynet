@@ -124,8 +124,7 @@ async def run_skynet_telegram(
                 await bot.send_photo(
                     GROUP_ID,
                     caption=prepare_metainfo_caption(message.from_user, result['meta']['meta']),
-                    photo=img,
-                    reply_to_message_id=message.id
+                    photo=img
                 )
                 return
 
@@ -173,12 +172,18 @@ async def run_skynet_telegram(
                 await bot.send_photo(
                     GROUP_ID,
                     caption=prepare_metainfo_caption(message.from_user, result['meta']['meta']),
-                    photo=img,
-                    reply_to_message_id=message.id
+                    photo=img
                 )
                 return
 
             await bot.reply_to(message, resp_txt)
+
+        @bot.message_handler(commands=['img2img'])
+        async def redo_txt2img(message):
+            await bot.reply_to(
+                message,
+                'seems you tried to do an img2img command without sending image'
+            )
 
         @bot.message_handler(commands=['redo'])
         async def redo_txt2img(message):
@@ -202,8 +207,7 @@ async def run_skynet_telegram(
                 await bot.send_photo(
                     GROUP_ID,
                     caption=prepare_metainfo_caption(message.from_user, result['meta']['meta']),
-                    photo=img,
-                    reply_to_message_id=message.id
+                    photo=img
                 )
                 return
 
