@@ -290,7 +290,8 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                         if prompt:
                             req = DiffusionParameters(
                                 prompt=prompt,
-                                **user_config
+                                **user_config,
+                                image=False
                             )
                             rid, img, meta = await dgpu_stream_one_img(req)
                             result = {
