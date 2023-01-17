@@ -101,6 +101,7 @@ def img2img(
     prompt: str = 'a red old tractor in a sunny wheat field',
     img_path: str = 'input.png',
     output: str = 'output.png',
+    strength: float = 1.0,
     guidance: float = 10,
     steps: int = 28,
     seed: Optional[int] = None
@@ -121,6 +122,7 @@ def img2img(
     image = pipe(
         prompt,
         image=input_img,
+        strength=strength,
         guidance_scale=guidance, num_inference_steps=steps,
         generator=torch.Generator("cuda").manual_seed(seed)
     ).images[0]
