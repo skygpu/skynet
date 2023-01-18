@@ -37,6 +37,8 @@ def prepare_metainfo_caption(tguser, meta: dict) -> str:
     meta_str += f'seed: {meta["seed"]}\n'
     meta_str += f'step: {meta["step"]}\n'
     meta_str += f'guidance: {meta["guidance"]}\n'
+    if meta['strength']:
+        meta_str += f'strength: {meta["strength"]}'
     meta_str += f'algo: \"{meta["algo"]}\"\n'
     if meta['upscaler']:
         meta_str += f'upscaler: \"{meta["upscaler"]}\"\n'

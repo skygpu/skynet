@@ -160,6 +160,7 @@ async def open_dgpu_node(
         _params = {}
         if ireq.image:
             _params['image'] = image
+            _params['strength'] = ireq.strength
 
         else:
             _params['width'] = int(ireq.width)

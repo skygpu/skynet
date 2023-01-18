@@ -23,6 +23,7 @@ class DiffusionParameters(Struct):
     width: int
     height: int
     guidance: float
+    strength: float
     seed: Optional[int]
     image: bool  # if true indicates a bytestream is next msg
     upscaler: Optional[str]
