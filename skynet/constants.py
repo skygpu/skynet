@@ -139,5 +139,6 @@ CONFIG_ATTRS = [
     'height',
     'seed',
     'guidance',
+    'strength'
     'upscaler'
 ]
