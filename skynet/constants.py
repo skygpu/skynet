@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-VERSION = '0.1a7'
+VERSION = '0.1a8'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
@@ -30,7 +30,7 @@ config is individual to each user!
 
 /txt2img TEXT - request an image based on a prompt
 
-/redo - re ont
+/redo - redo last command (only works for txt2img for now!)
 
 /help step - get info on step config option
 /help guidance - get info on guidance config option

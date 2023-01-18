@@ -11,7 +11,7 @@ import pynng
 from PIL import Image
 from trio_asyncio import aio_as_trio
 
-from telebot.types import InputFile
+from telebot.types import InputFile, InputMediaPhoto
 from telebot.async_telebot import AsyncTeleBot
 
 from ..constants import *
@@ -38,7 +38,7 @@ def prepare_metainfo_caption(tguser, meta: dict) -> str:
     meta_str += f'step: {meta["step"]}\n'
     meta_str += f'guidance: {meta["guidance"]}\n'
     if meta['strength']:
-        meta_str += f'strength: {meta["strength"]}'
+        meta_str += f'strength: {meta["strength"]}\n'
     meta_str += f'algo: \"{meta["algo"]}\"\n'
     if meta['upscaler']:
         meta_str += f'upscaler: \"{meta["upscaler"]}\"\n'
@@ -174,10 +174,15 @@ async def run_skynet_telegram(
                 logging.info(f'got image of size: {len(img_raw)}')
                 img = Image.open(io.BytesIO(img_raw))
 
-                await bot.send_photo(
+                await bot.send_media_group(
                     GROUP_ID,
-                    caption=prepare_metainfo_caption(message.from_user, result['meta']['meta']),
-                    photo=img,
+                    media=[
+                        InputMediaPhoto(file_id),
+                        InputMediaPhoto(
+                            img,
+                            caption=prepare_metainfo_caption(message.from_user, result['meta']['meta'])
+                        )
+                    ],
                     reply_to_message_id=reply_id
                 )
                 return
