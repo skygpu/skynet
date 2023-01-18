@@ -152,6 +152,10 @@ def validate_user_config_request(req: str):
                     val = float(params[2])
                     val = max(min(val, MAX_GUIDANCE), 0)
 
+                case 'strength':
+                    val = float(params[2])
+                    val = max(min(val, 0.99), 0.01)
+
                 case 'upscaler':
                     val = params[2]
                     if val == 'off':

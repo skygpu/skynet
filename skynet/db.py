@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS skynet.user_config(
     width INT NOT NULL,
     height INT NOT NULL,
     seed BIGINT,
-    guidance INT NOT NULL,
+    guidance REAL NOT NULL,
+    strength REAL NOT NULL,
     upscaler VARCHAR(128)
 );
 ALTER TABLE skynet.user_config
@@ -173,9 +174,9 @@ async def new_user(conn, uid: str):
 
         stmt = await conn.prepare('''
             INSERT INTO skynet.user_config(
-                id, algo, step, width, height, seed, guidance, upscaler)
+                id, algo, step, width, height, seed, guidance, strength, upscaler)
 
-            VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT DO NOTHING
         ''')
         user = await stmt.fetch(
@@ -186,6 +187,7 @@ async def new_user(conn, uid: str):
             DEFAULT_HEIGHT,
             DEFAULT_SEED,
             DEFAULT_GUIDANCE,
+            DEFAULT_STRENGTH,
             DEFAULT_UPSCALER
         )
 
