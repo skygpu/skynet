@@ -316,6 +316,9 @@ async def open_rpc_service(sock, dgpu_bus, db_pool, tls_whitelist, tls_key):
                                 conn, user, req.params['attr'], req.params['val'])
                             logging.info('done')
 
+                        else:
+                            logging.warning(f'{req.params["attr"]} not in {CONFIG_ATTRS}')
+
                     case 'stats':
                         logging.info('stats')
                         generated, joined, role = await get_user_stats(conn, user)
