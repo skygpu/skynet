@@ -1,13 +1,8 @@
 #!/usr/bin/python
 
-VERSION = '0.1a8'
+VERSION = '0.1a9'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
-
-DB_HOST = 'localhost:5432'
-DB_USER = 'skynet'
-DB_PASS = 'password'
-DB_NAME = 'skynet'
 
 ALGOS = {
     'midj': 'prompthero/openjourney',
@@ -118,6 +113,7 @@ DEFAULT_ALGO = 'midj'
 DEFAULT_ROLE = 'pleb'
 DEFAULT_UPSCALER = None
 
+DEFAULT_CONFIG_PATH = 'skynet.ini'
 DEFAULT_CERTS_DIR = 'certs'
 DEFAULT_CERT_WHITELIST_DIR = 'whitelist'
 DEFAULT_CERT_SKYNET_PUB = 'brain.cert'
