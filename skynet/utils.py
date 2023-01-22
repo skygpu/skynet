@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import time
 import random
 
 from typing import Optional
@@ -19,6 +20,10 @@ from realesrgan import RealESRGANer
 from huggingface_hub import login
 
 from .constants import ALGOS
+
+
+def time_ms():
+    return int(time.time() * 1000)
 
 
 def convert_from_cv2_to_image(img: np.ndarray) -> Image:

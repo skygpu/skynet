@@ -32,3 +32,4 @@ env HF_HOME /hf_home
 copy scripts scripts
 copy tests tests
 
+expose 40000-45000

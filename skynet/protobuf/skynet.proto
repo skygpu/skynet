@@ -13,18 +13,12 @@ message SkynetRPCRequest {
     string uid = 1;
     string method = 2;
     google.protobuf.Struct params = 3;
-    optional Auth auth = 4;
+    optional bytes bin = 4;
+    optional Auth auth = 5;
 }
 
 message SkynetRPCResponse {
     google.protobuf.Struct result = 1;
-    optional Auth auth = 2;
-}
-
-message DGPUBusMessage {
-    string rid = 1;
-    string nid = 2;
-    string method = 3;
-    google.protobuf.Struct params = 4;
-    optional Auth auth = 5;
+    optional bytes bin = 2;
+    optional Auth auth = 3;
 }

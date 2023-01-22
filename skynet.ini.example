@@ -1,0 +1,12 @@
+[skynet]
+certs_dir = certs
+
+[skynet.dgpu]
+hf_home = hf_home
+hf_token = hf_XxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXx
+
+[skynet.telegram]
+token = XXXXXXXXXX:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+[skynet.telegram-test]
+token = XXXXXXXXXX:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
