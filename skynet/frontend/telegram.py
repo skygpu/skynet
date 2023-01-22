@@ -11,7 +11,9 @@ import pynng
 from PIL import Image
 from trio_asyncio import aio_as_trio
 
-from telebot.types import InputFile, InputMediaPhoto
+from telebot.types import (
+    InputFile, InputMediaPhoto, InlineKeyboardButton, InlineKeyboardMarkup
+)
 from telebot.async_telebot import AsyncTeleBot
 
 from ..constants import *
@@ -20,6 +22,12 @@ from . import *
 
 
 PREFIX = 'tg'
+
+def build_redo_menu():
+    btn_redo = InlineKeyboardButton("Redo", callback_data=json.dumps({'method': 'redo'}))
+    inline_keyboard = InlineKeyboardMarkup()
+    inline_keyboard.add(btn_redo)
+    return inline_keyboard
 
 
 def prepare_metainfo_caption(tguser, meta: dict) -> str:
@@ -95,9 +103,6 @@ async def run_skynet_telegram(
         @bot.message_handler(commands=['txt2img'])
         async def send_txt2img(message):
             chat = message.chat
-            reply_id = None
-            if chat.type == 'group' and chat.id == GROUP_ID:
-                reply_id = message.message_id
 
             prompt = ' '.join(message.text.split(' ')[1:])
 
@@ -128,7 +133,7 @@ async def run_skynet_telegram(
                     GROUP_ID,
                     caption=prepare_metainfo_caption(message.from_user, result['meta']['meta']),
                     photo=img,
-                    reply_to_message_id=reply_id
+                    reply_markup=build_redo_menu()
                 )
                 return
 
@@ -137,9 +142,6 @@ async def run_skynet_telegram(
         @bot.message_handler(func=lambda message: True, content_types=['photo'])
         async def send_img2img(message):
             chat = message.chat
-            reply_id = None
-            if chat.type == 'group' and chat.id == GROUP_ID:
-                reply_id = message.message_id
 
             if not message.caption.startswith('/img2img'):
                 return
@@ -182,8 +184,7 @@ async def run_skynet_telegram(
                             img,
                             caption=prepare_metainfo_caption(message.from_user, result['meta']['meta'])
                         )
-                    ],
-                    reply_to_message_id=reply_id
+                    ]
                 )
                 return
 
@@ -196,13 +197,7 @@ async def run_skynet_telegram(
                 'seems you tried to do an img2img command without sending image'
             )
 
-        @bot.message_handler(commands=['redo'])
-        async def redo_txt2img(message):
-            chat = message.chat
-            reply_id = None
-            if chat.type == 'group' and chat.id == GROUP_ID:
-                reply_id = message.message_id
-
+        async def _redo(message):
             resp = await _rpc_call(message.from_user.id, 'redo')
 
             resp_txt = ''
@@ -220,11 +215,15 @@ async def run_skynet_telegram(
                     GROUP_ID,
                     caption=prepare_metainfo_caption(message.from_user, result['meta']['meta']),
                     photo=img,
-                    reply_to_message_id=reply_id
+                    reply_markup=build_redo_menu()
                 )
                 return
 
             await bot.reply_to(message, resp_txt)
+
+        @bot.message_handler(commands=['redo'])
+        async def redo_txt2img(message):
+            await _redo(message)
 
         @bot.message_handler(commands=['config'])
         async def set_config(message):
@@ -279,6 +278,15 @@ async def run_skynet_telegram(
         async def echo_message(message):
             if message.text[0] == '/':
                 await bot.reply_to(message, UNKNOWN_CMD_TEXT)
+
+        @bot.callback_query_handler(func=lambda call: True)
+        async def callback_query(call):
+            msg = json.loads(call.data)
+            logging.info(call.data)
+            method = msg.get('method')
+            match method:
+                case 'redo':
+                    await _redo(call)
 
 
         await aio_as_trio(bot.infinity_polling())
