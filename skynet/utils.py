@@ -169,3 +169,13 @@ def upscale(
 
 
     image.save(output)
+
+
+def download_all_models(hf_token: str):
+    assert torch.cuda.is_available()
+
+    login(token=hf_token)
+    for model in ALGOS:
+        print(f'DOWNLOADING {model.upper()}')
+        pipeline_for(model)
+

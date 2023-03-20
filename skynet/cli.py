@@ -76,6 +76,12 @@ def upscale(input, output, model):
         model_path=model)
 
 
+@skynet.command()
+def download():
+    _, hf_token, _, cfg = init_env_from_config()
+    utils.download_all_models(hf_token)
+
+
 @skynet.group()
 def run(*args, **kwargs):
     pass
