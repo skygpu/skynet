@@ -57,7 +57,6 @@ def dgpu_workers(request, dockerctl, skynet_running):
         name='skynet-test-runtime-cuda',
         commands=cmds,
         environment={
-            'HF_TOKEN': os.environ['HF_TOKEN'],
             'HF_HOME': '/skynet/hf_home'
         },
         network='host',
@@ -67,6 +66,6 @@ def dgpu_workers(request, dockerctl, skynet_running):
     ) as containers:
         yield containers
 
-        #for i, container in enumerate(containers):
-        #    logging.info(f'container {i} logs:')
-        #    logging.info(container.logs().decode())
+        for i, container in enumerate(containers):
+            logging.info(f'container {i} logs:')
+            logging.info(container.logs().decode())
