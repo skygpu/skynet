@@ -1,18 +1,21 @@
 #!/usr/bin/python
 
+import time
+import random
+import string
 import logging
 
 from typing import Optional
 from datetime import datetime
-from contextlib import asynccontextmanager as acm
+from contextlib import contextmanager as cm
 
-import trio
-import triopg
-import trio_asyncio
+import docker
+import psycopg2
 
 from asyncpg.exceptions import UndefinedColumnError
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
-from .constants import *
+from ..constants import *
 
 
 DB_INIT_SQL = '''
@@ -75,29 +78,67 @@ def try_decode_uid(uid: str):
         return None, None
 
 
-@acm
-async def open_database_connection(
-    db_user: str = DB_USER,
-    db_pass: str = DB_PASS,
-    db_host: str = DB_HOST,
-    db_name: str = DB_NAME
-):
-    async with trio_asyncio.open_loop() as loop:
-        async with triopg.create_pool(
-            dsn=f'postgres://{db_user}:{db_pass}@{db_host}/{db_name}'
-        ) as pool_conn:
-            async with pool_conn.acquire() as conn:
-                res = await conn.execute(f'''
-                    select distinct table_schema
-                    from information_schema.tables
-                    where table_schema = \'{db_name}\'
-                ''')
-                if '1' in res:
-                    logging.info('schema already in db, skipping init')
-                else:
-                    await conn.execute(DB_INIT_SQL)
+@cm
+def open_new_database():
+    rpassword = ''.join(
+        random.choice(string.ascii_lowercase)
+        for i in range(12))
+    password = ''.join(
+        random.choice(string.ascii_lowercase)
+        for i in range(12))
 
-            yield pool_conn
+    dclient = docker.from_env()
+
+    container = dclient.containers.run(
+        'postgres',
+        name='skynet-test-postgres',
+        ports={'5432/tcp': None},
+        environment={
+            'POSTGRES_PASSWORD': rpassword
+        },
+        detach=True,
+        remove=True
+    )
+
+    for log in container.logs(stream=True):
+        log = log.decode().rstrip()
+        logging.info(log)
+        if ('database system is ready to accept connections' in log or
+            'database system is shut down' in log):
+            break
+
+    # ip = container.attrs['NetworkSettings']['IPAddress']
+    container.reload()
+    port = container.ports['5432/tcp'][0]['HostPort']
+    host = f'localhost:{port}'
+
+    # why print the system is ready to accept connections when its not
+    # postgres? wtf
+    time.sleep(1)
+    logging.info('creating skynet db...')
+
+    conn = psycopg2.connect(
+        user='postgres',
+        password=rpassword,
+        host='localhost',
+        port=port
+    )
+    logging.info('connected...')
+    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+    with conn.cursor() as cursor:
+        cursor.execute(
+            f'CREATE USER skynet WITH PASSWORD \'{password}\'')
+        cursor.execute(
+            f'CREATE DATABASE skynet')
+        cursor.execute(
+            f'GRANT ALL PRIVILEGES ON DATABASE skynet TO skynet')
+
+    conn.close()
+
+    logging.info('done.')
+    yield container, password, host
+
+    container.stop()
 
 
 async def get_user(conn, uid: str):

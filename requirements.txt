@@ -9,3 +9,5 @@ protobuf
 pyOpenSSL
 trio_asyncio
 pyTelegramBotAPI
+
+git+https://github.com/goodboy/tractor.git@master#egg=tractor
