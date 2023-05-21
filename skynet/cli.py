@@ -17,8 +17,8 @@ if torch_enabled:
     from .dgpu import open_dgpu_node
 
 from .brain import run_skynet
+from .config import *
 from .constants import ALGOS, DEFAULT_RPC_ADDR, DEFAULT_DGPU_ADDR
-
 from .frontend.telegram import run_skynet_telegram
 
 
@@ -38,8 +38,8 @@ def skynet(*args, **kwargs):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def txt2img(*args, **kwargs):
-    assert 'HF_TOKEN' in os.environ
-    utils.txt2img(os.environ['HF_TOKEN'], **kwargs)
+    _, hf_token, _, cfg = init_env_from_config()
+    utils.txt2img(hf_token, **kwargs)
 
 @click.command()
 @click.option('--model', '-m', default='midj')
@@ -52,9 +52,9 @@ def txt2img(*args, **kwargs):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def img2img(model, prompt, input, output, strength, guidance, steps, seed):
-    assert 'HF_TOKEN' in os.environ
+    _, hf_token, _, cfg = init_env_from_config()
     utils.img2img(
-        os.environ['HF_TOKEN'],
+        hf_token,
         model=model,
         prompt=prompt,
         img_path=input,
@@ -76,6 +76,12 @@ def upscale(input, output, model):
         model_path=model)
 
 
+@skynet.command()
+def download():
+    _, hf_token, _, cfg = init_env_from_config()
+    utils.download_all_models(hf_token)
+
+
 @skynet.group()
 def run(*args, **kwargs):
     pass
@@ -85,29 +91,17 @@ def run(*args, **kwargs):
 @click.option('--loglevel', '-l', default='warning', help='Logging level')
 @click.option(
     '--host', '-H', default=DEFAULT_RPC_ADDR)
-@click.option(
-    '--host-dgpu', '-D', default=DEFAULT_DGPU_ADDR)
-@click.option(
-    '--db-host', '-h', default='localhost:5432')
-@click.option(
-    '--db-pass', '-p', default='password')
 def brain(
     loglevel: str,
-    host: str,
-    host_dgpu: str,
-    db_host: str,
-    db_pass: str
+    host: str
 ):
     async def _run_skynet():
         async with run_skynet(
-            db_host=db_host,
-            db_pass=db_pass,
-            rpc_address=host,
-            dgpu_address=host_dgpu
+            rpc_address=host
         ):
             await trio.sleep_forever()
 
-    trio_asyncio.run(_run_skynet)
+    trio.run(_run_skynet)
 
 
 @run.command()
@@ -115,9 +109,9 @@ def brain(
 @click.option(
     '--uid', '-u', required=True)
 @click.option(
-    '--key', '-k', default='dgpu')
+    '--key', '-k', default='dgpu.key')
 @click.option(
-    '--cert', '-c', default='whitelist/dgpu')
+    '--cert', '-c', default='whitelist/dgpu.cert')
 @click.option(
     '--algos', '-a', default=json.dumps(['midj']))
 @click.option(
@@ -159,11 +153,11 @@ def telegram(
     cert: str,
     rpc: str
 ):
-    assert 'TG_TOKEN' in os.environ
+    _, _, tg_token, cfg = init_env_from_config()
     trio_asyncio.run(
         partial(
             run_skynet_telegram,
-            os.environ['TG_TOKEN'],
+            tg_token,
             key_name=key,
             cert_name=cert,
             rpc_address=rpc

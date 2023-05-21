@@ -7,7 +7,8 @@ from hashlib import sha256
 from collections import OrderedDict
 
 from google.protobuf.json_format import MessageToDict
-from OpenSSL.crypto import PKey, X509, verify, sign
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 
 from .skynet_pb2 import *
 
@@ -46,20 +47,23 @@ def serialize_msg_deterministic(msg):
         if field_descriptor.message_type.name == 'Struct':
             hash_dict(MessageToDict(getattr(msg, field_name)))
 
-    deterministic_msg = shasum.hexdigest()
+    deterministic_msg = shasum.digest()
 
     return deterministic_msg
 
 
-def sign_protobuf_msg(msg, key: PKey):
-    return sign(
-        key, serialize_msg_deterministic(msg), 'sha256').hex()
+def sign_protobuf_msg(msg, key):
+    return key.sign(
+        serialize_msg_deterministic(msg),
+        padding.PKCS1v15(),
+        hashes.SHA256()
+    ).hex()
 
 
-def verify_protobuf_msg(msg, cert: X509):
-    return verify(
-        cert,
+def verify_protobuf_msg(msg, cert):
+    return cert.public_key().verify(
         bytes.fromhex(msg.auth.sig),
         serialize_msg_deterministic(msg),
-        'sha256'
+        padding.PKCS1v15(),
+        hashes.SHA256()
     )

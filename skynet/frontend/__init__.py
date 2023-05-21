@@ -4,7 +4,7 @@ import json
 
 from typing import Union, Optional
 from pathlib import Path
-from contextlib import asynccontextmanager as acm
+from contextlib import contextmanager as cm
 
 import pynng
 
@@ -17,6 +17,7 @@ from OpenSSL.crypto import (
 
 from google.protobuf.struct_pb2 import Struct
 
+from ..network import SessionClient
 from ..constants import *
 
 from ..protobuf.auth import *
@@ -39,75 +40,23 @@ class ConfigSizeDivisionByEight(BaseException):
     ...
 
 
-@acm
-async def open_skynet_rpc(
+@cm
+def open_skynet_rpc(
     unique_id: str,
     rpc_address: str = DEFAULT_RPC_ADDR,
-    security: bool = False,
     cert_name: Optional[str] = None,
     key_name: Optional[str] = None
 ):
-    tls_config = None
-
-    if security:
-        # load tls certs
-        if not key_name:
-            key_name = cert_name
-
-        certs_dir = Path(DEFAULT_CERTS_DIR).resolve()
-
-        skynet_cert_data = (certs_dir / 'brain.cert').read_text()
-        skynet_cert = load_certificate(FILETYPE_PEM, skynet_cert_data)
-
-        tls_cert_path = certs_dir / f'{cert_name}.cert'
-        tls_cert_data = tls_cert_path.read_text()
-        tls_cert = load_certificate(FILETYPE_PEM, tls_cert_data)
-        cert_name = tls_cert_path.stem
-
-        tls_key_data = (certs_dir / f'{key_name}.key').read_text()
-        tls_key = load_privatekey(FILETYPE_PEM, tls_key_data)
-
-        rpc_address = 'tls+' + rpc_address
-        tls_config = TLSConfig(
-            TLSConfig.MODE_CLIENT,
-            own_key_string=tls_key_data,
-            own_cert_string=tls_cert_data,
-            ca_string=skynet_cert_data)
-
-    with pynng.Req0(recv_max_size=0) as sock:
-        if security:
-            sock.tls_config = tls_config
-
-        sock.dial(rpc_address)
-
-        async def _rpc_call(
-            method: str,
-            params: dict = {},
-            uid: Optional[str] = None
-        ):
-            req = SkynetRPCRequest()
-            req.uid = uid if uid else unique_id
-            req.method = method
-            req.params.update(params)
-
-            if security:
-                req.auth.cert = cert_name
-                req.auth.sig = sign_protobuf_msg(req, tls_key)
-
-            ctx = sock.new_context()
-            await ctx.asend(req.SerializeToString())
-
-            resp = SkynetRPCResponse()
-            resp.ParseFromString(await ctx.arecv())
-            ctx.close()
-
-            if security:
-                verify_protobuf_msg(resp, skynet_cert)
-
-            return resp
-
-        yield _rpc_call
-
+    sesh = SessionClient(
+        rpc_address,
+        unique_id,
+        cert_name=cert_name,
+        key_name=key_name
+    )
+    logging.debug(f'opening skynet rpc...')
+    sesh.connect()
+    yield sesh
+    sesh.disconnect()
 
 def validate_user_config_request(req: str):
     params = req.split(' ')
