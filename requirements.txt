@@ -1,13 +1,9 @@
 trio
-pynng
+asks
 numpy
 Pillow
 triopg
 aiohttp
-msgspec
-protobuf
-pyOpenSSL
-trio_asyncio
 pyTelegramBotAPI
 
 git+https://github.com/goodboy/tractor.git@master#egg=tractor

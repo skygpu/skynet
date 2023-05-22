@@ -1,0 +1,220 @@
+{
+    "____comment": "This file was generated with eosio-abigen. DO NOT EDIT ",
+    "version": "eosio::abi/1.2",
+    "types": [],
+    "structs": [
+        {
+            "name": "dequeue",
+            "base": "",
+            "fields": [
+                {
+                    "name": "user",
+                    "type": "name"
+                },
+                {
+                    "name": "request_id",
+                    "type": "uint64"
+                }
+            ]
+        },
+        {
+            "name": "enqueue",
+            "base": "",
+            "fields": [
+                {
+                    "name": "user",
+                    "type": "name"
+                },
+                {
+                    "name": "request_body",
+                    "type": "string"
+                },
+                {
+                    "name": "binary_data",
+                    "type": "bytes"
+                }
+            ]
+        },
+        {
+            "name": "submit",
+            "base": "",
+            "fields": [
+                {
+                    "name": "worker",
+                    "type": "name"
+                },
+                {
+                    "name": "request_id",
+                    "type": "uint64"
+                },
+                {
+                    "name": "result_hash",
+                    "type": "checksum256"
+                },
+                {
+                    "name": "ipfs_hash",
+                    "type": "string"
+                }
+            ]
+        },
+        {
+            "name": "work_request_struct",
+            "base": "",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "uint64"
+                },
+                {
+                    "name": "user",
+                    "type": "name"
+                },
+                {
+                    "name": "body",
+                    "type": "string"
+                },
+                {
+                    "name": "binary_data",
+                    "type": "bytes"
+                },
+                {
+                    "name": "timestamp",
+                    "type": "time_point_sec"
+                }
+            ]
+        },
+        {
+            "name": "work_result_struct",
+            "base": "",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "uint64"
+                },
+                {
+                    "name": "request_id",
+                    "type": "uint64"
+                },
+                {
+                    "name": "user",
+                    "type": "name"
+                },
+                {
+                    "name": "worker",
+                    "type": "name"
+                },
+                {
+                    "name": "result_hash",
+                    "type": "checksum256"
+                },
+                {
+                    "name": "ipfs_hash",
+                    "type": "string"
+                },
+                {
+                    "name": "submited",
+                    "type": "time_point_sec"
+                }
+            ]
+        },
+        {
+            "name": "workbegin",
+            "base": "",
+            "fields": [
+                {
+                    "name": "worker",
+                    "type": "name"
+                },
+                {
+                    "name": "request_id",
+                    "type": "uint64"
+                }
+            ]
+        },
+        {
+            "name": "workcancel",
+            "base": "",
+            "fields": [
+                {
+                    "name": "worker",
+                    "type": "name"
+                },
+                {
+                    "name": "request_id",
+                    "type": "uint64"
+                }
+            ]
+        },
+        {
+            "name": "worker_status_struct",
+            "base": "",
+            "fields": [
+                {
+                    "name": "worker",
+                    "type": "name"
+                },
+                {
+                    "name": "status",
+                    "type": "string"
+                },
+                {
+                    "name": "started",
+                    "type": "time_point_sec"
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "name": "dequeue",
+            "type": "dequeue",
+            "ricardian_contract": ""
+        },
+        {
+            "name": "enqueue",
+            "type": "enqueue",
+            "ricardian_contract": ""
+        },
+        {
+            "name": "submit",
+            "type": "submit",
+            "ricardian_contract": ""
+        },
+        {
+            "name": "workbegin",
+            "type": "workbegin",
+            "ricardian_contract": ""
+        },
+        {
+            "name": "workcancel",
+            "type": "workcancel",
+            "ricardian_contract": ""
+        }
+    ],
+    "tables": [
+        {
+            "name": "queue",
+            "type": "work_request_struct",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": []
+        },
+        {
+            "name": "results",
+            "type": "work_result_struct",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": []
+        },
+        {
+            "name": "status",
+            "type": "worker_status_struct",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": []
+        }
+    ],
+    "ricardian_clauses": [],
+    "variants": [],
+    "action_results": []
+}

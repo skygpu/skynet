@@ -6,22 +6,7 @@ from typing import Union, Optional
 from pathlib import Path
 from contextlib import contextmanager as cm
 
-import pynng
-
-from pynng import TLSConfig
-from OpenSSL.crypto import (
-    load_privatekey,
-    load_certificate,
-    FILETYPE_PEM
-)
-
-from google.protobuf.struct_pb2 import Struct
-
-from ..network import SessionClient
 from ..constants import *
-
-from ..protobuf.auth import *
-from ..protobuf.skynet_pb2 import SkynetRPCRequest, SkynetRPCResponse
 
 
 class ConfigRequestFormatError(BaseException):
@@ -39,24 +24,6 @@ class ConfigUnknownUpscaler(BaseException):
 class ConfigSizeDivisionByEight(BaseException):
     ...
 
-
-@cm
-def open_skynet_rpc(
-    unique_id: str,
-    rpc_address: str = DEFAULT_RPC_ADDR,
-    cert_name: Optional[str] = None,
-    key_name: Optional[str] = None
-):
-    sesh = SessionClient(
-        rpc_address,
-        unique_id,
-        cert_name=cert_name,
-        key_name=key_name
-    )
-    logging.debug(f'opening skynet rpc...')
-    sesh.connect()
-    yield sesh
-    sesh.disconnect()
 
 def validate_user_config_request(req: str):
     params = req.split(' ')

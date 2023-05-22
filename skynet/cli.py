@@ -4,21 +4,27 @@ torch_enabled = importlib.util.find_spec('torch') != None
 
 import os
 import json
+import logging
 
 from typing import Optional
 from functools import partial
 
 import trio
 import click
-import trio_asyncio
+import docker
+import asyncio
+
+from leap.cleos import CLEOS, default_nodeos_image
+from leap.sugar import get_container
 
 if torch_enabled:
     from . import utils
     from .dgpu import open_dgpu_node
 
-from .brain import run_skynet
+from .db import open_new_database
 from .config import *
-from .constants import ALGOS, DEFAULT_RPC_ADDR, DEFAULT_DGPU_ADDR
+from .nodeos import open_nodeos
+from .constants import ALGOS
 from .frontend.telegram import run_skynet_telegram
 
 
@@ -86,79 +92,93 @@ def download():
 def run(*args, **kwargs):
     pass
 
+@run.command()
+def db():
+    logging.basicConfig(level=logging.INFO)
+    with open_new_database(cleanup=False) as db_params:
+        container, passwd, host = db_params
+        logging.info(('skynet', passwd, host))
+
+@run.command()
+def nodeos():
+    logging.basicConfig(level=logging.INFO)
+    with open_nodeos(cleanup=False):
+        ...
 
 @run.command()
 @click.option('--loglevel', '-l', default='warning', help='Logging level')
 @click.option(
-    '--host', '-H', default=DEFAULT_RPC_ADDR)
-def brain(
-    loglevel: str,
-    host: str
-):
-    async def _run_skynet():
-        async with run_skynet(
-            rpc_address=host
-        ):
-            await trio.sleep_forever()
-
-    trio.run(_run_skynet)
-
-
-@run.command()
-@click.option('--loglevel', '-l', default='warning', help='Logging level')
+    '--account', '-a', default='testworker1')
 @click.option(
-    '--uid', '-u', required=True)
+    '--permission', '-p', default='active')
 @click.option(
-    '--key', '-k', default='dgpu.key')
+    '--key', '-k', default=None)
 @click.option(
-    '--cert', '-c', default='whitelist/dgpu.cert')
+    '--node-url', '-n', default='http://test1.us.telos.net:42000')
 @click.option(
-    '--algos', '-a', default=json.dumps(['midj']))
-@click.option(
-    '--rpc', '-r', default=DEFAULT_RPC_ADDR)
-@click.option(
-    '--dgpu', '-d', default=DEFAULT_DGPU_ADDR)
+    '--algos', '-A', default=json.dumps(['midj']))
 def dgpu(
     loglevel: str,
-    uid: str,
-    key: str,
-    cert: str,
-    algos: str,
-    rpc: str,
-    dgpu: str
+    account: str,
+    permission: str,
+    key: str | None,
+    node_url: str,
+    algos: list[str]
 ):
+    dclient = docker.from_env()
+    vtestnet = get_container(
+        dclient,
+        default_nodeos_image(),
+        force_unique=True,
+        detach=True,
+        network='host',
+        remove=True)
+
+    cleos = CLEOS(dclient, vtestnet, url=node_url, remote=node_url)
+
     trio.run(
         partial(
             open_dgpu_node,
-            cert,
-            uid,
-            key_name=key,
-            rpc_address=rpc,
-            dgpu_address=dgpu,
-            initial_algos=json.loads(algos)
+            account, permission,
+            cleos, key=key, initial_algos=json.loads(algos)
     ))
+
+    vtestnet.stop()
 
 
 @run.command()
-@click.option('--loglevel', '-l', default='warning', help='Logging level')
+@click.option('--loglevel', '-l', default='warning', help='logging level')
 @click.option(
-    '--key', '-k', default='telegram-frontend')
+    '--account', '-a', default='telegram1')
 @click.option(
-    '--cert', '-c', default='whitelist/telegram-frontend')
+    '--permission', '-p', default='active')
 @click.option(
-    '--rpc', '-r', default=DEFAULT_RPC_ADDR)
+    '--key', '-k', default=None)
+@click.option(
+    '--node-url', '-n', default='http://test1.us.telos.net:42000')
+@click.option(
+    '--db-host', '-h', default='localhost:5432')
+@click.option(
+    '--db-user', '-u', default='skynet')
+@click.option(
+    '--db-pass', '-u', default='password')
 def telegram(
     loglevel: str,
-    key: str,
-    cert: str,
-    rpc: str
+    account: str,
+    permission: str,
+    key: str | None,
+    node_url: str,
+    db_host: str,
+    db_user: str,
+    db_pass: str
 ):
     _, _, tg_token, cfg = init_env_from_config()
-    trio_asyncio.run(
-        partial(
-            run_skynet_telegram,
+    asyncio.run(
+        run_skynet_telegram(
             tg_token,
-            key_name=key,
-            cert_name=cert,
-            rpc_address=rpc
+            account,
+            permission,
+            node_url,
+            db_host, db_user, db_pass,
+            key=key
     ))

@@ -3,16 +3,21 @@
 import gc
 import io
 import json
+import time
 import random
 import logging
 
 from PIL import Image
 from typing import List, Optional
+from hashlib import sha256
 
 import trio
+import asks
 import torch
 
-from pynng import Context
+from leap.cleos import CLEOS, default_nodeos_image
+from leap.sugar import get_container
+
 from diffusers import (
     StableDiffusionPipeline,
     StableDiffusionImg2ImgPipeline,
@@ -22,9 +27,8 @@ from realesrgan import RealESRGANer
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from diffusers.models import UNet2DConditionModel
 
+from .ipfs import IPFSDocker, open_ipfs_node
 from .utils import *
-from .network import *
-from .protobuf import *
 from .constants import *
 
 
@@ -50,15 +54,20 @@ class DGPUComputeError(BaseException):
 
 
 async def open_dgpu_node(
-    cert_name: str,
-    unique_id: str,
-    key_name: Optional[str],
-    rpc_address: str = DEFAULT_RPC_ADDR,
-    dgpu_address: str = DEFAULT_DGPU_ADDR,
+    account: str,
+    permission: str,
+    cleos: CLEOS,
+    key: str = None,
     initial_algos: Optional[List[str]] = None
 ):
-    logging.basicConfig(level=logging.DEBUG)
+
+    logging.basicConfig(level=logging.INFO)
     logging.info(f'starting dgpu node!')
+    logging.info(f'launching toolchain container!')
+
+    if key:
+        cleos.setup_wallet(key)
+
     logging.info(f'loading models...')
 
     upscaler = init_upscaler()
@@ -77,7 +86,7 @@ async def open_dgpu_node(
     logging.info('memory summary:')
     logging.info('\n' + torch.cuda.memory_summary())
 
-    async def gpu_compute_one(method: str, params: dict, binext: Optional[bytes] = None):
+    def gpu_compute_one(method: str, params: dict, binext: Optional[bytes] = None):
         match method:
             case 'diffuse':
                 image = None
@@ -126,9 +135,7 @@ async def open_dgpu_node(
                         **_params,
                         guidance_scale=params['guidance'],
                         num_inference_steps=int(params['step']),
-                        generator=torch.Generator("cuda").manual_seed(
-                            int(params['seed']) if params['seed'] else random.randint(0, 2 ** 64)
-                        )
+                        generator=torch.manual_seed(int(params['seed']))
                     ).images[0]
 
                     if params['upscaler'] == 'x4':
@@ -144,9 +151,12 @@ async def open_dgpu_node(
                     img_byte_arr = io.BytesIO()
                     image.save(img_byte_arr, format='PNG')
                     raw_img = img_byte_arr.getvalue()
+                    img_sha = sha256(raw_img).hexdigest()
                     logging.info(f'final img size {len(raw_img)} bytes.')
 
-                    return raw_img
+                    logging.info(params)
+
+                    return img_sha, raw_img
 
                 except BaseException as e:
                     logging.error(e)
@@ -158,59 +168,99 @@ async def open_dgpu_node(
             case _:
                 raise DGPUComputeError('Unsupported compute method')
 
-    async def rpc_handler(req: SkynetRPCRequest, ctx: Context):
-        result = {}
-        resp = SkynetRPCResponse()
+    async def get_work_requests_last_hour():
+        return await cleos.aget_table(
+            'telos.gpu', 'telos.gpu', 'queue',
+            index_position=2,
+            key_type='i64',
+            lower_bound=int(time.time()) - 3600
+        )
 
-        match req.method:
-            case 'dgpu_time':
-                result = {'ok': time_ms()}
+    async def get_status_by_request_id(request_id: int):
+        return await cleos.aget_table(
+            'telos.gpu', request_id, 'status')
 
-            case _:
-                logging.debug(f'dgpu got one request: {req.method}')
-                try:
-                    resp.bin = await gpu_compute_one(
-                        req.method, MessageToDict(req.params),
-                        binext=req.bin if req.bin else None
-                    )
-                    logging.debug(f'dgpu processed one request')
+    def begin_work(request_id: int):
+        ec, out = cleos.push_action(
+            'telos.gpu',
+            'workbegin',
+            [account, request_id],
+            f'{account}@{permission}'
+        )
+        assert ec == 0
 
-                except DGPUComputeError as e:
-                    result = {'error': str(e)}
+    async def find_my_results():
+        return await cleos.aget_table(
+            'telos.gpu', 'telos.gpu', 'results',
+            index_position=4,
+            key_type='name',
+            lower_bound=account,
+            upper_bound=account
+        )
 
-        resp.result.update(result)
-        return resp
+    ipfs_node = None
+    def publish_on_ipfs(img_sha: str, raw_img: bytes):
+        img = Image.open(io.BytesIO(raw_img))
+        img.save(f'tmp/ipfs-docker-staging/image.png')
 
-    rpc_server = SessionServer(
-        dgpu_address,
-        rpc_handler,
-        cert_name=cert_name,
-        key_name=key_name
-    )
-    skynet_rpc = SessionClient(
-        rpc_address,
-        unique_id,
-        cert_name=cert_name,
-        key_name=key_name
-    )
-    skynet_rpc.connect()
+        ipfs_hash = ipfs_node.add('image.png')
 
+        ipfs_node.pin(ipfs_hash)
 
-    async with rpc_server.open() as rpc_server:
-        res = await skynet_rpc.rpc(
-            'dgpu_online', {
-                'dgpu_addr': rpc_server.addr,
-                'cert': cert_name
-            })
+        return ipfs_hash
 
-        assert 'ok' in res.result
+    def submit_work(request_id: int, result_hash: str, ipfs_hash: str):
+        ec, out = cleos.push_action(
+            'telos.gpu',
+            'submit',
+            [account, request_id, result_hash, ipfs_hash],
+            f'{account}@{permission}'
+        )
+        assert ec == 0
 
+    with open_ipfs_node() as ipfs_node:
         try:
-            await trio.sleep_forever()
+            while True:
+                queue = await get_work_requests_last_hour()
+
+                for req in queue:
+                    rid = req['id']
+
+                    my_results = [res['id'] for res in (await find_my_results())]
+                    if rid in my_results:
+                        continue
+
+                    statuses = await get_status_by_request_id(rid)
+
+                    if len(statuses) < 3:
+
+                        # parse request
+                        body = json.loads(req['body'])
+                        binary = bytes.fromhex(req['binary_data'])
+
+                        # TODO: validate request
+
+                        # perform work
+                        logging.info(f'working on {body}')
+
+                        begin_work(rid)
+                        img_sha, raw_img = gpu_compute_one(
+                            body['method'], body['params'], binext=binary)
+
+                        ipfs_hash = publish_on_ipfs(img_sha, raw_img)
+
+                        submit_work(rid, img_sha, ipfs_hash)
+
+                        break
+
+                    else:
+                        logging.info(f'request {rid} already beign worked on, skip...')
+                        continue
+
+                await trio.sleep(1)
 
         except KeyboardInterrupt:
-            logging.info('interrupt caught, stopping...')
+            ...
 
-        finally:
-            res = await skynet_rpc.rpc('dgpu_offline')
-            assert 'ok' in res.result
+
+
