@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import os
 import time
 import random
 
@@ -42,6 +43,13 @@ def pipeline_for(algo: str, mem_fraction: float = 1.0, image=False):
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
+
+    # full determinism
+    # https://huggingface.co/docs/diffusers/using-diffusers/reproducibility#deterministic-algorithms
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
 
     params = {
         'torch_dtype': torch.float16,

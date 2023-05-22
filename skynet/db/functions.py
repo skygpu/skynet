@@ -4,12 +4,15 @@ import time
 import random
 import string
 import logging
+import importlib
 
 from typing import Optional
 from datetime import datetime
 from contextlib import contextmanager as cm
+from contextlib import asynccontextmanager as acm
 
 import docker
+import asyncpg
 import psycopg2
 
 from asyncpg.exceptions import UndefinedColumnError
@@ -51,7 +54,7 @@ CREATE TABLE IF NOT EXISTS skynet.user_config(
     step INT NOT NULL,
     width INT NOT NULL,
     height INT NOT NULL,
-    seed BIGINT,
+    seed BIGINT NOT NULL,
     guidance REAL NOT NULL,
     strength REAL NOT NULL,
     upscaler VARCHAR(128)
@@ -79,7 +82,7 @@ def try_decode_uid(uid: str):
 
 
 @cm
-def open_new_database():
+def open_new_database(cleanup=True):
     rpassword = ''.join(
         random.choice(string.ascii_lowercase)
         for i in range(12))
@@ -99,46 +102,79 @@ def open_new_database():
         detach=True,
         remove=True
     )
+    try:
 
-    for log in container.logs(stream=True):
-        log = log.decode().rstrip()
-        logging.info(log)
-        if ('database system is ready to accept connections' in log or
-            'database system is shut down' in log):
-            break
+        for log in container.logs(stream=True):
+            log = log.decode().rstrip()
+            logging.info(log)
+            if ('database system is ready to accept connections' in log or
+                'database system is shut down' in log):
+                break
 
-    # ip = container.attrs['NetworkSettings']['IPAddress']
-    container.reload()
-    port = container.ports['5432/tcp'][0]['HostPort']
-    host = f'localhost:{port}'
+        # ip = container.attrs['NetworkSettings']['IPAddress']
+        container.reload()
+        port = container.ports['5432/tcp'][0]['HostPort']
+        host = f'localhost:{port}'
 
-    # why print the system is ready to accept connections when its not
-    # postgres? wtf
-    time.sleep(1)
-    logging.info('creating skynet db...')
+        # why print the system is ready to accept connections when its not
+        # postgres? wtf
+        time.sleep(1)
+        logging.info('creating skynet db...')
 
-    conn = psycopg2.connect(
-        user='postgres',
-        password=rpassword,
-        host='localhost',
-        port=port
-    )
-    logging.info('connected...')
-    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-    with conn.cursor() as cursor:
-        cursor.execute(
-            f'CREATE USER skynet WITH PASSWORD \'{password}\'')
-        cursor.execute(
-            f'CREATE DATABASE skynet')
-        cursor.execute(
-            f'GRANT ALL PRIVILEGES ON DATABASE skynet TO skynet')
+        conn = psycopg2.connect(
+            user='postgres',
+            password=rpassword,
+            host='localhost',
+            port=port
+        )
+        logging.info('connected...')
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f'CREATE USER skynet WITH PASSWORD \'{password}\'')
+            cursor.execute(
+                f'CREATE DATABASE skynet')
+            cursor.execute(
+                f'GRANT ALL PRIVILEGES ON DATABASE skynet TO skynet')
 
-    conn.close()
+        conn.close()
 
-    logging.info('done.')
-    yield container, password, host
+        logging.info('done.')
+        yield container, password, host
 
-    container.stop()
+    finally:
+        if container and cleanup:
+            container.stop()
+
+@acm
+async def open_database_connection(
+    db_user: str = 'skynet',
+    db_pass: str = 'password',
+    db_host: str = 'localhost:5432',
+    db_name: str = 'skynet'
+):
+    db = importlib.import_module('skynet.db.functions')
+    pool = await asyncpg.create_pool(
+        dsn=f'postgres://{db_user}:{db_pass}@{db_host}/{db_name}')
+
+    async with pool.acquire() as conn:
+        res = await conn.execute(f'''
+            select distinct table_schema
+            from information_schema.tables
+            where table_schema = \'{db_name}\'
+        ''')
+        if '1' in res:
+            logging.info('schema already in db, skipping init')
+        else:
+            await conn.execute(DB_INIT_SQL)
+
+    async def _db_call(method: str, *args, **kwargs):
+        method = getattr(db, method)
+
+        async with pool.acquire() as conn:
+            return await method(conn, *args, **kwargs)
+
+    yield _db_call
 
 
 async def get_user(conn, uid: str):
