@@ -12,7 +12,7 @@ import requests
 from skynet.dgpu import open_dgpu_node
 
 
-def test_enqueue_work(ipfs_node, cleos):
+def test_enqueue_work(cleos):
 
     user = cleos.new_account()
     req = json.dumps({
@@ -55,7 +55,6 @@ def test_enqueue_work(ipfs_node, cleos):
                 f'testworker{i}',
                 'active',
                 cleos,
-                ipfs_node,
                 initial_algos=['midj']
             )
         )
