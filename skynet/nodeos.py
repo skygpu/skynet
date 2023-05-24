@@ -8,7 +8,7 @@ from contextlib import contextmanager as cm
 import docker
 
 from leap.cleos import CLEOS
-from leap.sugar import get_container
+from leap.sugar import get_container, Symbol
 
 
 @cm
@@ -40,7 +40,7 @@ def open_nodeos(cleanup: bool = True):
 
         cleos.setup_wallet('5JnvSc6pewpHHuUHwvbJopsew6AKwiGnexwDRc2Pj2tbdw6iML9')
         cleos.wait_blocks(1)
-        cleos.boot_sequence()
+        cleos.boot_sequence(token_sym=Symbol('GPU', 4))
 
         cleos.new_account('telos.gpu', ram=300000)
 
