@@ -11,6 +11,8 @@ import requests
 
 from skynet.dgpu import open_dgpu_node
 
+from leap.sugar import collect_stdout
+
 
 def test_enqueue_work(cleos):
 
@@ -79,3 +81,44 @@ def test_enqueue_work(cleos):
     assert resp.status_code == 200
 
     assert sha_hash == sha256(resp.content).hexdigest()
+
+
+def test_enqueue_dequeue(cleos):
+
+    user = cleos.new_account()
+    req = json.dumps({
+        'method': 'diffuse',
+        'params': {
+            'algo': 'midj',
+            'prompt': 'skynet terminator dystopic',
+            'width': 512,
+            'height': 512,
+            'guidance': 10,
+            'step': 28,
+            'seed': 420,
+            'upscaler': 'x4'
+        }
+    })
+    binary = ''
+
+    ec, out = cleos.push_action(
+        'telos.gpu', 'enqueue', [user, req, binary], f'{user}@active'
+    )
+
+    assert ec == 0
+
+    request_id = int(collect_stdout(out))
+
+    queue = cleos.get_table('telos.gpu', 'telos.gpu', 'queue')
+
+    assert len(queue) == 1
+
+    ec, out = cleos.push_action(
+        'telos.gpu', 'dequeue', [user, request_id], f'{user}@active'
+    )
+
+    assert ec == 0
+
+    queue = cleos.get_table('telos.gpu', 'telos.gpu', 'queue')
+
+    assert len(queue) == 0

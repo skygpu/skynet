@@ -12,6 +12,7 @@ import docker
 from PIL import Image
 from leap.cleos import CLEOS, default_nodeos_image
 from leap.sugar import get_container, collect_stdout
+from leap.hyperion import HyperionAPI
 from trio_asyncio import aio_as_trio
 from telebot.types import (
     InputFile, InputMediaPhoto, InlineKeyboardButton, InlineKeyboardMarkup
@@ -53,7 +54,6 @@ def prepare_metainfo_caption(tguser, meta: dict) -> str:
     meta_str += f'algo: \"{meta["algo"]}\"\n'
     if meta['upscaler']:
         meta_str += f'upscaler: \"{meta["upscaler"]}\"\n'
-    meta_str += f'sampler: k_euler_ancestral\n'
     meta_str += f'skynet v{VERSION}'
     return meta_str
 
@@ -78,6 +78,7 @@ async def run_skynet_telegram(
         remove=True)
 
     cleos = CLEOS(dclient, vtestnet, url=node_url, remote=node_url)
+    hyperion = HyperionAPI(node_url)
 
     logging.basicConfig(level=logging.INFO)
 
