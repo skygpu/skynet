@@ -7,8 +7,38 @@ from contextlib import contextmanager as cm
 
 import docker
 
-from leap.cleos import CLEOS
-from leap.sugar import get_container, Symbol
+from leap.cleos import CLEOS, default_nodeos_image
+from leap.sugar import get_container, Symbol, random_string
+
+
+@cm
+def open_cleos(
+    node_url: str,
+    key: str | None
+):
+    vtestnet = None
+    try:
+        dclient = docker.from_env()
+        vtestnet = get_container(
+            dclient,
+            default_nodeos_image(),
+            name=f'skynet-wallet-{random_string(size=8)}',
+            force_unique=True,
+            detach=True,
+            network='host',
+            remove=True)
+
+        cleos = CLEOS(dclient, vtestnet, url=node_url, remote=node_url)
+
+        if key:
+            cleos.setup_wallet(key)
+
+        yield cleos
+
+    finally:
+        if vtestnet:
+            vtestnet.stop()
+
 
 
 @cm
@@ -17,6 +47,7 @@ def open_nodeos(cleanup: bool = True):
     vtestnet = get_container(
         dclient,
         'guilledk/py-eosio:leap-skynet-4.0.0',
+        name='skynet-nodeos',
         force_unique=True,
         detach=True,
         network='host')
@@ -38,20 +69,19 @@ def open_nodeos(cleanup: bool = True):
 
         time.sleep(0.5)
 
+        public_dev_key = 'EOS5fLreY5Zq5owBhmNJTgQaLqQ4ufzXSTpStQakEyfxNFuUEgNs1'
         cleos.setup_wallet('5JnvSc6pewpHHuUHwvbJopsew6AKwiGnexwDRc2Pj2tbdw6iML9')
         cleos.wait_blocks(1)
         cleos.boot_sequence(token_sym=Symbol('GPU', 4))
 
-        cleos.new_account('telos.gpu', ram=300000)
+        cleos.new_account('telos.gpu', ram=300000, key=public_dev_key)
 
         for i in range(1, 4):
             cleos.create_account_staked(
-                'eosio', f'testworker{i}',
-                key='EOS5fLreY5Zq5owBhmNJTgQaLqQ4ufzXSTpStQakEyfxNFuUEgNs1')
+                'eosio', f'testworker{i}', key=public_dev_key)
 
         cleos.create_account_staked(
-            'eosio', 'telegram1', ram=500000,
-            key='EOS5fLreY5Zq5owBhmNJTgQaLqQ4ufzXSTpStQakEyfxNFuUEgNs1')
+            'eosio', 'telegram1', ram=500000, key=public_dev_key)
 
         cleos.deploy_contract_from_host(
             'telos.gpu',

@@ -1,6 +1,4 @@
 #!/usr/bin/python
-import importlib.util
-torch_enabled = importlib.util.find_spec('torch') != None
 
 import os
 import json
@@ -13,17 +11,14 @@ import trio
 import click
 import docker
 import asyncio
+import requests
 
 from leap.cleos import CLEOS, default_nodeos_image
-from leap.sugar import get_container
-
-if torch_enabled:
-    from . import utils
-    from .dgpu import open_dgpu_node
+from leap.sugar import get_container, collect_stdout
 
 from .db import open_new_database
 from .config import *
-from .nodeos import open_nodeos
+from .nodeos import open_cleos, open_nodeos
 from .constants import ALGOS
 from .frontend.telegram import run_skynet_telegram
 
@@ -44,6 +39,7 @@ def skynet(*args, **kwargs):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def txt2img(*args, **kwargs):
+    from . import utils
     _, hf_token, _, cfg = init_env_from_config()
     utils.txt2img(hf_token, **kwargs)
 
@@ -58,6 +54,7 @@ def txt2img(*args, **kwargs):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def img2img(model, prompt, input, output, strength, guidance, steps, seed):
+    from . import utils
     _, hf_token, _, cfg = init_env_from_config()
     utils.img2img(
         hf_token,
@@ -76,6 +73,7 @@ def img2img(model, prompt, input, output, strength, guidance, steps, seed):
 @click.option('--output', '-o', default='output.png')
 @click.option('--model', '-m', default='weights/RealESRGAN_x4plus.pth')
 def upscale(input, output, model):
+    from . import utils
     utils.upscale(
         img_path=input,
         output=output,
@@ -84,9 +82,104 @@ def upscale(input, output, model):
 
 @skynet.command()
 def download():
+    from . import utils
     _, hf_token, _, cfg = init_env_from_config()
     utils.download_all_models(hf_token)
 
+@skynet.command()
+@click.option(
+    '--account', '-a', default='telegram1')
+@click.option(
+    '--permission', '-p', default='active')
+@click.option(
+    '--key', '-k', default=None)
+@click.option(
+    '--node-url', '-n', default='http://skynet.ancap.tech')
+@click.option('--algo', '-a', default='midj')
+@click.option(
+    '--prompt', '-p', default='a red old tractor in a sunny wheat field')
+@click.option('--output', '-o', default='output.png')
+@click.option('--width', '-w', default=512)
+@click.option('--height', '-h', default=512)
+@click.option('--guidance', '-g', default=10)
+@click.option('--step', '-s', default=26)
+@click.option('--seed', '-S', default=420)
+@click.option('--upscaler', '-U', default='x4')
+def enqueue(
+    account: str,
+    permission: str,
+    key: str | None,
+    node_url: str,
+    **kwargs
+):
+    with open_cleos(node_url, key=key) as cleos:
+        req = json.dumps({
+            'method': 'diffuse',
+            'params': kwargs
+        })
+        binary = ''
+
+        ec, out = cleos.push_action(
+            'telos.gpu', 'enqueue', [account, req, binary], f'{account}@{permission}'
+        )
+
+        assert ec == 0
+        print(collect_stdout(out))
+
+
+@skynet.command()
+@click.option(
+    '--node-url', '-n', default='http://skynet.ancap.tech')
+def queue(node_url: str):
+    resp = requests.post(
+        f'{node_url}/v1/chain/get_table_rows',
+        json={
+            'code': 'telos.gpu',
+            'table': 'queue',
+            'scope': 'telos.gpu',
+            'json': True
+        }
+    )
+    print(json.dumps(resp.json(), indent=4))
+
+@skynet.command()
+@click.option(
+    '--node-url', '-n', default='http://skynet.ancap.tech')
+@click.argument('request-id')
+def status(node_url: str, request_id: int):
+    resp = requests.post(
+        f'{node_url}/v1/chain/get_table_rows',
+        json={
+            'code': 'telos.gpu',
+            'table': 'status',
+            'scope': request_id,
+            'json': True
+        }
+    )
+    print(json.dumps(resp.json(), indent=4))
+
+@skynet.command()
+@click.option(
+    '--account', '-a', default='telegram1')
+@click.option(
+    '--permission', '-p', default='active')
+@click.option(
+    '--key', '-k', default=None)
+@click.option(
+    '--node-url', '-n', default='http://skynet.ancap.tech')
+@click.argument('request-id')
+def dequeue(
+    account: str,
+    permission: str,
+    key: str | None,
+    node_url: str,
+    request_id: int
+):
+    with open_cleos(node_url, key=key) as cleos:
+        ec, out = cleos.push_action(
+            'telos.gpu', 'dequeue', [account, request_id], f'{account}@{permission}'
+        )
+        assert ec == 0
 
 @skynet.group()
 def run(*args, **kwargs):
@@ -114,7 +207,7 @@ def nodeos():
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--node-url', '-n', default='http://test1.us.telos.net:42000')
+    '--node-url', '-n', default='http://skynet.ancap.tech')
 @click.option(
     '--algos', '-A', default=json.dumps(['midj']))
 def dgpu(
@@ -125,25 +218,30 @@ def dgpu(
     node_url: str,
     algos: list[str]
 ):
-    dclient = docker.from_env()
-    vtestnet = get_container(
-        dclient,
-        default_nodeos_image(),
-        force_unique=True,
-        detach=True,
-        network='host',
-        remove=True)
+    from .dgpu import open_dgpu_node
+    vtestnet = None
+    try:
+        dclient = docker.from_env()
+        vtestnet = get_container(
+            dclient,
+            default_nodeos_image(),
+            force_unique=True,
+            detach=True,
+            network='host',
+            remove=True)
 
-    cleos = CLEOS(dclient, vtestnet, url=node_url, remote=node_url)
+        cleos = CLEOS(dclient, vtestnet, url=node_url, remote=node_url)
 
-    trio.run(
-        partial(
-            open_dgpu_node,
-            account, permission,
-            cleos, key=key, initial_algos=json.loads(algos)
-    ))
+        trio.run(
+            partial(
+                open_dgpu_node,
+                account, permission,
+                cleos, key=key, initial_algos=json.loads(algos)
+        ))
 
-    vtestnet.stop()
+    finally:
+        if vtestnet:
+            vtestnet.stop()
 
 
 @run.command()
@@ -155,7 +253,7 @@ def dgpu(
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--node-url', '-n', default='http://test1.us.telos.net:42000')
+    '--node-url', '-n', default='http://skynet.ancap.tech')
 @click.option(
     '--db-host', '-h', default='localhost:5432')
 @click.option(
