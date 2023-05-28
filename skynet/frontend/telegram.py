@@ -2,12 +2,15 @@
 
 import io
 import zlib
+import random
 import logging
 import asyncio
+import traceback
 
 from hashlib import sha256
 from datetime import datetime
 
+import asks
 import docker
 
 from PIL import Image
@@ -18,7 +21,9 @@ from trio_asyncio import aio_as_trio
 from telebot.types import (
     InputFile, InputMediaPhoto, InlineKeyboardButton, InlineKeyboardMarkup
 )
-from telebot.async_telebot import AsyncTeleBot
+
+from telebot.types import CallbackQuery
+from telebot.async_telebot import AsyncTeleBot, ExceptionHandler
 from telebot.formatting import hlink
 
 from ..db import open_new_database, open_database_connection
@@ -27,7 +32,11 @@ from ..constants import *
 from . import *
 
 
-PREFIX = 'tg'
+class SKYExceptionHandler(ExceptionHandler):
+
+    def handle(exception):
+        traceback.print_exc()
+
 
 def build_redo_menu():
     btn_redo = InlineKeyboardButton("Redo", callback_data=json.dumps({'method': 'redo'}))
@@ -113,20 +122,36 @@ async def get_user_nonce(cleos, user: str):
 
 async def work_request(
     bot, cleos, hyperion,
-    message,
+    message, user, chat,
     account: str,
     permission: str,
-    params: dict
+    params: dict,
+    file_id: str | None = None,
+    file_path: str | None = None
 ):
+    if params['seed'] == None:
+        params['seed'] = random.randint(0, 9e18)
+
     body = json.dumps({
         'method': 'diffuse',
         'params': params
     })
-    user = message.from_user
-    chat = message.chat
     request_time = datetime.now().isoformat()
+
+    if file_id:
+        image_raw = await bot.download_file(file_path)
+        image = Image.open(io.BytesIO(image_raw))
+        w, h = image.size
+        logging.info(f'user sent img of size {image.size}')
+
+        if w > 512 or h > 512:
+            image.thumbnail((512, 512))
+            logging.warning(f'resized it to {image.size}')
+
+        binary = image_raw.hex()
+
     ec, out = cleos.push_action(
-        'telos.gpu', 'enqueue', [account, body, '', '20.0000 GPU'], f'{account}@{permission}'
+        'telos.gpu', 'enqueue', [account, body, binary, '20.0000 GPU'], f'{account}@{permission}'
     )
     out = collect_stdout(out)
     if ec != 0:
@@ -168,13 +193,54 @@ async def work_request(
         await bot.reply_to(message, 'timeout processing request')
         return
 
-    await bot.reply_to(
-        message,
-        generate_reply_caption(
-            user, params, ipfs_hash, tx_hash),
-        reply_markup=build_redo_menu(),
-        parse_mode='HTML'
-    )
+    # attempt to get the image and send it
+    ipfs_link = f'http://test1.us.telos.net:8080/ipfs/{ipfs_hash}/image.png'
+    logging.info(f'attempting to get image at {ipfs_link}')
+    resp = None
+    for i in range(10):
+        try:
+            resp = await asks.get(ipfs_link, timeout=2)
+
+        except asks.errors.RequestTimeout:
+            logging.warning('timeout...')
+            ...
+
+    logging.info(f'status_code: {resp.status_code}')
+
+    caption = generate_reply_caption(
+        user, params, ipfs_hash, tx_hash)
+
+    if resp.status_code != 200:
+        await bot.reply_to(
+            message,
+            caption,
+            reply_markup=build_redo_menu(),
+            parse_mode='HTML'
+        )
+
+    else:
+        if file_id:  # img2img
+            await bot.send_media_group(
+                chat.id,
+                media=[
+                    InputMediaPhoto(file_id),
+                    InputMediaPhoto(
+                        resp.raw,
+                        caption=caption
+                    )
+                ],
+                reply_markup=build_redo_menu(),
+                parse_mode='HTML'
+            )
+
+        else:  # txt2img
+            await bot.send_photo(
+                chat.id,
+                caption=caption,
+                photo=resp.raw,
+                reply_markup=build_redo_menu(),
+                parse_mode='HTML'
+            )
 
 
 async def run_skynet_telegram(
@@ -205,7 +271,7 @@ async def run_skynet_telegram(
     if key:
         cleos.setup_wallet(key)
 
-    bot = AsyncTeleBot(tg_token)
+    bot = AsyncTeleBot(tg_token, exception_handler=SKYExceptionHandler)
     logging.info(f'tg_token: {tg_token}')
 
     async with open_database_connection(
@@ -233,7 +299,7 @@ async def run_skynet_telegram(
 
         @bot.message_handler(commands=['txt2img'])
         async def send_txt2img(message):
-            user = message.from_user.id
+            user = message.from_user
             chat = message.chat
             reply_id = None
             if chat.type == 'group' and chat.id == GROUP_ID:
@@ -247,8 +313,8 @@ async def run_skynet_telegram(
 
             logging.info(f'mid: {message.id}')
 
-            await db_call('get_or_create_user', user)
-            user_config = {**(await db_call('get_user_config', user))}
+            user_row = await db_call('get_or_create_user', user.id)
+            user_config = {**user_row}
             del user_config['id']
 
             params = {
@@ -256,21 +322,21 @@ async def run_skynet_telegram(
                 **user_config
             }
 
-            await db_call('update_user_stats', user, last_prompt=prompt)
+            await db_call('update_user_stats', user.id, last_prompt=prompt)
 
             await work_request(
                 bot, cleos, hyperion,
-                message, account, permission, params)
+                message, user, chat,
+                account, permission, params
+            )
 
         @bot.message_handler(func=lambda message: True, content_types=['photo'])
         async def send_img2img(message):
-            user = message.from_user.id
+            user = message.from_user
             chat = message.chat
             reply_id = None
             if chat.type == 'group' and chat.id == GROUP_ID:
                 reply_id = message.message_id
-
-            user_id = f'tg+{message.from_user.id}'
 
             if not message.caption.startswith('/img2img'):
                 await bot.reply_to(
@@ -287,62 +353,26 @@ async def run_skynet_telegram(
 
             file_id = message.photo[-1].file_id
             file_path = (await bot.get_file(file_id)).file_path
-            file_raw = await bot.download_file(file_path)
 
             logging.info(f'mid: {message.id}')
 
-            user = await db_call('get_or_create_user', user_id)
-            user_config = {**(await db_call('get_user_config', user))}
+            user_row = await db_call('get_or_create_user', user.id)
+            user_config = {**user_row}
             del user_config['id']
 
-            req = json.dumps({
-                'method': 'diffuse',
-                'params': {
-                    'prompt': prompt,
-                    **user_config
-                }
-            })
+            params = {
+                'prompt': prompt,
+                **user_config
+            }
 
-            ec, out = cleos.push_action(
-                'telos.gpu', 'enqueue', [account, req, file_raw.hex()], f'{account}@{permission}'
+            await db_call('update_user_stats', user.id, last_prompt=prompt)
+
+            await work_request(
+                bot, cleos, hyperion,
+                message, user, chat,
+                account, permission, params,
+                file_id=file_id, file_path=file_path
             )
-            if ec != 0:
-                await bot.reply_to(message, out)
-                return
-
-            request_id = int(out)
-            logging.info(f'{request_id} enqueued.')
-
-            ipfs_hash = None
-            sha_hash = None
-            for i in range(60):
-                result = cleos.get_table(
-                    'telos.gpu', 'telos.gpu', 'results',
-                    index_position=2,
-                    key_type='i64',
-                    lower_bound=request_id,
-                    upper_bound=request_id
-                )
-                if len(results) > 0:
-                    ipfs_hash = result[0]['ipfs_hash']
-                    sha_hash = result[0]['result_hash']
-                    break
-                else:
-                    await asyncio.sleep(1)
-
-            if not ipfs_hash:
-                await bot.reply_to(message, 'timeout processing request')
-
-            ipfs_link = f'https://ipfs.io/ipfs/{ipfs_hash}/image.png'
-
-            await bot.reply_to(
-                message,
-                ipfs_link + '\n' +
-                prepare_metainfo_caption(user, result['meta']['meta']),
-                reply_to_message_id=reply_id,
-                reply_markup=build_redo_menu()
-            )
-            return
 
 
         @bot.message_handler(commands=['img2img'])
@@ -352,17 +382,23 @@ async def run_skynet_telegram(
                 'seems you tried to do an img2img command without sending image'
             )
 
-        @bot.message_handler(commands=['redo'])
-        async def redo(message):
-            user = message.from_user.id
-            chat = message.chat
+        async def _redo(message_or_query):
+            if isinstance(message_or_query, CallbackQuery):
+                query = message_or_query
+                message = query.message
+                user = query.from_user
+                chat = query.message.chat
+
+            else:
+                message = message_or_query
+                user = message.from_user
+                chat = message.chat
+
             reply_id = None
             if chat.type == 'group' and chat.id == GROUP_ID:
                 reply_id = message.message_id
 
-            user_config = {**(await db_call('get_user_config', user))}
-            del user_config['id']
-            prompt = await db_call('get_last_prompt_of', user)
+            prompt = await db_call('get_last_prompt_of', user.id)
 
             if not prompt:
                 await bot.reply_to(
@@ -371,6 +407,11 @@ async def run_skynet_telegram(
                 )
                 return
 
+
+            user_row = await db_call('get_or_create_user', user.id)
+            user_config = {**user_row}
+            del user_config['id']
+
             params = {
                 'prompt': prompt,
                 **user_config
@@ -378,7 +419,13 @@ async def run_skynet_telegram(
 
             await work_request(
                 bot, cleos, hyperion,
-                message, account, permission, params)
+                message, user, chat,
+                account, permission, params
+            )
+
+        @bot.message_handler(commands=['redo'])
+        async def redo(message):
+            await _redo(message)
 
         @bot.message_handler(commands=['config'])
         async def set_config(message):

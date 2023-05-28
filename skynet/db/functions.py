@@ -26,27 +26,11 @@ CREATE SCHEMA IF NOT EXISTS skynet;
 
 CREATE TABLE IF NOT EXISTS skynet.user(
    id SERIAL PRIMARY KEY NOT NULL,
-   tg_id BIGINT,
-   wp_id VARCHAR(128),
-   mx_id VARCHAR(128),
-   ig_id VARCHAR(128),
    generated INT NOT NULL,
-   joined DATE NOT NULL,
+   joined TIMESTAMP NOT NULL,
    last_prompt TEXT,
    role VARCHAR(128) NOT NULL
 );
-ALTER TABLE skynet.user
-    ADD CONSTRAINT tg_unique
-    UNIQUE (tg_id);
-ALTER TABLE skynet.user
-    ADD CONSTRAINT wp_unique
-    UNIQUE (wp_id);
-ALTER TABLE skynet.user
-    ADD CONSTRAINT mx_unique
-    UNIQUE (mx_id);
-ALTER TABLE skynet.user
-    ADD CONSTRAINT ig_unique
-    UNIQUE (ig_id);
 
 CREATE TABLE IF NOT EXISTS skynet.user_config(
     id SERIAL NOT NULL,
@@ -54,7 +38,7 @@ CREATE TABLE IF NOT EXISTS skynet.user_config(
     step INT NOT NULL,
     width INT NOT NULL,
     height INT NOT NULL,
-    seed BIGINT NOT NULL,
+    seed BIGINT,
     guidance REAL NOT NULL,
     strength REAL NOT NULL,
     upscaler VARCHAR(128)
@@ -177,16 +161,19 @@ async def open_database_connection(
     yield _db_call
 
 
-async def get_user(conn, uid: int):
-    stmt = await conn.prepare(
-        'SELECT * FROM skynet.user WHERE id = $1')
-    return await stmt.fetchval(uid)
-
-
 async def get_user_config(conn, user: int):
     stmt = await conn.prepare(
         'SELECT * FROM skynet.user_config WHERE id = $1')
-    return (await stmt.fetch(user))[0]
+    conf = await stmt.fetch(user)
+    if len(conf) == 1:
+        return conf[0]
+
+    else:
+        return None
+
+
+async def get_user(conn, uid: int):
+    return await get_user_config(conn, uid)
 
 
 async def get_last_prompt_of(conn, user: int):
@@ -208,7 +195,6 @@ async def new_user(conn, uid: int):
                 id, generated, joined, last_prompt, role)
 
             VALUES($1, $2, $3, $4, $5)
-            ON CONFLICT DO NOTHING
         ''')
         await stmt.fetch(
             uid, 0, date, None, DEFAULT_ROLE
@@ -216,18 +202,16 @@ async def new_user(conn, uid: int):
 
         stmt = await conn.prepare('''
             INSERT INTO skynet.user_config(
-                id, algo, step, width, height, seed, guidance, strength, upscaler)
+                id, algo, step, width, height, guidance, strength, upscaler)
 
-            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT DO NOTHING
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8)
         ''')
-        user = await stmt.fetch(
-            new_uid,
+        resp = await stmt.fetch(
+            uid,
             DEFAULT_ALGO,
             DEFAULT_STEP,
             DEFAULT_WIDTH,
             DEFAULT_HEIGHT,
-            DEFAULT_SEED,
             DEFAULT_GUIDANCE,
             DEFAULT_STRENGTH,
             DEFAULT_UPSCALER
