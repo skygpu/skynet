@@ -16,7 +16,7 @@ import asks
 import torch
 
 from leap.cleos import CLEOS, default_nodeos_image
-from leap.sugar import get_container
+from leap.sugar import get_container, collect_stdout
 
 from diffusers import (
     StableDiffusionPipeline,
@@ -102,6 +102,9 @@ async def open_dgpu_node(
                         logging.info(f'resized it to {image.size}')
 
                 if algo not in models:
+                    if algo not in ALGOS:
+                        raise DGPUComputeError(f'Unknown algo \"{algo}\"')
+
                     logging.info(f'{algo} not in loaded models, swapping...')
                     least_used = list(models.keys())[0]
                     for model in models:
@@ -169,6 +172,7 @@ async def open_dgpu_node(
                 raise DGPUComputeError('Unsupported compute method')
 
     async def get_work_requests_last_hour():
+        logging.info('get_work_requests_last_hour')
         return await cleos.aget_table(
             'telos.gpu', 'telos.gpu', 'queue',
             index_position=2,
@@ -177,10 +181,41 @@ async def open_dgpu_node(
         )
 
     async def get_status_by_request_id(request_id: int):
+        logging.info('get_status_by_request_id')
         return await cleos.aget_table(
             'telos.gpu', request_id, 'status')
 
+    async def get_global_config():
+        logging.info('get_global_config')
+        return (await cleos.aget_table(
+            'telos.gpu', 'telos.gpu', 'config'))[0]
+
+    def get_worker_balance():
+        logging.info('get_worker_balance')
+        rows = cleos.get_table(
+            'telos.gpu', 'telos.gpu', 'users',
+            index_position=1,
+            key_type='name',
+            lower_bound=account,
+            upper_bound=account
+        )
+        if len(rows) == 1:
+            return rows[0]['balance']
+        else:
+            return None
+
+    async def get_user_nonce(user: str):
+        logging.info('get_user_nonce')
+        return (await cleos.aget_table(
+            'telos.gpu', 'telos.gpu', 'users',
+            index_position=1,
+            key_type='name',
+            lower_bound=user,
+            upper_bound=user
+        ))[0]['nonce']
+
     def begin_work(request_id: int):
+        logging.info('begin_work')
         ec, out = cleos.push_action(
             'telos.gpu',
             'workbegin',
@@ -189,7 +224,35 @@ async def open_dgpu_node(
         )
         assert ec == 0
 
+    def cancel_work(request_id: int, reason: str):
+        logging.info('cancel_work')
+        ec, out = cleos.push_action(
+            'telos.gpu',
+            'workcancel',
+            [account, request_id, reason],
+            f'{account}@{permission}'
+        )
+        assert ec == 0
+
+    def maybe_withdraw_all():
+        logging.info('maybe_withdraw_all')
+        balance = get_worker_balance()
+        if not balance:
+            return
+
+        balance_amount = float(balance.split(' ')[0])
+        if balance_amount > 0:
+            ec, out = cleos.push_action(
+                'telos.gpu',
+                'withdraw',
+                [account, balance],
+                f'{account}@{permission}'
+            )
+            logging.info(collect_stdout(out))
+            assert ec == 0
+
     async def find_my_results():
+        logging.info('find_my_results')
         return await cleos.aget_table(
             'telos.gpu', 'telos.gpu', 'results',
             index_position=4,
@@ -200,6 +263,7 @@ async def open_dgpu_node(
 
     ipfs_node = None
     def publish_on_ipfs(img_sha: str, raw_img: bytes):
+        logging.info('publish_on_ipfs')
         img = Image.open(io.BytesIO(raw_img))
         img.save(f'tmp/ipfs-docker-staging/image.png')
 
@@ -209,18 +273,30 @@ async def open_dgpu_node(
 
         return ipfs_hash
 
-    def submit_work(request_id: int, result_hash: str, ipfs_hash: str):
+    def submit_work(
+        request_id: int,
+        request_hash: str,
+        result_hash: str,
+        ipfs_hash: str
+    ):
+        logging.info('submit_work')
         ec, out = cleos.push_action(
             'telos.gpu',
             'submit',
-            [account, request_id, result_hash, ipfs_hash],
+            [account, request_id, request_hash, result_hash, ipfs_hash],
             f'{account}@{permission}'
         )
+
+        print(collect_stdout(out))
         assert ec == 0
+
+    config = await get_global_config()
 
     with open_ipfs_node() as ipfs_node:
         try:
             while True:
+                maybe_withdraw_all()
+
                 queue = await get_work_requests_last_hour()
 
                 for req in queue:
@@ -232,11 +308,18 @@ async def open_dgpu_node(
 
                     statuses = await get_status_by_request_id(rid)
 
-                    if len(statuses) < 3:
+                    if len(statuses) < config['verification_amount']:
 
                         # parse request
                         body = json.loads(req['body'])
                         binary = bytes.fromhex(req['binary_data'])
+                        hash_str = (
+                            str(await get_user_nonce(req['user']))
+                            +
+                            req['body']
+                        )
+                        logging.info(f'hashing: {hash_str}')
+                        request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
 
                         # TODO: validate request
 
@@ -244,14 +327,19 @@ async def open_dgpu_node(
                         logging.info(f'working on {body}')
 
                         begin_work(rid)
-                        img_sha, raw_img = gpu_compute_one(
-                            body['method'], body['params'], binext=binary)
 
-                        ipfs_hash = publish_on_ipfs(img_sha, raw_img)
+                        try:
+                            img_sha, raw_img = gpu_compute_one(
+                                body['method'], body['params'], binext=binary)
 
-                        submit_work(rid, img_sha, ipfs_hash)
+                            ipfs_hash = publish_on_ipfs(img_sha, raw_img)
 
-                        break
+                            submit_work(rid, request_hash, img_sha, ipfs_hash)
+
+                            break
+
+                        except BaseException as e:
+                            cancel_work(rid, str(e))
 
                     else:
                         logging.info(f'request {rid} already beign worked on, skip...')
