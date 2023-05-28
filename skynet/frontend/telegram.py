@@ -140,15 +140,21 @@ async def work_request(
 
     if file_id:
         image_raw = await bot.download_file(file_path)
-        image = Image.open(io.BytesIO(image_raw))
-        w, h = image.size
-        logging.info(f'user sent img of size {image.size}')
+        with Image.open(io.BytesIO(image_raw)) as image:
+            w, h = image.size
 
-        if w > 512 or h > 512:
-            image.thumbnail((512, 512))
-            logging.warning(f'resized it to {image.size}')
+            if w > 512 or h > 512:
+                logging.warning(f'user sent img of size {image.size}')
+                image.thumbnail((512, 512))
+                logging.warning(f'resized it to {image.size}')
+                img_byte_arr = io.BytesIO()
+                image.save(img_byte_arr, format='PNG')
+                image_raw = img_byte_arr.getvalue()
 
         binary = image_raw.hex()
+
+    else:
+        binary = ''
 
     ec, out = cleos.push_action(
         'telos.gpu', 'enqueue', [account, body, binary, '20.0000 GPU'], f'{account}@{permission}'

@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import os
 import logging
 
 from pathlib import Path
@@ -7,6 +8,7 @@ from contextlib import contextmanager as cm
 
 import docker
 
+from docker.types import Mount
 from docker.models.containers import Container
 
 
@@ -48,13 +50,27 @@ def open_ipfs_node():
             '4001/tcp': 4001,
             '5001/tcp': ('127.0.0.1', 5001)
         },
-        volumes=[
-            str(Path().resolve() / 'tmp/ipfs-docker-staging') + ':/export',
-            str(Path().resolve() / 'tmp/ipfs-docker-data') + ':/data/ipfs'
+        mounts=[
+            Mount(
+                '/export',
+                str(Path().resolve() / 'tmp/ipfs-docker-staging'),
+                'bind'
+            ),
+            Mount(
+                '/data/ipfs',
+                str(Path().resolve() / 'tmp/ipfs-docker-data'),
+                'bind'
+            )
         ],
         detach=True,
         remove=True
     )
+    uid = os.getuid()
+    gid = os.getgid()
+    ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', '/export'])
+    assert ec == 0
+    ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', '/data/ipfs'])
+    assert ec == 0
     try:
 
         for log in container.logs(stream=True):
