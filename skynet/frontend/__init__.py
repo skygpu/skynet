@@ -84,7 +84,12 @@ def validate_user_config_request(req: str):
                     raise ConfigUnknownAttribute(
                         f'\"{attr}\" not a configurable parameter')
 
-            return attr, val, f'config updated! {attr} to {val}'
+            display_val = val
+            if attr == 'seed':
+                if not val:
+                    display_val = 'Random'
+
+            return attr, val, f'config updated! {attr} to {display_val}'
 
         except ValueError:
             raise ValueError(f'\"{val}\" is not a number silly')

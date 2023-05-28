@@ -329,7 +329,7 @@ def dgpu(
 
 
 @run.command()
-@click.option('--loglevel', '-l', default='warning', help='logging level')
+@click.option('--loglevel', '-l', default='INFO', help='logging level')
 @click.option(
     '--account', '-a', default='telegram')
 @click.option(
@@ -357,6 +357,7 @@ def telegram(
     db_user: str,
     db_pass: str
 ):
+    logging.basicConfig(level=loglevel)
 
     key, account, permission = load_account_info(
         key, account, permission)
@@ -422,3 +423,6 @@ def pinner(loglevel, container):
                 ipfs_node.pin(cid)
 
             cleanup_pinned(now)
+
+    except KeyboardInterrupt:
+        ...
