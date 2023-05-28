@@ -177,25 +177,10 @@ async def open_database_connection(
     yield _db_call
 
 
-async def get_user(conn, uid: str):
-    if isinstance(uid, str):
-        proto, uid = try_decode_uid(uid)
-
-        match proto:
-            case 'tg':
-                stmt = await conn.prepare(
-                    'SELECT * FROM skynet.user WHERE tg_id = $1')
-                user = await stmt.fetchval(uid)
-
-            case _:
-                user = None
-
-        return user
-
-    else:  # asumme is our uid
-        stmt = await conn.prepare(
-            'SELECT * FROM skynet.user WHERE id = $1')
-        return await stmt.fetchval(uid)
+async def get_user(conn, uid: int):
+    stmt = await conn.prepare(
+        'SELECT * FROM skynet.user WHERE id = $1')
+    return await stmt.fetchval(uid)
 
 
 async def get_user_config(conn, user: int):
@@ -210,44 +195,24 @@ async def get_last_prompt_of(conn, user: int):
     return await stmt.fetchval(user)
 
 
-async def new_user(conn, uid: str):
+async def new_user(conn, uid: int):
     if await get_user(conn, uid):
         raise ValueError('User already present on db')
 
     logging.info(f'new user! {uid}')
 
     date = datetime.utcnow()
-
-    proto, pid = try_decode_uid(uid)
-
     async with conn.transaction():
-        match proto:
-            case 'tg':
-                tg_id = pid
-                stmt = await conn.prepare('''
-                    INSERT INTO skynet.user(
-                        tg_id, generated, joined, last_prompt, role)
+        stmt = await conn.prepare('''
+            INSERT INTO skynet.user(
+                id, generated, joined, last_prompt, role)
 
-                    VALUES($1, $2, $3, $4, $5)
-                    ON CONFLICT DO NOTHING
-                ''')
-                await stmt.fetch(
-                    tg_id, 0, date, None, DEFAULT_ROLE
-                )
-                new_uid = await get_user(conn, uid)
-
-            case None:
-                stmt = await conn.prepare('''
-                    INSERT INTO skynet.user(
-                        id, generated, joined, last_prompt, role)
-
-                    VALUES($1, $2, $3, $4, $5)
-                    ON CONFLICT DO NOTHING
-                ''')
-                await stmt.fetch(
-                    pid, 0, date, None, DEFAULT_ROLE
-                )
-                new_uid = pid
+            VALUES($1, $2, $3, $4, $5)
+            ON CONFLICT DO NOTHING
+        ''')
+        await stmt.fetch(
+            uid, 0, date, None, DEFAULT_ROLE
+        )
 
         stmt = await conn.prepare('''
             INSERT INTO skynet.user_config(
@@ -267,8 +232,6 @@ async def new_user(conn, uid: str):
             DEFAULT_STRENGTH,
             DEFAULT_UPSCALER
         )
-
-    return new_uid
 
 
 async def get_or_create_user(conn, uid: str):

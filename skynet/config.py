@@ -40,7 +40,7 @@ def init_env_from_config(
 
 
 def load_account_info(
-    key, account, permission
+    key, account, permission,
     file_path=DEFAULT_CONFIG_PATH
 ):
     _, _, _, config = init_env_from_config()
@@ -54,4 +54,4 @@ def load_account_info(
     if not permission:
         permission = config['skynet.account']['permission']
 
-    return 
+    return key, account, permission

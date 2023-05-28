@@ -5,6 +5,7 @@ import zlib
 import logging
 import asyncio
 
+from hashlib import sha256
 from datetime import datetime
 
 import docker
@@ -18,6 +19,7 @@ from telebot.types import (
     InputFile, InputMediaPhoto, InlineKeyboardButton, InlineKeyboardMarkup
 )
 from telebot.async_telebot import AsyncTeleBot
+from telebot.formatting import hlink
 
 from ..db import open_new_database, open_database_connection
 from ..constants import *
@@ -44,18 +46,135 @@ def prepare_metainfo_caption(tguser, meta: dict) -> str:
     else:
         user = f'{tguser.first_name} id: {tguser.id}'
 
-    meta_str = f'by {user}\n'
-    meta_str += f'prompt: \"{prompt}\"\n'
-    meta_str += f'seed: {meta["seed"]}\n'
-    meta_str += f'step: {meta["step"]}\n'
-    meta_str += f'guidance: {meta["guidance"]}\n'
+    meta_str = f'<u>by {user}</u>\n'
+
+    meta_str += f'<code>prompt:</code> {prompt}\n'
+    meta_str += f'<code>seed: {meta["seed"]}</code>\n'
+    meta_str += f'<code>step: {meta["step"]}</code>\n'
+    meta_str += f'<code>guidance: {meta["guidance"]}</code>\n'
     if meta['strength']:
-        meta_str += f'strength: {meta["strength"]}\n'
-    meta_str += f'algo: \"{meta["algo"]}\"\n'
+        meta_str += f'<code>strength: {meta["strength"]}</code>\n'
+    meta_str += f'<code>algo: {meta["algo"]}</code>\n'
     if meta['upscaler']:
-        meta_str += f'upscaler: \"{meta["upscaler"]}\"\n'
-    meta_str += f'skynet v{VERSION}'
+        meta_str += f'<code>upscaler: {meta["upscaler"]}</code>\n'
+
+    meta_str += f'<b><u>Made with Skynet {VERSION}</u></b>\n'
+    meta_str += f'<b>JOIN THE SWARM: @skynetgpu</b>'
     return meta_str
+
+
+def generate_reply_caption(
+    tguser,  # telegram user
+    params: dict,
+    ipfs_hash: str,
+    tx_hash: str
+):
+    ipfs_link = hlink(
+        'Get your image on IPFS',
+        f'http://test1.us.telos.net:8080/ipfs/{ipfs_hash}/image.png'
+    )
+    explorer_link = hlink(
+        'SKYNET Transaction Explorer',
+        f'http://test1.us.telos.net:42001/v2/explore/transaction/{tx_hash}'
+    )
+
+    meta_info = prepare_metainfo_caption(tguser, params)
+
+    final_msg = '\n'.join([
+        'Worker finished your task!',
+        ipfs_link,
+        explorer_link,
+        f'PARAMETER INFO:\n{meta_info}'
+    ])
+
+    final_msg = '\n'.join([
+        f'<b>{ipfs_link}</b>',
+        f'<i>{explorer_link}</i>',
+        f'{meta_info}'
+    ])
+
+    logging.info(final_msg)
+
+    return final_msg
+
+
+async def get_global_config(cleos):
+    return (await cleos.aget_table(
+        'telos.gpu', 'telos.gpu', 'config'))[0]
+
+async def get_user_nonce(cleos, user: str):
+    return (await cleos.aget_table(
+        'telos.gpu', 'telos.gpu', 'users',
+        index_position=1,
+        key_type='name',
+        lower_bound=user,
+        upper_bound=user
+    ))[0]['nonce']
+
+async def work_request(
+    bot, cleos, hyperion,
+    message,
+    account: str,
+    permission: str,
+    params: dict
+):
+    body = json.dumps({
+        'method': 'diffuse',
+        'params': params
+    })
+    user = message.from_user
+    chat = message.chat
+    request_time = datetime.now().isoformat()
+    ec, out = cleos.push_action(
+        'telos.gpu', 'enqueue', [account, body, '', '20.0000 GPU'], f'{account}@{permission}'
+    )
+    out = collect_stdout(out)
+    if ec != 0:
+        await bot.reply_to(message, out)
+        return
+
+    nonce = await get_user_nonce(cleos, account)
+    request_hash = sha256(
+        (str(nonce) + body).encode('utf-8')).hexdigest().upper()
+
+    request_id = int(out)
+    logging.info(f'{request_id} enqueued.')
+
+    config = await get_global_config(cleos)
+
+    tx_hash = None
+    ipfs_hash = None
+    for i in range(60):
+        submits = await hyperion.aget_actions(
+            account=account,
+            filter='telos.gpu:submit',
+            sort='desc',
+            after=request_time
+        )
+        actions = [
+            action
+            for action in submits['actions']
+            if action[
+                'act']['data']['request_hash'] == request_hash
+        ]
+        if len(actions) > 0:
+            tx_hash = actions[0]['trx_id']
+            ipfs_hash = actions[0]['act']['data']['ipfs_hash']
+            break
+
+        await asyncio.sleep(1)
+
+    if not ipfs_hash:
+        await bot.reply_to(message, 'timeout processing request')
+        return
+
+    await bot.reply_to(
+        message,
+        generate_reply_caption(
+            user, params, ipfs_hash, tx_hash),
+        reply_markup=build_redo_menu(),
+        parse_mode='HTML'
+    )
 
 
 async def run_skynet_telegram(
@@ -63,6 +182,7 @@ async def run_skynet_telegram(
     account: str,
     permission: str,
     node_url: str,
+    hyperion_url: str,
     db_host: str,
     db_user: str,
     db_pass: str,
@@ -78,7 +198,7 @@ async def run_skynet_telegram(
         remove=True)
 
     cleos = CLEOS(dclient, vtestnet, url=node_url, remote=node_url)
-    hyperion = HyperionAPI(node_url)
+    hyperion = HyperionAPI(hyperion_url)
 
     logging.basicConfig(level=logging.INFO)
 
@@ -87,10 +207,6 @@ async def run_skynet_telegram(
 
     bot = AsyncTeleBot(tg_token)
     logging.info(f'tg_token: {tg_token}')
-
-    async def get_global_config():
-        return (await cleos.aget_table(
-            'telos.gpu', 'telos.gpu', 'config'))[0]
 
     async with open_database_connection(
         db_user, db_pass, db_host
@@ -117,12 +233,11 @@ async def run_skynet_telegram(
 
         @bot.message_handler(commands=['txt2img'])
         async def send_txt2img(message):
+            user = message.from_user.id
             chat = message.chat
             reply_id = None
             if chat.type == 'group' and chat.id == GROUP_ID:
                 reply_id = message.message_id
-
-            user_id = f'tg+{message.from_user.id}'
 
             prompt = ' '.join(message.text.split(' ')[1:])
 
@@ -131,63 +246,25 @@ async def run_skynet_telegram(
                 return
 
             logging.info(f'mid: {message.id}')
-            user = await db_call('get_or_create_user', user_id)
+
+            await db_call('get_or_create_user', user)
             user_config = {**(await db_call('get_user_config', user))}
             del user_config['id']
 
-            req = json.dumps({
-                'method': 'diffuse',
-                'params': {
-                    'prompt': prompt,
-                    **user_config
-                }
-            })
+            params = {
+                'prompt': prompt,
+                **user_config
+            }
 
-            request_time = datetime.datetime.now().isoformat()
-            ec, out = cleos.push_action(
-                'telos.gpu', 'enqueue', [account, req, ''], f'{account}@{permission}'
-            )
-            out = collect_stdout(out)
-            if ec != 0:
-                await bot.reply_to(message, out)
-                return
+            await db_call('update_user_stats', user, last_prompt=prompt)
 
-            request_id = int(out)
-            logging.info(f'{request_id} enqueued.')
-
-            config = await get_global_config()
-
-            ipfs_hash = None
-            sha_hash = None
-            for i in range(60):
-                submits = await hyperion.aget_actions(
-                    account=account,
-                    filter='telos.gpu:submit',
-                    sort='desc',
-                    after=request_Time
-                )
-                actions = submits['actions']
-                if len(actions) > 0:
-                    ipfs_hash = results[0]['ipfs_hash']
-                    sha_hash = results[0]['result_hash']
-                    break
-                else:
-                    await asyncio.sleep(1)
-
-            if not ipfs_hash:
-                await bot.reply_to(message, 'timeout processing request')
-                return
-
-            ipfs_link = f'https://ipfs.io/ipfs/{ipfs_hash}/image.png'
-
-            await bot.reply_to(
-                message,
-                ipfs_link,
-                reply_markup=build_redo_menu()
-            )
+            await work_request(
+                bot, cleos, hyperion,
+                message, account, permission, params)
 
         @bot.message_handler(func=lambda message: True, content_types=['photo'])
         async def send_img2img(message):
+            user = message.from_user.id
             chat = message.chat
             reply_id = None
             if chat.type == 'group' and chat.id == GROUP_ID:
@@ -261,7 +338,7 @@ async def run_skynet_telegram(
             await bot.reply_to(
                 message,
                 ipfs_link + '\n' +
-                prepare_metainfo_caption(message.from_user, result['meta']['meta']),
+                prepare_metainfo_caption(user, result['meta']['meta']),
                 reply_to_message_id=reply_id,
                 reply_markup=build_redo_menu()
             )
@@ -277,6 +354,7 @@ async def run_skynet_telegram(
 
         @bot.message_handler(commands=['redo'])
         async def redo(message):
+            user = message.from_user.id
             chat = message.chat
             reply_id = None
             if chat.type == 'group' and chat.id == GROUP_ID:
@@ -286,65 +364,31 @@ async def run_skynet_telegram(
             del user_config['id']
             prompt = await db_call('get_last_prompt_of', user)
 
-            req = json.dumps({
-                'method': 'diffuse',
-                'params': {
-                    'prompt': prompt,
-                    **user_config
-                }
-            })
-
-            ec, out = cleos.push_action(
-                'telos.gpu', 'enqueue', [account, req, ''], f'{account}@{permission}'
-            )
-            if ec != 0:
-                await bot.reply_to(message, out)
+            if not prompt:
+                await bot.reply_to(
+                    message,
+                    'no last prompt found, do a txt2img cmd first!'
+                )
                 return
 
-            request_id = int(out)
-            logging.info(f'{request_id} enqueued.')
+            params = {
+                'prompt': prompt,
+                **user_config
+            }
 
-            ipfs_hash = None
-            sha_hash = None
-            for i in range(60):
-                result = cleos.get_table(
-                    'telos.gpu', 'telos.gpu', 'results',
-                    index_position=2,
-                    key_type='i64',
-                    lower_bound=request_id,
-                    upper_bound=request_id
-                )
-                if len(results) > 0:
-                    ipfs_hash = result[0]['ipfs_hash']
-                    sha_hash = result[0]['result_hash']
-                    break
-                else:
-                    await asyncio.sleep(1)
-
-            if not ipfs_hash:
-                await bot.reply_to(message, 'timeout processing request')
-
-            ipfs_link = f'https://ipfs.io/ipfs/{ipfs_hash}/image.png'
-
-            await bot.reply_to(
-                message,
-                ipfs_link + '\n' +
-                prepare_metainfo_caption(message.from_user, result['meta']['meta']),
-                reply_to_message_id=reply_id,
-                reply_markup=build_redo_menu()
-            )
-            return
+            await work_request(
+                bot, cleos, hyperion,
+                message, account, permission, params)
 
         @bot.message_handler(commands=['config'])
         async def set_config(message):
-            rpc_params = {}
+            user = message.from_user.id
             try:
                 attr, val, reply_txt = validate_user_config_request(
                     message.text)
 
                 logging.info(f'user config update: {attr} to {val}')
-                await db_call('update_user_config',
-                    user, req.params['attr'], req.params['val'])
+                await db_call('update_user_config', user, attr, val)
                 logging.info('done')
 
             except BaseException as e:
