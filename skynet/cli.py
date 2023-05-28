@@ -6,6 +6,7 @@ import logging
 import random
 
 from typing import Optional
+from datetime import datetime, timedelta
 from functools import partial
 
 import trio
@@ -16,8 +17,10 @@ import requests
 
 from leap.cleos import CLEOS, default_nodeos_image
 from leap.sugar import get_container, collect_stdout
+from leap.hyperion import HyperionAPI
 
 from .db import open_new_database
+from .ipfs import IPFSDocker
 from .config import *
 from .nodeos import open_cleos, open_nodeos
 from .constants import ALGOS
@@ -91,7 +94,7 @@ def download():
 @click.option(
     '--account', '-A', default=None)
 @click.option(
-    '--permission', '-p', default=None)
+    '--permission', '-P', default=None)
 @click.option(
     '--key', '-k', default=None)
 @click.option(
@@ -266,7 +269,7 @@ def db():
 
 @run.command()
 def nodeos():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(filename='skynet-nodeos.log', level=logging.INFO)
     with open_nodeos(cleanup=False):
         ...
 
@@ -281,6 +284,8 @@ def nodeos():
 @click.option(
     '--node-url', '-n', default='http://skynet.ancap.tech')
 @click.option(
+    '--ipfs-url', '-n', default='/ip4/169.197.142.4/tcp/4001/p2p/12D3KooWKHKPFuqJPeqYgtUJtfZTHvEArRX2qvThYBrjuTuPg2Nx')
+@click.option(
     '--algos', '-A', default=json.dumps(['midj']))
 def dgpu(
     loglevel: str,
@@ -288,6 +293,7 @@ def dgpu(
     permission: str,
     key: str | None,
     node_url: str,
+    ipfs_url: str,
     algos: list[str]
 ):
     from .dgpu import open_dgpu_node
@@ -312,7 +318,9 @@ def dgpu(
             partial(
                 open_dgpu_node,
                 account, permission,
-                cleos, key=key, initial_algos=json.loads(algos)
+                cleos,
+                ipfs_url,
+                key=key, initial_algos=json.loads(algos)
         ))
 
     finally:
@@ -323,11 +331,13 @@ def dgpu(
 @run.command()
 @click.option('--loglevel', '-l', default='warning', help='logging level')
 @click.option(
-    '--account', '-a', default='telegram1')
+    '--account', '-a', default='telegram')
 @click.option(
     '--permission', '-p', default='active')
 @click.option(
     '--key', '-k', default=None)
+@click.option(
+    '--hyperion-url', '-n', default='http://test1.us.telos.net:42001')
 @click.option(
     '--node-url', '-n', default='http://skynet.ancap.tech')
 @click.option(
@@ -342,6 +352,7 @@ def telegram(
     permission: str,
     key: str | None,
     node_url: str,
+    hyperion_url: str,
     db_host: str,
     db_user: str,
     db_pass: str
@@ -357,6 +368,57 @@ def telegram(
             account,
             permission,
             node_url,
+            hyperion_url,
             db_host, db_user, db_pass,
             key=key
     ))
+
+
+@run.command()
+@click.option('--loglevel', '-l', default='warning', help='logging level')
+@click.option(
+    '--container', '-c', default='ipfs_host')
+@click.option(
+    '--hyperion-url', '-n', default='http://127.0.0.1:42001')
+def pinner(loglevel, container):
+    dclient = docker.from_env()
+
+    container = dclient.containers.get(conatiner)
+    ipfs_node = IPFSDocker(container)
+
+    last_pinned: dict[str, datetime] = {}
+
+    def cleanup_pinned(now: datetime):
+        for cid in last_pinned.keys():
+            ts = last_pinned[cid]
+            if now - ts > timedelta(minutes=1):
+                del last_pinned[cid]
+
+    try:
+        while True:
+            # get all submits in the last minute
+            now = dateimte.now()
+            half_min_ago = now - timedelta(seconds=30)
+            submits = hyperion.get_actions(
+                account='telos.gpu',
+                filter='telos.gpu:submit',
+                sort='desc',
+                after=half_min_ago.isoformat()
+            )
+
+            # filter for the ones not already pinned
+            actions = [
+                action
+                for action in submits['actions']
+                if action['act']['data']['ipfs_hash']
+                not in last_pinned
+            ]
+
+            # pin and remember
+            for action in actions:
+                cid = action['act']['data']['ipfs_hash']
+                last_pinned[cid] = now
+
+                ipfs_node.pin(cid)
+
+            cleanup_pinned(now)

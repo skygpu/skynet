@@ -27,6 +27,15 @@ class IPFSDocker:
             ['ipfs', 'pin', 'add', ipfs_hash])
         assert ec == 0
 
+    def connect(self, remote_node: str):
+        ec, out = self._container.exec_run(
+            ['ipfs', 'swarm', 'connect', remote_node])
+        if ec != 0:
+            logging.error(out)
+
+        assert ec == 0
+
+
 @cm
 def open_ipfs_node():
     dclient = docker.from_env()

@@ -57,8 +57,9 @@ async def open_dgpu_node(
     account: str,
     permission: str,
     cleos: CLEOS,
+    remote_ipfs_node: str,
     key: str = None,
-    initial_algos: Optional[List[str]] = None
+    initial_algos: Optional[List[str]] = None,
 ):
 
     logging.basicConfig(level=logging.INFO)
@@ -293,6 +294,7 @@ async def open_dgpu_node(
     config = await get_global_config()
 
     with open_ipfs_node() as ipfs_node:
+        ipfs_node.connect(remote_ipfs_node)
         try:
             while True:
                 maybe_withdraw_all()
