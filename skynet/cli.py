@@ -3,6 +3,7 @@
 import os
 import json
 import logging
+import random
 
 from typing import Optional
 from functools import partial
@@ -88,13 +89,15 @@ def download():
 
 @skynet.command()
 @click.option(
-    '--account', '-a', default='telegram1')
+    '--account', '-A', default=None)
 @click.option(
-    '--permission', '-p', default='active')
+    '--permission', '-p', default=None)
 @click.option(
     '--key', '-k', default=None)
 @click.option(
     '--node-url', '-n', default='http://skynet.ancap.tech')
+@click.option(
+    '--reward', '-r', default='20.0000 GPU')
 @click.option('--algo', '-a', default='midj')
 @click.option(
     '--prompt', '-p', default='a red old tractor in a sunny wheat field')
@@ -103,16 +106,22 @@ def download():
 @click.option('--height', '-h', default=512)
 @click.option('--guidance', '-g', default=10)
 @click.option('--step', '-s', default=26)
-@click.option('--seed', '-S', default=420)
+@click.option('--seed', '-S', default=None)
 @click.option('--upscaler', '-U', default='x4')
 def enqueue(
     account: str,
     permission: str,
     key: str | None,
     node_url: str,
+    reward: str,
     **kwargs
 ):
+    key, account, permission = load_account_info(
+        key, account, permission)
     with open_cleos(node_url, key=key) as cleos:
+        if not kwargs['seed']:
+            kwargs['seed'] = random.randint(0, 10e9)
+
         req = json.dumps({
             'method': 'diffuse',
             'params': kwargs
@@ -120,11 +129,11 @@ def enqueue(
         binary = ''
 
         ec, out = cleos.push_action(
-            'telos.gpu', 'enqueue', [account, req, binary], f'{account}@{permission}'
+            'telos.gpu', 'enqueue', [account, req, binary, reward], f'{account}@{permission}'
         )
 
-        assert ec == 0
         print(collect_stdout(out))
+        assert ec == 0
 
 
 @skynet.command()
@@ -175,10 +184,73 @@ def dequeue(
     node_url: str,
     request_id: int
 ):
+    key, account, permission = load_account_info(
+        key, account, permission)
     with open_cleos(node_url, key=key) as cleos:
         ec, out = cleos.push_action(
             'telos.gpu', 'dequeue', [account, request_id], f'{account}@{permission}'
         )
+
+        print(collect_stdout(out))
+        assert ec == 0
+
+@skynet.command()
+@click.option(
+    '--account', '-a', default='telegram1')
+@click.option(
+    '--permission', '-p', default='active')
+@click.option(
+    '--key', '-k', default=None)
+@click.option(
+    '--node-url', '-n', default='http://skynet.ancap.tech')
+@click.option(
+    '--verifications', '-v', default=1)
+@click.option(
+    '--token-contract', '-c', default='eosio.token')
+@click.option(
+    '--token-symbol', '-S', default='4,GPU')
+def config(
+    account: str,
+    permission: str,
+    key: str | None,
+    node_url: str,
+    verifications: int,
+    token_contract: str,
+    token_symbol: str
+):
+    key, account, permission = load_account_info(
+        key, account, permission)
+    with open_cleos(node_url, key=key) as cleos:
+        ec, out = cleos.push_action(
+            'telos.gpu', 'config', [verifications, token_contract, token_symbol], f'{account}@{permission}'
+        )
+
+        print(collect_stdout(out))
+        assert ec == 0
+
+@skynet.command()
+@click.option(
+    '--account', '-a', default='telegram1')
+@click.option(
+    '--permission', '-p', default='active')
+@click.option(
+    '--key', '-k', default=None)
+@click.option(
+    '--node-url', '-n', default='http://skynet.ancap.tech')
+@click.argument('quantity')
+def deposit(
+    account: str,
+    permission: str,
+    key: str | None,
+    node_url: str,
+    quantity: str
+):
+    key, account, permission = load_account_info(
+        key, account, permission)
+    with open_cleos(node_url, key=key) as cleos:
+        ec, out = cleos.transfer_token(account, 'telos.gpu', quantity)
+
+        print(collect_stdout(out))
         assert ec == 0
 
 @skynet.group()
@@ -219,6 +291,10 @@ def dgpu(
     algos: list[str]
 ):
     from .dgpu import open_dgpu_node
+
+    key, account, permission = load_account_info(
+        key, account, permission)
+
     vtestnet = None
     try:
         dclient = docker.from_env()
@@ -270,6 +346,10 @@ def telegram(
     db_user: str,
     db_pass: str
 ):
+
+    key, account, permission = load_account_info(
+        key, account, permission)
+
     _, _, tg_token, cfg = init_env_from_config()
     asyncio.run(
         run_skynet_telegram(

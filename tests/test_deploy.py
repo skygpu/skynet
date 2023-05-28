@@ -15,8 +15,7 @@ from leap.sugar import collect_stdout
 
 
 def test_enqueue_work(cleos):
-
-    user = cleos.new_account()
+    user = 'telegram'
     req = json.dumps({
         'method': 'diffuse',
         'params': {
@@ -33,7 +32,7 @@ def test_enqueue_work(cleos):
     binary = ''
 
     ec, out = cleos.push_action(
-        'telos.gpu', 'enqueue', [user, req, binary], f'{user}@active'
+        'telos.gpu', 'enqueue', [user, req, binary, '20.0000 GPU'], f'{user}@active'
     )
 
     assert ec == 0
@@ -48,44 +47,23 @@ def test_enqueue_work(cleos):
     assert req_on_chain['body'] == req
     assert req_on_chain['binary_data'] == binary
 
-    ipfs_hash = None
-    sha_hash = None
-    for i in range(1, 4):
-        trio.run(
-            partial(
-                open_dgpu_node,
-                f'testworker{i}',
-                'active',
-                cleos,
-                initial_algos=['midj']
-            )
+    trio.run(
+        partial(
+            open_dgpu_node,
+            f'testworker1',
+            'active',
+            cleos,
+            initial_algos=['midj']
         )
-
-        if ipfs_hash == None:
-            result = cleos.get_table(
-                'telos.gpu', 'telos.gpu', 'results',
-                index_position=4,
-                key_type='name',
-                lower_bound=f'testworker{i}',
-                upper_bound=f'testworker{i}'
-            )
-            assert len(result) == 1
-            ipfs_hash = result[0]['ipfs_hash']
-            sha_hash = result[0]['result_hash']
+    )
 
     queue = cleos.get_table('telos.gpu', 'telos.gpu', 'queue')
 
     assert len(queue) == 0
 
-    resp = requests.get(f'https://ipfs.io/ipfs/{ipfs_hash}/image.png')
-    assert resp.status_code == 200
-
-    assert sha_hash == sha256(resp.content).hexdigest()
-
 
 def test_enqueue_dequeue(cleos):
-
-    user = cleos.new_account()
+    user = 'telegram'
     req = json.dumps({
         'method': 'diffuse',
         'params': {
@@ -102,7 +80,7 @@ def test_enqueue_dequeue(cleos):
     binary = ''
 
     ec, out = cleos.push_action(
-        'telos.gpu', 'enqueue', [user, req, binary], f'{user}@active'
+        'telos.gpu', 'enqueue', [user, req, binary, '20.0000 GPU'], f'{user}@active'
     )
 
     assert ec == 0

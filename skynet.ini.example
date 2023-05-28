@@ -1,3 +1,8 @@
+[skynet.account]
+name = xxxxxxxxxxxx
+permission = active
+key = EOSXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
 [skynet.dgpu]
 hf_home = hf_home
 hf_token = hf_XxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXx

@@ -88,6 +88,10 @@ async def run_skynet_telegram(
     bot = AsyncTeleBot(tg_token)
     logging.info(f'tg_token: {tg_token}')
 
+    async def get_global_config():
+        return (await cleos.aget_table(
+            'telos.gpu', 'telos.gpu', 'config'))[0]
+
     async with open_database_connection(
         db_user, db_pass, db_host
     ) as db_call:
@@ -139,6 +143,7 @@ async def run_skynet_telegram(
                 }
             })
 
+            request_time = datetime.datetime.now().isoformat()
             ec, out = cleos.push_action(
                 'telos.gpu', 'enqueue', [account, req, ''], f'{account}@{permission}'
             )
@@ -150,17 +155,19 @@ async def run_skynet_telegram(
             request_id = int(out)
             logging.info(f'{request_id} enqueued.')
 
+            config = await get_global_config()
+
             ipfs_hash = None
             sha_hash = None
             for i in range(60):
-                results = cleos.get_table(
-                    'telos.gpu', 'telos.gpu', 'results',
-                    index_position=2,
-                    key_type='i64',
-                    lower_bound=request_id,
-                    upper_bound=request_id
+                submits = await hyperion.aget_actions(
+                    account=account,
+                    filter='telos.gpu:submit',
+                    sort='desc',
+                    after=request_Time
                 )
-                if len(results) > 0:
+                actions = submits['actions']
+                if len(actions) > 0:
                     ipfs_hash = results[0]['ipfs_hash']
                     sha_hash = results[0]['result_hash']
                     break

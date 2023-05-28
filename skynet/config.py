@@ -37,3 +37,21 @@ def init_env_from_config(
         tg_token = config['skynet.telegram']['token']
 
     return hf_home, hf_token, tg_token, config
+
+
+def load_account_info(
+    key, account, permission
+    file_path=DEFAULT_CONFIG_PATH
+):
+    _, _, _, config = init_env_from_config()
+
+    if not key:
+        key = config['skynet.account']['key']
+
+    if not account:
+        account = config['skynet.account']['name']
+
+    if not permission:
+        permission = config['skynet.account']['permission']
+
+    return 
