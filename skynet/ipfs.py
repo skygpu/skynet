@@ -42,6 +42,14 @@ class IPFSDocker:
 def open_ipfs_node():
     dclient = docker.from_env()
 
+    staging_dir = (Path().resolve() / 'ipfs-docker-staging').mkdir(
+        parents=True, exist_ok=True)
+    data_dir = (Path().resolve() / 'ipfs-docker-data').mkdir(
+        parents=True, exist_ok=True)
+
+    export_target = '/export'
+    data_target = '/data/ipfs'
+
     container = dclient.containers.run(
         'ipfs/go-ipfs:latest',
         name='skynet-ipfs',
@@ -51,25 +59,17 @@ def open_ipfs_node():
             '5001/tcp': ('127.0.0.1', 5001)
         },
         mounts=[
-            Mount(
-                '/export',
-                str(Path().resolve() / 'tmp/ipfs-docker-staging'),
-                'bind'
-            ),
-            Mount(
-                '/data/ipfs',
-                str(Path().resolve() / 'tmp/ipfs-docker-data'),
-                'bind'
-            )
+            Mount(export_target, str(staging_dir), 'bind'),
+            Mount(data_target, str(data_dir), 'bind')
         ],
         detach=True,
         remove=True
     )
     uid = os.getuid()
     gid = os.getgid()
-    ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', '/export'])
+    ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', export_target])
     assert ec == 0
-    ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', '/data/ipfs'])
+    ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', data_target])
     assert ec == 0
     try:
 
