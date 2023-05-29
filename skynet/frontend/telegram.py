@@ -7,8 +7,9 @@ import logging
 import asyncio
 import traceback
 
+from decimal import Decimal
 from hashlib import sha256
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import asks
 import docker
@@ -46,7 +47,7 @@ def build_redo_menu():
     return inline_keyboard
 
 
-def prepare_metainfo_caption(tguser, worker: str, meta: dict) -> str:
+def prepare_metainfo_caption(tguser, worker: str, reward: str, meta: dict) -> str:
     prompt = meta["prompt"]
     if len(prompt) > 256:
         prompt = prompt[:256]
@@ -56,7 +57,9 @@ def prepare_metainfo_caption(tguser, worker: str, meta: dict) -> str:
     else:
         user = f'{tguser.first_name} id: {tguser.id}'
 
-    meta_str = f'<u>by {user}</u> <i>performed by {worker}</i>\n'
+    meta_str = f'<u>by {user}</u>'
+    meta_str += f'<i>performed by {worker}</i>\n'
+    meta_str += f'<b><u>reward: {reward}</u></b>\n'
 
     meta_str += f'<code>prompt:</code> {prompt}\n'
     meta_str += f'<code>seed: {meta["seed"]}</code>\n'
@@ -68,7 +71,7 @@ def prepare_metainfo_caption(tguser, worker: str, meta: dict) -> str:
     if meta['upscaler']:
         meta_str += f'<code>upscaler: {meta["upscaler"]}</code>\n'
 
-    meta_str += f'<b><u>Made with Skynet {VERSION}</u></b>\n'
+    meta_str += f'<b><u>Made with Skynet v{VERSION}</u></b>\n'
     meta_str += f'<b>JOIN THE SWARM: @skynetgpu</b>'
     return meta_str
 
@@ -78,7 +81,8 @@ def generate_reply_caption(
     params: dict,
     ipfs_hash: str,
     tx_hash: str,
-    worker: str
+    worker: str,
+    reward: str
 ):
     ipfs_link = hlink(
         'Get your image on IPFS',
@@ -89,7 +93,7 @@ def generate_reply_caption(
         f'http://test1.us.telos.net:42001/v2/explore/transaction/{tx_hash}'
     )
 
-    meta_info = prepare_metainfo_caption(tguser, worker, params)
+    meta_info = prepare_metainfo_caption(tguser, worker, reward, params)
 
     final_msg = '\n'.join([
         'Worker finished your task!',
@@ -132,27 +136,36 @@ async def work_request(
     binary_data: str = ''
 ):
     if params['seed'] == None:
-        params['seed'] = random.randint(0, 9e18)
+        params['seed'] = random.randint(0, 0xFFFFFFFF)
+
+    sanitized_params = {}
+    for key, val in params.items():
+        if isinstance(val, Decimal):
+            val = int(val)
+
+        sanitized_params[key] = val
 
     body = json.dumps({
         'method': 'diffuse',
-        'params': params
+        'params': sanitized_params
     })
     request_time = datetime.now().isoformat()
 
+    reward = '20.0000 GPU'
     ec, out = cleos.push_action(
-        'telos.gpu', 'enqueue', [account, body, binary_data, '20.0000 GPU'], f'{account}@{permission}'
+        'telos.gpu', 'enqueue', [account, body, binary_data, reward], f'{account}@{permission}'
     )
     out = collect_stdout(out)
     if ec != 0:
         await bot.reply_to(message, out)
         return
 
-    nonce = await get_user_nonce(cleos, account)
-    request_hash = sha256(
-        (str(nonce) + body + binary_data).encode('utf-8')).hexdigest().upper()
+    request_id, nonce = out.split(':')
 
-    request_id = int(out)
+    request_hash = sha256(
+        (nonce + body + binary_data).encode('utf-8')).hexdigest().upper()
+
+    request_id = int(request_id)
     logging.info(f'{request_id} enqueued.')
 
     config = await get_global_config(cleos)
@@ -177,6 +190,7 @@ async def work_request(
             data = actions[0]['act']['data']
             ipfs_hash = data['ipfs_hash']
             worker = data['worker']
+            logging.info('Found matching submit!')
             break
 
         await asyncio.sleep(1)
@@ -190,7 +204,7 @@ async def work_request(
     resp = await get_ipfs_file(ipfs_link)
 
     caption = generate_reply_caption(
-        user, params, ipfs_hash, tx_hash, worker)
+        user, params, ipfs_hash, tx_hash, worker, reward)
 
     if not resp or resp.status_code != 200:
         logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
@@ -469,6 +483,19 @@ async def run_skynet_telegram(
                     binary_data=binary
                 )
 
+            @bot.message_handler(commands=['queue'])
+            async def queue(message):
+                an_hour_ago = datetime.now() - timedelta(hours=1)
+                queue = await cleos.aget_table(
+                    'telos.gpu', 'telos.gpu', 'queue',
+                    index_position=2,
+                    key_type='i64',
+                    sort='desc',
+                    lower_bound=int(an_hour_ago.timestamp())
+                )
+                await bot.reply_to(
+                    message, f'Total requests on skynet queue: {len(queue)}')
+
             @bot.message_handler(commands=['redo'])
             async def redo(message):
                 await _redo(message)
@@ -494,6 +521,7 @@ async def run_skynet_telegram(
             async def user_stats(message):
                 user = message.from_user.id
 
+                await db_call('get_or_create_user', user.id)
                 generated, joined, role = await db_call('get_user_stats', user)
 
                 stats_str = f'generated: {generated}\n'
