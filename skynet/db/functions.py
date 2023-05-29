@@ -41,9 +41,9 @@ CREATE TABLE IF NOT EXISTS skynet.user_config(
     step INT NOT NULL,
     width INT NOT NULL,
     height INT NOT NULL,
-    seed BIGINT,
-    guidance REAL NOT NULL,
-    strength REAL NOT NULL,
+    seed NUMERIC,
+    guidance DECIMAL NOT NULL,
+    strength DECIMAL NOT NULL,
     upscaler VARCHAR(128)
 );
 ALTER TABLE skynet.user_config

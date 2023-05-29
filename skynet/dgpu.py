@@ -325,7 +325,7 @@ async def open_dgpu_node(
                             binary = await get_input_data(req['binary_data'])
 
                             hash_str = (
-                                str(await get_user_nonce(req['user']))
+                                str(req['nonce'])
                                 +
                                 req['body']
                                 +
