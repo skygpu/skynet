@@ -384,21 +384,65 @@ def telegram(
     ))
 
 
+class IPFSHTTP:
+
+    def __init__(self, endpoint: str):
+        self.endpoint = endpoint
+
+    def pin(self, cid: str):
+        return requests.post(
+            f'{self.endpoint}/api/v0/pin/add',
+            params={'arg': cid}
+        )
+
+
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='logging level')
 @click.option(
-    '--container', '-c', default='ipfs_host')
+    '--ipfs-rpc', '-i', default='http://127.0.0.1:5001')
 @click.option(
     '--hyperion-url', '-n', default='http://127.0.0.1:42001')
-def pinner(loglevel, container, hyperion_url):
+def pinner(loglevel, ipfs_rpc, hyperion_url):
     logging.basicConfig(level=loglevel)
-    dclient = docker.from_env()
-
-    container = dclient.containers.get(container)
-    ipfs_node = IPFSDocker(container)
+    ipfs_node = IPFSHTTP(ipfs_rpc)
     hyperion = HyperionAPI(hyperion_url)
 
     last_pinned: dict[str, datetime] = {}
+
+    def capture_enqueues(half_min_ago: datetime):
+        # get all enqueues with binary data
+        # in the last minute
+        enqueues = hyperion.get_actions(
+            account='telos.gpu',
+            filter='telos.gpu:enqueue',
+            sort='desc',
+            after=half_min_ago.isoformat()
+        )
+
+        cids = []
+        for action in enqueues['actions']:
+            cid = action['act']['data']['binary_data']
+            if cid and cid not in last_pinned:
+                cids.append(cid)
+
+        return cids
+
+    def capture_submits(half_min_ago: datetime):
+        # get all submits in the last minute
+        submits = hyperion.get_actions(
+            account='telos.gpu',
+            filter='telos.gpu:submit',
+            sort='desc',
+            after=half_min_ago.isoformat()
+        )
+
+        cids = []
+        for action in submits['actions']:
+            cid = action['act']['data']['ipfs_hash']
+            if cid and cid not in last_pinned:
+                cids.append(cid)
+
+        return cids
 
     def cleanup_pinned(now: datetime):
         for cid in set(last_pinned.keys()):
@@ -411,50 +455,23 @@ def pinner(loglevel, container, hyperion_url):
             now = datetime.now()
             half_min_ago = now - timedelta(seconds=30)
 
-            # get all enqueues with binary data
-            # in the last minute
-            enqueues = hyperion.get_actions(
-                account='telos.gpu',
-                filter='telos.gpu:enqueue',
-                sort='desc',
-                after=half_min_ago.isoformat()
-            )
-
-            # get all submits in the last minute
-            submits = hyperion.get_actions(
-                account='telos.gpu',
-                filter='telos.gpu:submit',
-                sort='desc',
-                after=half_min_ago.isoformat()
-            )
-
             # filter for the ones not already pinned
-            cids = [
-                *[
-                    action['act']['data']['binary_data']
-                    for action in enqueues['actions']
-                    if action['act']['data']['binary_data']
-                    not in last_pinned
-                ],
-                *[
-                    action['act']['data']['ipfs_hash']
-                    for action in submits['actions']
-                    if action['act']['data']['ipfs_hash']
-                    not in last_pinned
-                ]
-            ]
+            cids = [*capture_enqueues(half_min_ago), *capture_submits(half_min_ago)]
 
             # pin and remember
             for cid in cids:
                 last_pinned[cid] = now
 
-                ipfs_node.pin(cid)
+                resp = ipfs_node.pin(cid)
+                if resp.status_code != 200:
+                    logging.error(f'error pinning {cid}:\n{resp.text}')
 
-                logging.info(f'pinned {cid}')
+                else:
+                    logging.info(f'pinned {cid}')
 
             cleanup_pinned(now)
 
-            time.sleep(1)
+            time.sleep(0.1)
 
     except KeyboardInterrupt:
         ...
