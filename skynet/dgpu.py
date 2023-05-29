@@ -27,7 +27,7 @@ from realesrgan import RealESRGANer
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from diffusers.models import UNet2DConditionModel
 
-from .ipfs import IPFSDocker, open_ipfs_node
+from .ipfs import IPFSDocker, open_ipfs_node, get_ipfs_file
 from .utils import *
 from .constants import *
 
@@ -60,6 +60,7 @@ async def open_dgpu_node(
     remote_ipfs_node: str,
     key: str = None,
     initial_algos: Optional[List[str]] = None,
+    auto_withdraw: bool = True
 ):
 
     logging.basicConfig(level=logging.INFO)
@@ -103,7 +104,7 @@ async def open_dgpu_node(
                         logging.info(f'resized it to {image.size}')
 
                 if algo not in models:
-                    if algo not in ALGOS:
+                    if params['algo'] not in ALGOS:
                         raise DGPUComputeError(f'Unknown algo \"{algo}\"')
 
                     logging.info(f'{algo} not in loaded models, swapping...')
@@ -266,7 +267,7 @@ async def open_dgpu_node(
     def publish_on_ipfs(img_sha: str, raw_img: bytes):
         logging.info('publish_on_ipfs')
         img = Image.open(io.BytesIO(raw_img))
-        img.save(f'tmp/ipfs-docker-staging/image.png')
+        img.save(f'ipfs-docker-staging/image.png')
 
         ipfs_hash = ipfs_node.add('image.png')
 
@@ -291,13 +292,24 @@ async def open_dgpu_node(
         print(collect_stdout(out))
         assert ec == 0
 
+    async def get_input_data(ipfs_hash: str) -> bytes:
+        if ipfs_hash == '':
+            return b''
+
+        resp = await get_ipfs_file(f'http://test1.us.telos.net:8080/ipfs/{ipfs_hash}/image.png')
+        if resp.status_code != 200:
+            raise DGPUComputeError('Couldn\'t gather input data from ipfs')
+
+        return resp.raw
+
     config = await get_global_config()
 
     with open_ipfs_node() as ipfs_node:
         ipfs_node.connect(remote_ipfs_node)
         try:
             while True:
-                maybe_withdraw_all()
+                if auto_withdraw:
+                    maybe_withdraw_all()
 
                 queue = await get_work_requests_last_hour()
 
@@ -314,11 +326,15 @@ async def open_dgpu_node(
 
                         # parse request
                         body = json.loads(req['body'])
-                        binary = bytes.fromhex(req['binary_data'])
+
+                        binary = await get_input_data(req['binary_data'])
+
                         hash_str = (
                             str(await get_user_nonce(req['user']))
                             +
                             req['body']
+                            +
+                            req['binary_data']
                         )
                         logging.info(f'hashing: {hash_str}')
                         request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
