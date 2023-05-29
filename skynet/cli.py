@@ -21,7 +21,7 @@ from leap.sugar import get_container, collect_stdout
 from leap.hyperion import HyperionAPI
 
 from .db import open_new_database
-from .ipfs import IPFSDocker
+from .ipfs import open_ipfs_node
 from .config import *
 from .nodeos import open_cleos, open_nodeos
 from .constants import ALGOS
@@ -395,6 +395,13 @@ class IPFSHTTP:
             params={'arg': cid}
         )
 
+
+@run.command()
+@click.option('--loglevel', '-l', default='INFO', help='logging level')
+@click.option('--name', '-n', default='skynet-ipfs', help='container name')
+def ipfs(loglevel, name):
+    with open_ipfs_node(name=name):
+        ...
 
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='logging level')

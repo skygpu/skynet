@@ -57,7 +57,7 @@ def prepare_metainfo_caption(tguser, worker: str, reward: str, meta: dict) -> st
     else:
         user = f'{tguser.first_name} id: {tguser.id}'
 
-    meta_str = f'<u>by {user}</u>'
+    meta_str = f'<u>by {user}</u>\n'
     meta_str += f'<i>performed by {worker}</i>\n'
     meta_str += f'<b><u>reward: {reward}</u></b>\n'
 
