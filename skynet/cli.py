@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import os
+import time
 import json
 import logging
 import random
@@ -376,21 +377,23 @@ def telegram(
 
 
 @run.command()
-@click.option('--loglevel', '-l', default='warning', help='logging level')
+@click.option('--loglevel', '-l', default='INFO', help='logging level')
 @click.option(
     '--container', '-c', default='ipfs_host')
 @click.option(
     '--hyperion-url', '-n', default='http://127.0.0.1:42001')
-def pinner(loglevel, container):
+def pinner(loglevel, container, hyperion_url):
+    logging.basicConfig(level=loglevel)
     dclient = docker.from_env()
 
-    container = dclient.containers.get(conatiner)
+    container = dclient.containers.get(container)
     ipfs_node = IPFSDocker(container)
+    hyperion = HyperionAPI(hyperion_url)
 
     last_pinned: dict[str, datetime] = {}
 
     def cleanup_pinned(now: datetime):
-        for cid in last_pinned.keys():
+        for cid in set(last_pinned.keys()):
             ts = last_pinned[cid]
             if now - ts > timedelta(minutes=1):
                 del last_pinned[cid]
@@ -398,7 +401,7 @@ def pinner(loglevel, container):
     try:
         while True:
             # get all submits in the last minute
-            now = dateimte.now()
+            now = datetime.now()
             half_min_ago = now - timedelta(seconds=30)
             submits = hyperion.get_actions(
                 account='telos.gpu',
@@ -422,7 +425,11 @@ def pinner(loglevel, container):
 
                 ipfs_node.pin(cid)
 
+                logging.info(f'pinned {cid}')
+
             cleanup_pinned(now)
+
+            time.sleep(1)
 
     except KeyboardInterrupt:
         ...
