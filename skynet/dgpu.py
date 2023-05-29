@@ -222,7 +222,8 @@ async def open_dgpu_node(
             'telos.gpu',
             'workbegin',
             [account, request_id],
-            f'{account}@{permission}'
+            f'{account}@{permission}',
+            retry=0
         )
 
     def cancel_work(request_id: int, reason: str):
@@ -231,7 +232,8 @@ async def open_dgpu_node(
             'telos.gpu',
             'workcancel',
             [account, request_id, reason],
-            f'{account}@{permission}'
+            f'{account}@{permission}',
+            retry=2
         )
 
     def maybe_withdraw_all():
@@ -283,7 +285,8 @@ async def open_dgpu_node(
             'telos.gpu',
             'submit',
             [account, request_id, request_hash, result_hash, ipfs_hash],
-            f'{account}@{permission}'
+            f'{account}@{permission}',
+            retry=0
         )
 
         if ec != 0:
