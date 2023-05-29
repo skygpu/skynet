@@ -283,6 +283,8 @@ def nodeos():
 @click.option(
     '--key', '-k', default=None)
 @click.option(
+    '--auto-withdraw', '-w', default=True)
+@click.option(
     '--node-url', '-n', default='http://skynet.ancap.tech')
 @click.option(
     '--ipfs-url', '-n', default='/ip4/169.197.142.4/tcp/4001/p2p/12D3KooWKHKPFuqJPeqYgtUJtfZTHvEArRX2qvThYBrjuTuPg2Nx')
@@ -293,6 +295,7 @@ def dgpu(
     account: str,
     permission: str,
     key: str | None,
+    auto_withdraw: bool,
     node_url: str,
     ipfs_url: str,
     algos: list[str]
@@ -321,6 +324,7 @@ def dgpu(
                 account, permission,
                 cleos,
                 ipfs_url,
+                auto_withdraw=auto_withdraw,
                 key=key, initial_algos=json.loads(algos)
         ))
 
@@ -342,6 +346,8 @@ def dgpu(
 @click.option(
     '--node-url', '-n', default='http://skynet.ancap.tech')
 @click.option(
+    '--ipfs-url', '-n', default='/ip4/169.197.142.4/tcp/4001/p2p/12D3KooWKHKPFuqJPeqYgtUJtfZTHvEArRX2qvThYBrjuTuPg2Nx')
+@click.option(
     '--db-host', '-h', default='localhost:5432')
 @click.option(
     '--db-user', '-u', default='skynet')
@@ -352,8 +358,9 @@ def telegram(
     account: str,
     permission: str,
     key: str | None,
-    node_url: str,
     hyperion_url: str,
+    ipfs_url: str,
+    node_url: str,
     db_host: str,
     db_user: str,
     db_pass: str
@@ -372,6 +379,7 @@ def telegram(
             node_url,
             hyperion_url,
             db_host, db_user, db_pass,
+            remote_ipfs_node=ipfs_url,
             key=key
     ))
 
@@ -400,9 +408,19 @@ def pinner(loglevel, container, hyperion_url):
 
     try:
         while True:
-            # get all submits in the last minute
             now = datetime.now()
             half_min_ago = now - timedelta(seconds=30)
+
+            # get all enqueues with binary data
+            # in the last minute
+            enqueues = hyperion.get_actions(
+                account='telos.gpu',
+                filter='telos.gpu:enqueue',
+                sort='desc',
+                after=half_min_ago.isoformat()
+            )
+
+            # get all submits in the last minute
             submits = hyperion.get_actions(
                 account='telos.gpu',
                 filter='telos.gpu:submit',
@@ -411,16 +429,23 @@ def pinner(loglevel, container, hyperion_url):
             )
 
             # filter for the ones not already pinned
-            actions = [
-                action
-                for action in submits['actions']
-                if action['act']['data']['ipfs_hash']
-                not in last_pinned
+            cids = [
+                *[
+                    action['act']['data']['binary_data']
+                    for action in enqueues['actions']
+                    if action['act']['data']['binary_data']
+                    not in last_pinned
+                ],
+                *[
+                    action['act']['data']['ipfs_hash']
+                    for action in submits['actions']
+                    if action['act']['data']['ipfs_hash']
+                    not in last_pinned
+                ]
             ]
 
             # pin and remember
-            for action in actions:
-                cid = action['act']['data']['ipfs_hash']
+            for cid in cids:
                 last_pinned[cid] = now
 
                 ipfs_node.pin(cid)
