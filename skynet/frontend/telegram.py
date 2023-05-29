@@ -128,9 +128,8 @@ async def work_request(
     account: str,
     permission: str,
     params: dict,
-    ipfs_node,
     file_id: str | None = None,
-    file_path: str | None = None
+    binary_data: str = ''
 ):
     if params['seed'] == None:
         params['seed'] = random.randint(0, 9e18)
@@ -141,30 +140,8 @@ async def work_request(
     })
     request_time = datetime.now().isoformat()
 
-    if file_id:
-        image_raw = await bot.download_file(file_path)
-        with Image.open(io.BytesIO(image_raw)) as image:
-            w, h = image.size
-
-            if w > 512 or h > 512:
-                logging.warning(f'user sent img of size {image.size}')
-                image.thumbnail((512, 512))
-                logging.warning(f'resized it to {image.size}')
-
-            image.save(f'ipfs-docker-staging/image.png', format='PNG')
-
-            ipfs_hash = ipfs_node.add('image.png')
-            ipfs_node.pin(ipfs_hash)
-
-            logging.info(f'published input image {ipfs_hash} on ipfs')
-
-            binary = ipfs_hash
-
-    else:
-        binary = ''
-
     ec, out = cleos.push_action(
-        'telos.gpu', 'enqueue', [account, body, binary, '20.0000 GPU'], f'{account}@{permission}'
+        'telos.gpu', 'enqueue', [account, body, binary_data, '20.0000 GPU'], f'{account}@{permission}'
     )
     out = collect_stdout(out)
     if ec != 0:
@@ -173,7 +150,7 @@ async def work_request(
 
     nonce = await get_user_nonce(cleos, account)
     request_hash = sha256(
-        (str(nonce) + body + binary).encode('utf-8')).hexdigest().upper()
+        (str(nonce) + body + binary_data).encode('utf-8')).hexdigest().upper()
 
     request_id = int(out)
     logging.info(f'{request_id} enqueued.')
@@ -209,13 +186,13 @@ async def work_request(
         return
 
     # attempt to get the image and send it
-    resp = await get_ipfs_file(
-        f'http://test1.us.telos.net:8080/ipfs/{ipfs_hash}/image.png')
+    ipfs_link = f'http://test1.us.telos.net:8080/ipfs/{ipfs_hash}/image.png'
+    resp = await get_ipfs_file(ipfs_link)
 
     caption = generate_reply_caption(
         user, params, ipfs_hash, tx_hash, worker)
 
-    if resp.status_code != 200:
+    if not resp or resp.status_code != 200:
         logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
         await bot.reply_to(
             message,
@@ -233,11 +210,10 @@ async def work_request(
                     InputMediaPhoto(file_id),
                     InputMediaPhoto(
                         resp.raw,
-                        caption=caption
+                        caption=caption,
+                        parse_mode='HTML'
                     )
                 ],
-                reply_markup=build_redo_menu(),
-                parse_mode='HTML'
             )
 
         else:  # txt2img
@@ -307,10 +283,18 @@ async def run_skynet_telegram(
             async def send_cool_words(message):
                 await bot.reply_to(message, '\n'.join(COOL_WORDS))
 
-            @bot.message_handler(commands=['txt2img'])
-            async def send_txt2img(message):
-                user = message.from_user
-                chat = message.chat
+            async def _generic_txt2img(message_or_query):
+                if isinstance(message_or_query, CallbackQuery):
+                    query = message_or_query
+                    message = query.message
+                    user = query.from_user
+                    chat = query.message.chat
+
+                else:
+                    message = message_or_query
+                    user = message.from_user
+                    chat = message.chat
+
                 reply_id = None
                 if chat.type == 'group' and chat.id == GROUP_ID:
                     reply_id = message.message_id
@@ -332,19 +316,30 @@ async def run_skynet_telegram(
                     **user_config
                 }
 
-                await db_call('update_user_stats', user.id, last_prompt=prompt)
+                await db_call(
+                    'update_user_stats', user.id, 'txt2img', last_prompt=prompt)
 
-                await work_request(
+                ec = await work_request(
                     bot, cleos, hyperion,
                     message, user, chat,
-                    account, permission, params,
-                    ipfs_node
+                    account, permission, params
                 )
 
-            @bot.message_handler(func=lambda message: True, content_types=['photo'])
-            async def send_img2img(message):
-                user = message.from_user
-                chat = message.chat
+                if ec == 0:
+                    await db_call('increment_generated', user.id)
+
+            async def _generic_img2img(message_or_query):
+                if isinstance(message_or_query, CallbackQuery):
+                    query = message_or_query
+                    message = query.message
+                    user = query.from_user
+                    chat = query.message.chat
+
+                else:
+                    message = message_or_query
+                    user = message.from_user
+                    chat = message.chat
+
                 reply_id = None
                 if chat.type == 'group' and chat.id == GROUP_ID:
                     reply_id = message.message_id
@@ -364,6 +359,22 @@ async def run_skynet_telegram(
 
                 file_id = message.photo[-1].file_id
                 file_path = (await bot.get_file(file_id)).file_path
+                image_raw = await bot.download_file(file_path)
+
+                with Image.open(io.BytesIO(image_raw)) as image:
+                    w, h = image.size
+
+                    if w > 512 or h > 512:
+                        logging.warning(f'user sent img of size {image.size}')
+                        image.thumbnail((512, 512))
+                        logging.warning(f'resized it to {image.size}')
+
+                    image.save(f'ipfs-docker-staging/image.png', format='PNG')
+
+                    ipfs_hash = ipfs_node.add('image.png')
+                    ipfs_node.pin(ipfs_hash)
+
+                    logging.info(f'published input image {ipfs_hash} on ipfs')
 
                 logging.info(f'mid: {message.id}')
 
@@ -376,16 +387,34 @@ async def run_skynet_telegram(
                     **user_config
                 }
 
-                await db_call('update_user_stats', user.id, last_prompt=prompt)
+                await db_call(
+                    'update_user_stats',
+                    user.id,
+                    'img2img',
+                    last_file=file_id,
+                    last_prompt=prompt,
+                    last_binary=ipfs_hash
+                )
 
-                await work_request(
+                ec = await work_request(
                     bot, cleos, hyperion,
                     message, user, chat,
                     account, permission, params,
-                    ipfs_node,
-                    file_id=file_id, file_path=file_path
+                    file_id=file_id,
+                    binary_data=ipfs_hash
                 )
 
+                if ec == 0:
+                    await db_call('increment_generated', user.id)
+
+            @bot.message_handler(commands=['txt2img'])
+            async def send_txt2img(message):
+                await _generic_txt2img(message)
+
+            @bot.message_handler(func=lambda message: True, content_types=[
+                'photo', 'document'])
+            async def send_img2img(message):
+                await _generic_img2img(message)
 
             @bot.message_handler(commands=['img2img'])
             async def img2img_missing_image(message):
@@ -406,11 +435,14 @@ async def run_skynet_telegram(
                     user = message.from_user
                     chat = message.chat
 
-                reply_id = None
-                if chat.type == 'group' and chat.id == GROUP_ID:
-                    reply_id = message.message_id
-
+                method = await db_call('get_last_method_of', user.id)
                 prompt = await db_call('get_last_prompt_of', user.id)
+
+                file_id = None
+                binary = ''
+                if method == 'img2img':
+                    file_id = await db_call('get_last_file_of', user.id)
+                    binary = await db_call('get_last_binary_of', user.id)
 
                 if not prompt:
                     await bot.reply_to(
@@ -433,7 +465,8 @@ async def run_skynet_telegram(
                     bot, cleos, hyperion,
                     message, user, chat,
                     account, permission, params,
-                    ipfs_node
+                    file_id=file_id,
+                    binary_data=binary
                 )
 
             @bot.message_handler(commands=['redo'])
@@ -484,7 +517,6 @@ async def run_skynet_telegram(
                     return
 
                 await bot.send_message(GROUP_ID, message.text[4:])
-
 
             @bot.message_handler(func=lambda message: True)
             async def echo_message(message):

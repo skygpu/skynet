@@ -25,11 +25,14 @@ DB_INIT_SQL = '''
 CREATE SCHEMA IF NOT EXISTS skynet;
 
 CREATE TABLE IF NOT EXISTS skynet.user(
-   id SERIAL PRIMARY KEY NOT NULL,
-   generated INT NOT NULL,
-   joined TIMESTAMP NOT NULL,
-   last_prompt TEXT,
-   role VARCHAR(128) NOT NULL
+    id SERIAL PRIMARY KEY NOT NULL,
+    generated INT NOT NULL,
+    joined TIMESTAMP NOT NULL,
+    last_method TEXT,
+    last_prompt TEXT,
+    last_file   TEXT,
+    last_binary TEXT,
+    role VARCHAR(128) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS skynet.user_config(
@@ -175,10 +178,24 @@ async def get_user_config(conn, user: int):
 async def get_user(conn, uid: int):
     return await get_user_config(conn, uid)
 
+async def get_last_method_of(conn, user: int):
+    stmt = await conn.prepare(
+        'SELECT last_method FROM skynet.user WHERE id = $1')
+    return await stmt.fetchval(user)
 
 async def get_last_prompt_of(conn, user: int):
     stmt = await conn.prepare(
         'SELECT last_prompt FROM skynet.user WHERE id = $1')
+    return await stmt.fetchval(user)
+
+async def get_last_file_of(conn, user: int):
+    stmt = await conn.prepare(
+        'SELECT last_file FROM skynet.user WHERE id = $1')
+    return await stmt.fetchval(user)
+
+async def get_last_binary_of(conn, user: int):
+    stmt = await conn.prepare(
+        'SELECT last_binary FROM skynet.user WHERE id = $1')
     return await stmt.fetchval(user)
 
 
@@ -192,12 +209,15 @@ async def new_user(conn, uid: int):
     async with conn.transaction():
         stmt = await conn.prepare('''
             INSERT INTO skynet.user(
-                id, generated, joined, last_prompt, role)
+                id, generated, joined,
+                last_method, last_prompt, last_file, last_binary,
+                role
+            )
 
-            VALUES($1, $2, $3, $4, $5)
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8)
         ''')
         await stmt.fetch(
-            uid, 0, date, None, DEFAULT_ROLE
+            uid, 0, date, 'txt2img', None, None, None, DEFAULT_ROLE
         )
 
         stmt = await conn.prepare('''
@@ -222,7 +242,8 @@ async def get_or_create_user(conn, uid: str):
     user = await get_user(conn, uid)
 
     if not user:
-        user = await new_user(conn, uid)
+        await new_user(conn, uid)
+        user = await get_user(conn, uid)
 
     return user
 
@@ -253,11 +274,7 @@ async def get_user_stats(conn, user: int):
     record = records[0]
     return record
 
-async def update_user_stats(
-    conn,
-    user: int,
-    last_prompt: Optional[str] = None
-):
+async def increment_generated(conn, user: int):
     stmt = await conn.prepare('''
         UPDATE skynet.user
         SET generated = generated + 1
@@ -265,5 +282,20 @@ async def update_user_stats(
     ''')
     await stmt.fetch(user)
 
+async def update_user_stats(
+    conn,
+    user: int,
+    method: str,
+    last_prompt: str | None = None,
+    last_file: str | None = None,
+    last_binary: str | None = None
+):
+    await update_user(conn, user, 'last_method', method)
     if last_prompt:
         await update_user(conn, user, 'last_prompt', last_prompt)
+    if last_file:
+        await update_user(conn, user, 'last_file', last_file)
+    if last_binary:
+        await update_user(conn, user, 'last_binary', last_binary)
+
+    logging.info((method, last_prompt, last_binary))
