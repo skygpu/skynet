@@ -140,6 +140,34 @@ def enqueue(
         print(collect_stdout(out))
         assert ec == 0
 
+@skynet.command()
+@click.option('--loglevel', '-l', default='INFO', help='Logging level')
+@click.option(
+    '--account', '-A', default='telos.gpu')
+@click.option(
+    '--permission', '-P', default='active')
+@click.option(
+    '--key', '-k', default=None)
+@click.option(
+    '--node-url', '-n', default='https://skynet.ancap.tech')
+def clean(
+    loglevel: str,
+    account: str,
+    permission: str,
+    key: str | None,
+    node_url: str,
+):
+    logging.basicConfig(level=loglevel)
+    cleos = CLEOS(None, None, url=node_url, remote=node_url)
+    trio.run(
+        partial(
+            cleos.a_push_action,
+            'telos.gpu',
+            'clean',
+            {},
+            account, key, permission=permission
+        )
+    )
 
 @skynet.command()
 @click.option(
@@ -435,7 +463,7 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
                 limit=1000
             )
 
-            logging.info(f'got {len(enqueues)} enqueue actions.')
+            logging.info(f'got {len(enqueues["actions"])} enqueue actions.')
 
             cids = []
             for action in enqueues['actions']:
@@ -455,7 +483,7 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
                 limit=1000
             )
 
-            logging.info(f'got {len(submits)} submits actions.')
+            logging.info(f'got {len(submits["actions"])} submits actions.')
 
             cids = []
             for action in submits['actions']:
