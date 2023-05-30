@@ -152,13 +152,23 @@ async def work_request(
     request_time = datetime.now().isoformat()
 
     reward = '20.0000 GPU'
-    ec, out = cleos.push_action(
-        'telos.gpu', 'enqueue', [account, body, binary_data, reward], f'{account}@{permission}'
+    res = await cleos.s_push_action(
+        'telos.gpu',
+        'enqueue',
+        {
+            'user': Name(account),
+            'request_body': body,
+            'binary_data': binary_data,
+            'reward': asset_from_str(reward)
+        },
+        account, key, permission=permission
     )
-    out = collect_stdout(out)
-    if ec != 0:
-        await bot.reply_to(message, out)
+
+    if 'code' in res:
+        await bot.reply_to(message, json.dumps(res, indent=4))
         return
+
+    out = collect_stdout(res)
 
     request_id, nonce = out.split(':')
 

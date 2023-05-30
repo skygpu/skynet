@@ -449,17 +449,14 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
     ipfs_node = IPFSHTTP(ipfs_rpc)
     hyperion = HyperionAPI(hyperion_url)
 
-    already_pinned: set[str] = set()
-
     async def _async_main():
 
-        async def capture_enqueues(last_hour: datetime):
-            # get all enqueuesin the last hour
+        async def capture_enqueues(after: datetime):
             enqueues = await hyperion.aget_actions(
                 account='telos.gpu',
                 filter='telos.gpu:enqueue',
                 sort='desc',
-                after=last_hour.isoformat(),
+                after=after.isoformat(),
                 limit=1000
             )
 
@@ -468,18 +465,17 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
             cids = []
             for action in enqueues['actions']:
                 cid = action['act']['data']['binary_data']
-                if cid and cid not in already_pinned:
+                if cid:
                     cids.append(cid)
 
             return cids
 
-        async def capture_submits(last_hour: datetime):
-            # get all submits in the last hour 
+        async def capture_submits(after: datetime):
             submits = await hyperion.aget_actions(
                 account='telos.gpu',
                 filter='telos.gpu:submit',
                 sort='desc',
-                after=last_hour.isoformat(),
+                after=after.isoformat(),
                 limit=1000
             )
 
@@ -488,14 +484,11 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
             cids = []
             for action in submits['actions']:
                 cid = action['act']['data']['ipfs_hash']
-                if cid and cid not in already_pinned:
-                    cids.append(cid)
+                cids.append(cid)
 
             return cids
 
         async def task_pin(cid: str):
-            already_pinned.add(cid)
-
             resp = await ipfs_node.a_pin(cid)
             if resp.status_code != 200:
                 logging.error(f'error pinning {cid}:\n{resp.text}')
@@ -507,12 +500,12 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
             async with trio.open_nursery() as n:
                 while True:
                     now = datetime.now()
-                    last_hour = now - timedelta(hours=1)
+                    prev_second = now - timedelta(seconds=1)
 
                     # filter for the ones not already pinned
                     cids = [
-                        *(await capture_enqueues(last_hour)),
-                        *(await capture_submits(last_hour))
+                        *(await capture_enqueues(prev_second)),
+                        *(await capture_submits(prev_second))
                     ]
 
                     # pin and remember (in parallel)
