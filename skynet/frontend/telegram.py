@@ -86,11 +86,11 @@ def generate_reply_caption(
 ):
     ipfs_link = hlink(
         'Get your image on IPFS',
-        f'http://test1.us.telos.net:8080/ipfs/{ipfs_hash}/image.png'
+        f'https://ipfs.ancap.tech/ipfs/{ipfs_hash}/image.png'
     )
     explorer_link = hlink(
         'SKYNET Transaction Explorer',
-        f'http://test1.us.telos.net:42001/v2/explore/transaction/{tx_hash}'
+        f'https://skynet.ancap.tech/v2/explore/transaction/{tx_hash}'
     )
 
     meta_info = prepare_metainfo_caption(tguser, worker, reward, params)
@@ -521,7 +521,7 @@ async def run_skynet_telegram(
             async def user_stats(message):
                 user = message.from_user.id
 
-                await db_call('get_or_create_user', user.id)
+                await db_call('get_or_create_user', user)
                 generated, joined, role = await db_call('get_user_stats', user)
 
                 stats_str = f'generated: {generated}\n'
