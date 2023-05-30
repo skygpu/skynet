@@ -100,7 +100,7 @@ def download():
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--node-url', '-n', default='http://skynet.ancap.tech')
+    '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.option(
     '--reward', '-r', default='20.0000 GPU')
 @click.option('--algo', '-a', default='midj')
@@ -143,7 +143,7 @@ def enqueue(
 
 @skynet.command()
 @click.option(
-    '--node-url', '-n', default='http://skynet.ancap.tech')
+    '--node-url', '-n', default='https://skynet.ancap.tech')
 def queue(node_url: str):
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
@@ -158,7 +158,7 @@ def queue(node_url: str):
 
 @skynet.command()
 @click.option(
-    '--node-url', '-n', default='http://skynet.ancap.tech')
+    '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.argument('request-id')
 def status(node_url: str, request_id: int):
     resp = requests.post(
@@ -180,7 +180,7 @@ def status(node_url: str, request_id: int):
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--node-url', '-n', default='http://skynet.ancap.tech')
+    '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.argument('request-id')
 def dequeue(
     account: str,
@@ -207,7 +207,7 @@ def dequeue(
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--node-url', '-n', default='http://skynet.ancap.tech')
+    '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.option(
     '--verifications', '-v', default=1)
 @click.option(
@@ -241,7 +241,7 @@ def config(
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--node-url', '-n', default='http://skynet.ancap.tech')
+    '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.argument('quantity')
 def deposit(
     account: str,
@@ -286,11 +286,11 @@ def nodeos():
 @click.option(
     '--auto-withdraw', '-w', default=True)
 @click.option(
-    '--node-url', '-n', default='http://skynet.ancap.tech')
+    '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.option(
-    '--ipfs-url', '-n', default='/ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKHKPFuqJPeqYgtUJtfZTHvEArRX2qvThYBrjuTuPg2Nx')
+    '--ipfs-url', '-n', default='/ip4/169.197.140.154/udp/4001/quic/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv')
 @click.option(
-    '--algos', '-A', default=json.dumps(['midj']))
+    '--algos', '-A', default=json.dumps(['midj', 'ink']))
 def dgpu(
     loglevel: str,
     account: str,
@@ -343,11 +343,11 @@ def dgpu(
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--hyperion-url', '-n', default='http://test1.us.telos.net:42001')
+    '--hyperion-url', '-n', default='https://skynet.ancap.tech')
 @click.option(
-    '--node-url', '-n', default='http://skynet.ancap.tech')
+    '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.option(
-    '--ipfs-url', '-n', default='/ip4/169.197.142.4/tcp/4001/p2p/12D3KooWKHKPFuqJPeqYgtUJtfZTHvEArRX2qvThYBrjuTuPg2Nx')
+    '--ipfs-url', '-n', default='/ip4/169.197.140.154/udp/4001/quic/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv')
 @click.option(
     '--db-host', '-h', default='localhost:5432')
 @click.option(
