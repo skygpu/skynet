@@ -9,6 +9,7 @@ from contextlib import contextmanager as cm
 
 import docker
 
+from pytz import timezone
 from leap.cleos import CLEOS, default_nodeos_image
 from leap.sugar import get_container, Symbol, random_string
 
@@ -69,7 +70,7 @@ def open_nodeos(cleanup: bool = True):
         cleos.setup_wallet(priv)
 
         genesis = json.dumps({
-            "initial_timestamp": datetime.now().isoformat(),
+            "initial_timestamp": '2017-08-29T02:14:00.000',
             "initial_key": pub,
             "initial_configuration": {
                 "max_block_net_usage": 1048576,
