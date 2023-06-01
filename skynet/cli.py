@@ -334,32 +334,15 @@ def dgpu(
     key, account, permission = load_account_info(
         key, account, permission)
 
-    vtestnet = None
-    try:
-        dclient = docker.from_env()
-        vtestnet = get_container(
-            dclient,
-            default_nodeos_image(),
-            force_unique=True,
-            detach=True,
-            network='host',
-            remove=True)
-
-        cleos = CLEOS(dclient, vtestnet, url=node_url, remote=node_url)
-
-        trio.run(
-            partial(
-                open_dgpu_node,
-                account, permission,
-                cleos,
-                ipfs_url,
-                auto_withdraw=auto_withdraw,
-                key=key, initial_algos=json.loads(algos)
-        ))
-
-    finally:
-        if vtestnet:
-            vtestnet.stop()
+    trio.run(
+        partial(
+            open_dgpu_node,
+            account, permission,
+            CLEOS(None, None, url=node_url, remote=node_url),
+            ipfs_url,
+            auto_withdraw=auto_withdraw,
+            key=key, initial_algos=json.loads(algos)
+    ))
 
 
 @run.command()

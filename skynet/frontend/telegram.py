@@ -15,8 +15,8 @@ import asks
 import docker
 
 from PIL import Image
-from leap.cleos import CLEOS, default_nodeos_image
-from leap.sugar import get_container, collect_stdout
+from leap.cleos import CLEOS
+from leap.sugar import *
 from leap.hyperion import HyperionAPI
 from trio_asyncio import aio_as_trio
 from telebot.types import (
@@ -131,6 +131,7 @@ async def work_request(
     message, user, chat,
     account: str,
     permission: str,
+    private_key: str,
     params: dict,
     file_id: str | None = None,
     binary_data: str = ''
@@ -152,7 +153,7 @@ async def work_request(
     request_time = datetime.now().isoformat()
 
     reward = '20.0000 GPU'
-    res = await cleos.s_push_action(
+    res = await cleos.a_push_action(
         'telos.gpu',
         'enqueue',
         {
@@ -161,7 +162,7 @@ async def work_request(
             'binary_data': binary_data,
             'reward': asset_from_str(reward)
         },
-        account, key, permission=permission
+        account, private_key, permission=permission
     )
 
     if 'code' in res:
@@ -210,7 +211,7 @@ async def work_request(
         return
 
     # attempt to get the image and send it
-    ipfs_link = f'http://test1.us.telos.net:8080/ipfs/{ipfs_hash}/image.png'
+    ipfs_link = f'https://ipfs.ancap.tech/ipfs/{ipfs_hash}/image.png'
     resp = await get_ipfs_file(ipfs_link)
 
     caption = generate_reply_caption(
@@ -262,22 +263,10 @@ async def run_skynet_telegram(
     remote_ipfs_node: str,
     key: str = None
 ):
-    dclient = docker.from_env()
-    vtestnet = get_container(
-        dclient,
-        default_nodeos_image(),
-        force_unique=True,
-        detach=True,
-        network='host',
-        remove=True)
-
-    cleos = CLEOS(dclient, vtestnet, url=node_url, remote=node_url)
+    cleos = CLEOS(None, None, url=node_url, remote=node_url)
     hyperion = HyperionAPI(hyperion_url)
 
     logging.basicConfig(level=logging.INFO)
-
-    if key:
-        cleos.setup_wallet(key)
 
     bot = AsyncTeleBot(tg_token, exception_handler=SKYExceptionHandler)
     logging.info(f'tg_token: {tg_token}')
@@ -346,7 +335,7 @@ async def run_skynet_telegram(
                 ec = await work_request(
                     bot, cleos, hyperion,
                     message, user, chat,
-                    account, permission, params
+                    account, permission, key, params
                 )
 
                 if ec == 0:
@@ -423,7 +412,7 @@ async def run_skynet_telegram(
                 ec = await work_request(
                     bot, cleos, hyperion,
                     message, user, chat,
-                    account, permission, params,
+                    account, permission, key, params,
                     file_id=file_id,
                     binary_data=ipfs_hash
                 )
@@ -488,7 +477,7 @@ async def run_skynet_telegram(
                 await work_request(
                     bot, cleos, hyperion,
                     message, user, chat,
-                    account, permission, params,
+                    account, permission, key, params,
                     file_id=file_id,
                     binary_data=binary
                 )
@@ -575,6 +564,3 @@ async def run_skynet_telegram(
 
         except KeyboardInterrupt:
             ...
-
-        finally:
-            vtestnet.stop()
