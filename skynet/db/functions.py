@@ -6,7 +6,6 @@ import string
 import logging
 import importlib
 
-from typing import Optional
 from datetime import datetime
 from contextlib import contextmanager as cm
 from contextlib import asynccontextmanager as acm
@@ -15,7 +14,6 @@ import docker
 import asyncpg
 import psycopg2
 
-from asyncpg.exceptions import UndefinedColumnError
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 from ..constants import *
@@ -48,6 +46,17 @@ CREATE TABLE IF NOT EXISTS skynet.user_config(
 );
 ALTER TABLE skynet.user_config
     ADD FOREIGN KEY(id)
+    REFERENCES skynet.user(id);
+
+CREATE TABLE IF NOT EXISTS skynet.user_requests(
+    id SERIAL NOT NULL,
+    user_id SERIAL NOT NULL,
+    sent TIMESTAMP NOT NULL,
+    status TEXT NOT NULL,
+    status_msg SERIAL PRIMARY KEY NOT NULL
+);
+ALTER TABLE skynet.user_requests
+    ADD FOREIGN KEY(user_id)
     REFERENCES skynet.user(id);
 '''
 
@@ -197,6 +206,53 @@ async def get_last_binary_of(conn, user: int):
     stmt = await conn.prepare(
         'SELECT last_binary FROM skynet.user WHERE id = $1')
     return await stmt.fetchval(user)
+
+
+async def get_user_request(conn, mid: int):
+    stmt = await conn.prepare(
+        'SELECT * FROM skynet.user_requests WHERE id = $1')
+    return await stmt.fetch(mid)
+
+async def get_user_request_by_sid(conn, sid: int):
+    stmt = await conn.prepare(
+        'SELECT * FROM skynet.user_requests WHERE status_msg = $1')
+    return (await stmt.fetch(sid))[0]
+
+async def new_user_request(
+    conn, user: int, mid: int,
+    status_msg: int,
+    status: str = 'started processing request...'
+):
+    date = datetime.utcnow()
+    async with conn.transaction():
+        stmt = await conn.prepare('''
+            INSERT INTO skynet.user_requests(
+                id, user_id, sent, status, status_msg
+            )
+
+            VALUES($1, $2, $3, $4, $5)
+        ''')
+        await stmt.fetch(mid, user, date, status, status_msg)
+
+async def update_user_request(
+    conn, mid: int, status: str
+):
+    stmt = await conn.prepare(f'''
+        UPDATE skynet.user_requests
+        SET status = $2
+        WHERE id = $1
+    ''')
+    await stmt.fetch(mid, status)
+
+async def update_user_request_by_sid(
+    conn, sid: int, status: str
+):
+    stmt = await conn.prepare(f'''
+        UPDATE skynet.user_requests
+        SET status = $2
+        WHERE status_msg = $1
+    ''')
+    await stmt.fetch(sid, status)
 
 
 async def new_user(conn, uid: int):

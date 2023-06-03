@@ -26,7 +26,7 @@ from .ipfs import open_ipfs_node
 from .config import *
 from .nodeos import open_cleos, open_nodeos
 from .constants import *
-from .frontend.telegram import run_skynet_telegram
+from .frontend.telegram import SkynetTelegramFrontend
 
 
 @click.group()
@@ -318,7 +318,7 @@ def nodeos():
 @click.option(
     '--ipfs-url', '-n', default=DEFAULT_IPFS_REMOTE)
 @click.option(
-    '--algos', '-A', default=json.dumps(['midj', 'ink']))
+    '--algos', '-A', default=json.dumps(['midj']))
 def dgpu(
     loglevel: str,
     account: str,
@@ -383,8 +383,9 @@ def telegram(
         key, account, permission)
 
     _, _, tg_token, cfg = init_env_from_config()
-    asyncio.run(
-        run_skynet_telegram(
+
+    async def _async_main():
+        frontend = SkynetTelegramFrontend(
             tg_token,
             account,
             permission,
@@ -393,7 +394,13 @@ def telegram(
             db_host, db_user, db_pass,
             remote_ipfs_node=ipfs_url,
             key=key
-    ))
+        )
+
+        async with frontend.open():
+            await frontend.bot.infinity_polling()
+
+
+    asyncio.run(_async_main())
 
 
 class IPFSHTTP:
