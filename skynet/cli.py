@@ -418,6 +418,7 @@ class IPFSHTTP:
 @click.option('--loglevel', '-l', default='INFO', help='logging level')
 @click.option('--name', '-n', default='skynet-ipfs', help='container name')
 def ipfs(loglevel, name):
+    logging.basicConfig(level=loglevel)
     with open_ipfs_node(name=name):
         ...
 
@@ -432,6 +433,7 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
     ipfs_node = IPFSHTTP(ipfs_rpc)
     hyperion = HyperionAPI(hyperion_url)
 
+    pinned = set()
     async def _async_main():
 
         async def capture_enqueues(after: datetime):
@@ -448,7 +450,8 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
             cids = []
             for action in enqueues['actions']:
                 cid = action['act']['data']['binary_data']
-                if cid:
+                if cid and cid not in pinned:
+                    pinned.add(cid)
                     cids.append(cid)
 
             return cids
@@ -467,11 +470,14 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
             cids = []
             for action in submits['actions']:
                 cid = action['act']['data']['ipfs_hash']
-                cids.append(cid)
+                if cid and cid not in pinned:
+                    pinned.add(cid)
+                    cids.append(cid)
 
             return cids
 
         async def task_pin(cid: str):
+            logging.info(f'pinning {cid}...')
             resp = await ipfs_node.a_pin(cid)
             if resp.status_code != 200:
                 logging.error(f'error pinning {cid}:\n{resp.text}')
@@ -483,7 +489,7 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
             async with trio.open_nursery() as n:
                 while True:
                     now = datetime.now()
-                    prev_second = now - timedelta(seconds=1)
+                    prev_second = now - timedelta(seconds=10)
 
                     # filter for the ones not already pinned
                     cids = [
