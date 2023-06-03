@@ -4,8 +4,8 @@ import gc
 import io
 import json
 import time
-import random
 import logging
+import traceback
 
 from PIL import Image
 from typing import List, Optional
@@ -15,19 +15,13 @@ import trio
 import asks
 import torch
 
-from leap.cleos import CLEOS, default_nodeos_image
+from leap.cleos import CLEOS
 from leap.sugar import *
 
-from diffusers import (
-    StableDiffusionPipeline,
-    StableDiffusionImg2ImgPipeline,
-    EulerAncestralDiscreteScheduler
-)
 from realesrgan import RealESRGANer
 from basicsr.archs.rrdbnet_arch import RRDBNet
-from diffusers.models import UNet2DConditionModel
 
-from .ipfs import IPFSDocker, open_ipfs_node, get_ipfs_file
+from .ipfs import open_ipfs_node, get_ipfs_file
 from .utils import *
 from .constants import *
 
@@ -125,7 +119,7 @@ async def open_dgpu_node(
                 logging.info(f'binext: {len(binext) if binext else 0} bytes')
                 if binext:
                     _params['image'] = image
-                    _params['strength'] = params['strength']
+                    _params['strength'] = float(Decimal(params['strength']))
 
                 else:
                     _params['width'] = int(params['width'])
@@ -135,7 +129,7 @@ async def open_dgpu_node(
                     image = models[algo]['pipe'](
                         params['prompt'],
                         **_params,
-                        guidance_scale=params['guidance'],
+                        guidance_scale=float(Decimal(params['guidance'])),
                         num_inference_steps=int(params['step']),
                         generator=torch.manual_seed(int(params['seed']))
                     ).images[0]
@@ -246,7 +240,7 @@ async def open_dgpu_node(
 
     async def maybe_withdraw_all():
         logging.info('maybe_withdraw_all')
-        balance = get_worker_balance()
+        balance = await get_worker_balance()
         if not balance:
             return
 
@@ -323,7 +317,7 @@ async def open_dgpu_node(
         try:
             while True:
                 if auto_withdraw:
-                    maybe_withdraw_all()
+                    await maybe_withdraw_all()
 
                 queue = await get_work_requests_last_hour()
 
@@ -371,6 +365,7 @@ async def open_dgpu_node(
                                     break
 
                                 except BaseException as e:
+                                    traceback.print_exc()
                                     await cancel_work(rid, str(e))
                                     break
 
