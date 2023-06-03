@@ -86,13 +86,17 @@ def open_ipfs_node(name='skynet-ipfs'):
                 Mount(export_target, str(staging_dir), 'bind'),
                 Mount(data_target, str(data_dir), 'bind')
             ],
-            detach=True
+            detach=True,
+            remove=True
         )
+
         uid = os.getuid()
         gid = os.getgid()
         ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', export_target])
+        logging.info(out)
         assert ec == 0
         ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', data_target])
+        logging.info(out)
         assert ec == 0
 
         for log in container.logs(stream=True):

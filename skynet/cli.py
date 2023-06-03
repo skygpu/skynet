@@ -316,7 +316,7 @@ def nodeos():
 @click.option(
     '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.option(
-    '--ipfs-url', '-n', default='/ip4/169.197.140.154/udp/4001/quic/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv')
+    '--ipfs-url', '-n', default=DEFAULT_IPFS_REMOTE)
 @click.option(
     '--algos', '-A', default=json.dumps(['midj', 'ink']))
 def dgpu(
@@ -354,11 +354,11 @@ def dgpu(
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--hyperion-url', '-n', default='https://skynet.ancap.tech')
+    '--hyperion-url', '-y', default='https://skynet.ancap.tech')
 @click.option(
     '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.option(
-    '--ipfs-url', '-n', default='/ip4/169.197.140.154/udp/4001/quic/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv')
+    '--ipfs-url', '-i', default=DEFAULT_IPFS_REMOTE)
 @click.option(
     '--db-host', '-h', default='localhost:5432')
 @click.option(
@@ -427,7 +427,7 @@ def ipfs(loglevel, name):
 @click.option(
     '--ipfs-rpc', '-i', default='http://127.0.0.1:5001')
 @click.option(
-    '--hyperion-url', '-n', default='http://127.0.0.1:42001')
+    '--hyperion-url', '-y', default='http://127.0.0.1:42001')
 def pinner(loglevel, ipfs_rpc, hyperion_url):
     logging.basicConfig(level=loglevel)
     ipfs_node = IPFSHTTP(ipfs_rpc)
