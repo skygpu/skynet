@@ -25,7 +25,7 @@ from .db import open_new_database
 from .ipfs import open_ipfs_node
 from .config import *
 from .nodeos import open_cleos, open_nodeos
-from .constants import ALGOS
+from .constants import *
 from .frontend.telegram import run_skynet_telegram
 
 
