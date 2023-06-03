@@ -172,12 +172,16 @@ async def open_dgpu_node(
 
     async def get_work_requests_last_hour():
         logging.info('get_work_requests_last_hour')
-        return await cleos.aget_table(
-            'telos.gpu', 'telos.gpu', 'queue',
-            index_position=2,
-            key_type='i64',
-            lower_bound=int(time.time()) - 3600
-        )
+        try:
+            return await cleos.aget_table(
+                'telos.gpu', 'telos.gpu', 'queue',
+                index_position=2,
+                key_type='i64',
+                lower_bound=int(time.time()) - 3600
+            )
+
+        except asks.errors.RequestTimeout:
+            return []
 
     async def get_status_by_request_id(request_id: int):
         logging.info('get_status_by_request_id')
