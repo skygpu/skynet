@@ -174,7 +174,10 @@ async def open_dgpu_node(
                 lower_bound=int(time.time()) - 3600
             )
 
-        except asks.errors.RequestTimeout:
+        except (
+            asks.errors.RequestTimeout,
+            json.JSONDecodeError
+        ):
             return []
 
     async def get_status_by_request_id(request_id: int):
@@ -201,16 +204,6 @@ async def open_dgpu_node(
         else:
             return None
 
-    async def get_user_nonce(user: str):
-        logging.info('get_user_nonce')
-        return (await cleos.aget_table(
-            'telos.gpu', 'telos.gpu', 'users',
-            index_position=1,
-            key_type='name',
-            lower_bound=user,
-            upper_bound=user
-        ))[0]['nonce']
-
     async def begin_work(request_id: int):
         logging.info('begin_work')
         return await cleos.a_push_action(
@@ -218,7 +211,8 @@ async def open_dgpu_node(
             'workbegin',
             {
                 'worker': Name(account),
-                'request_id': request_id
+                'request_id': request_id,
+                'max_workers': 2
             },
             account, key,
             permission=permission
@@ -328,7 +322,7 @@ async def open_dgpu_node(
                     if rid not in my_results:
                         statuses = await get_status_by_request_id(rid)
 
-                        if len(statuses) < config['verification_amount']:
+                        if len(statuses) < req['min_verification']:
 
                             # parse request
                             body = json.loads(req['body'])

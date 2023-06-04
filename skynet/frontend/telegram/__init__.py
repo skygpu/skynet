@@ -148,7 +148,8 @@ class SkynetTelegramFrontend:
                 'user': Name(self.account),
                 'request_body': body,
                 'binary_data': binary_data,
-                'reward': asset_from_str(reward)
+                'reward': asset_from_str(reward),
+                'min_verification': 1
             },
             self.account, self.key, permission=self.permission
         )

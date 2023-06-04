@@ -145,7 +145,7 @@ def open_nodeos(cleanup: bool = True):
         ec, out = cleos.push_action(
             'telos.gpu',
             'config',
-            [1, 'eosio.token', '4,GPU'],
+            ['eosio.token', '4,GPU'],
             f'telos.gpu@active'
         )
         assert ec == 0
