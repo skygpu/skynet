@@ -19,7 +19,7 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     EulerAncestralDiscreteScheduler
 )
-from tansformers import pipeline, Conversation
+from transformers import pipeline, Conversation
 from realesrgan import RealESRGANer
 from huggingface_hub import login
 
