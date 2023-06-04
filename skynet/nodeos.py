@@ -116,12 +116,14 @@ def open_nodeos(cleanup: bool = True):
 
         priv, pub = cleos.create_key_pair()
         cleos.import_key(priv)
+        cleos.private_keys['telos.gpu'] = priv
         logging.info(f'GPU KEYS: {(priv, pub)}')
         cleos.new_account('telos.gpu', ram=4200000, key=pub)
 
         for i in range(1, 4):
             priv, pub = cleos.create_key_pair()
             cleos.import_key(priv)
+            cleos.private_keys[f'testworker{i}'] = priv
             logging.info(f'testworker{i} KEYS: {(priv, pub)}')
             cleos.create_account_staked(
                 'eosio', f'testworker{i}', key=pub)

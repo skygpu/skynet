@@ -1,11 +1,24 @@
-[skynet.account]
-name = xxxxxxxxxxxx
-permission = active
-key = EOSXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
 [skynet.dgpu]
+account = testworkerX
+permission = active
+key = 5Xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+node_url = https://skynet.ancap.tech
+hyperion_url = https://skynet.ancap.tech
+ipfs_url = /ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv
+
 hf_home = hf_home
 hf_token = hf_XxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXx
 
+auto_withdraw = True
+
 [skynet.telegram]
+account = telegram
+permission = active
+key = 5Xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+node_url = https://skynet.ancap.tech
+hyperion_url = https://skynet.ancap.tech
+ipfs_url = /ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv
+
 token = XXXXXXXXXX:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

@@ -53,7 +53,7 @@ def prepare_metainfo_caption(tguser, worker: str, reward: str, meta: dict) -> st
     meta_str += f'<code>guidance: {meta["guidance"]}</code>\n'
     if meta['strength']:
         meta_str += f'<code>strength: {meta["strength"]}</code>\n'
-    meta_str += f'<code>algo: {meta["algo"]}</code>\n'
+    meta_str += f'<code>algo: {meta["model"]}</code>\n'
     if meta['upscaler']:
         meta_str += f'<code>upscaler: {meta["upscaler"]}</code>\n'
 

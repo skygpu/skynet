@@ -17,8 +17,8 @@ import docker
 import asyncio
 import requests
 
-from leap.cleos import CLEOS, default_nodeos_image
-from leap.sugar import get_container, collect_stdout
+from leap.cleos import CLEOS
+from leap.sugar import collect_stdout
 from leap.hyperion import HyperionAPI
 
 from .db import open_new_database
@@ -46,7 +46,7 @@ def skynet(*args, **kwargs):
 @click.option('--seed', '-S', default=None)
 def txt2img(*args, **kwargs):
     from . import utils
-    _, hf_token, _, cfg = init_env_from_config()
+    _, hf_token, _ = init_env_from_config()
     utils.txt2img(hf_token, **kwargs)
 
 @click.command()
@@ -61,7 +61,7 @@ def txt2img(*args, **kwargs):
 @click.option('--seed', '-S', default=None)
 def img2img(model, prompt, input, output, strength, guidance, steps, seed):
     from . import utils
-    _, hf_token, _, cfg = init_env_from_config()
+    _, hf_token, _ = init_env_from_config()
     utils.img2img(
         hf_token,
         model=model,
@@ -89,7 +89,7 @@ def upscale(input, output, model):
 @skynet.command()
 def download():
     from . import utils
-    _, hf_token, _, cfg = init_env_from_config()
+    _, hf_token, _ = init_env_from_config()
     utils.download_all_models(hf_token)
 
 @skynet.command()
@@ -122,7 +122,11 @@ def enqueue(
     **kwargs
 ):
     key, account, permission = load_account_info(
-        key, account, permission)
+        'user', key, account, permission)
+
+    node_url, _, _ = load_endpoint_info(
+        'user', node_url, None, None)
+
     with open_cleos(node_url, key=key) as cleos:
         if not kwargs['seed']:
             kwargs['seed'] = random.randint(0, 10e9)
@@ -157,6 +161,12 @@ def clean(
     key: str | None,
     node_url: str,
 ):
+    key, account, permission = load_account_info(
+        'user', key, account, permission)
+
+    node_url, _, _ = load_endpoint_info(
+        'user', node_url, None, None)
+
     logging.basicConfig(level=loglevel)
     cleos = CLEOS(None, None, url=node_url, remote=node_url)
     trio.run(
@@ -173,6 +183,8 @@ def clean(
 @click.option(
     '--node-url', '-n', default='https://skynet.ancap.tech')
 def queue(node_url: str):
+    node_url, _, _ = load_endpoint_info(
+        'user', node_url, None, None)
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
         json={
@@ -189,6 +201,8 @@ def queue(node_url: str):
     '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.argument('request-id')
 def status(node_url: str, request_id: int):
+    node_url, _, _ = load_endpoint_info(
+        'user', node_url, None, None)
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
         json={
@@ -218,7 +232,11 @@ def dequeue(
     request_id: int
 ):
     key, account, permission = load_account_info(
-        key, account, permission)
+        'user', key, account, permission)
+
+    node_url, _, _ = load_endpoint_info(
+        'user', node_url, None, None)
+
     with open_cleos(node_url, key=key) as cleos:
         ec, out = cleos.push_action(
             'telos.gpu', 'dequeue', [account, request_id], f'{account}@{permission}'
@@ -237,8 +255,6 @@ def dequeue(
 @click.option(
     '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.option(
-    '--verifications', '-v', default=1)
-@click.option(
     '--token-contract', '-c', default='eosio.token')
 @click.option(
     '--token-symbol', '-S', default='4,GPU')
@@ -247,15 +263,17 @@ def config(
     permission: str,
     key: str | None,
     node_url: str,
-    verifications: int,
     token_contract: str,
     token_symbol: str
 ):
     key, account, permission = load_account_info(
-        key, account, permission)
+        'user', key, account, permission)
+
+    node_url, _, _ = load_endpoint_info(
+        'user', node_url, None, None)
     with open_cleos(node_url, key=key) as cleos:
         ec, out = cleos.push_action(
-            'telos.gpu', 'config', [verifications, token_contract, token_symbol], f'{account}@{permission}'
+            'telos.gpu', 'config', [token_contract, token_symbol], f'{account}@{permission}'
         )
 
         print(collect_stdout(out))
@@ -279,7 +297,10 @@ def deposit(
     quantity: str
 ):
     key, account, permission = load_account_info(
-        key, account, permission)
+        'user', key, account, permission)
+
+    node_url, _, _ = load_endpoint_info(
+        'user', node_url, None, None)
     with open_cleos(node_url, key=key) as cleos:
         ec, out = cleos.transfer_token(account, 'telos.gpu', quantity)
 
@@ -304,45 +325,22 @@ def nodeos():
         ...
 
 @run.command()
-@click.option('--loglevel', '-l', default='warning', help='Logging level')
+@click.option('--loglevel', '-l', default='INFO', help='Logging level')
 @click.option(
-    '--account', '-a', default='testworker1')
-@click.option(
-    '--permission', '-p', default='active')
-@click.option(
-    '--key', '-k', default=None)
-@click.option(
-    '--auto-withdraw', '-w', default=True)
-@click.option(
-    '--node-url', '-n', default='https://skynet.ancap.tech')
-@click.option(
-    '--ipfs-url', '-n', default=DEFAULT_IPFS_REMOTE)
-@click.option(
-    '--algos', '-A', default=json.dumps(['midj']))
+    '--config-path', '-c', default='skynet.ini')
 def dgpu(
     loglevel: str,
-    account: str,
-    permission: str,
-    key: str | None,
-    auto_withdraw: bool,
-    node_url: str,
-    ipfs_url: str,
-    algos: list[str]
+    config_path: str
 ):
     from .dgpu import open_dgpu_node
 
-    key, account, permission = load_account_info(
-        key, account, permission)
+    logging.basicConfig(level=loglevel)
 
-    trio.run(
-        partial(
-            open_dgpu_node,
-            account, permission,
-            CLEOS(None, None, url=node_url, remote=node_url),
-            ipfs_url,
-            auto_withdraw=auto_withdraw,
-            key=key, initial_algos=json.loads(algos)
-    ))
+    config = load_skynet_ini(file_path=config_path)
+
+    assert 'skynet.dgpu' in config
+
+    trio.run(open_dgpu_node, config['skynet.dgpu'])
 
 
 @run.command()
@@ -379,10 +377,13 @@ def telegram(
 ):
     logging.basicConfig(level=loglevel)
 
-    key, account, permission = load_account_info(
-        key, account, permission)
+    _, _, tg_token = init_env_from_config()
 
-    _, _, tg_token, cfg = init_env_from_config()
+    key, account, permission = load_account_info(
+        'telegram', key, account, permission)
+
+    node_url, _, ipfs_url = load_endpoint_info(
+        'telegram', node_url, None, None)
 
     async def _async_main():
         frontend = SkynetTelegramFrontend(
@@ -485,7 +486,7 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
 
         async def task_pin(cid: str):
             logging.info(f'pinning {cid}...')
-            for i in range(6):
+            for _ in range(6):
                 try:
                     with trio.move_on_after(5):
                         resp = await ipfs_node.a_pin(cid)
