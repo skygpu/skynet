@@ -485,12 +485,21 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
 
         async def task_pin(cid: str):
             logging.info(f'pinning {cid}...')
-            resp = await ipfs_node.a_pin(cid)
-            if resp.status_code != 200:
-                logging.error(f'error pinning {cid}:\n{resp.text}')
+            for i in range(6):
+                try:
+                    with trio.move_on_after(5):
+                        resp = await ipfs_node.a_pin(cid)
+                        if resp.status_code != 200:
+                            logging.error(f'error pinning {cid}:\n{resp.text}')
 
-            else:
-                logging.info(f'pinned {cid}')
+                        else:
+                            logging.info(f'pinned {cid}')
+                            return
+
+                except trio.TooSlowError:
+                    logging.error(f'timed out pinning {cid}')
+
+            logging.error(f'gave up pinning {cid}')
 
         try:
             async with trio.open_nursery() as n:
