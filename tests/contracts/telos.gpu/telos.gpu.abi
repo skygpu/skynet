@@ -22,6 +22,40 @@
             ]
         },
         {
+            "name": "card",
+            "base": "",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "uint64"
+                },
+                {
+                    "name": "owner",
+                    "type": "name"
+                },
+                {
+                    "name": "card_name",
+                    "type": "string"
+                },
+                {
+                    "name": "version",
+                    "type": "string"
+                },
+                {
+                    "name": "total_memory",
+                    "type": "uint64"
+                },
+                {
+                    "name": "mp_count",
+                    "type": "uint32"
+                },
+                {
+                    "name": "extra",
+                    "type": "string"
+                }
+            ]
+        },
+        {
             "name": "clean",
             "base": "",
             "fields": []
@@ -30,10 +64,6 @@
             "name": "config",
             "base": "",
             "fields": [
-                {
-                    "name": "verification_amount",
-                    "type": "uint8"
-                },
                 {
                     "name": "token_contract",
                     "type": "name"
@@ -72,11 +102,15 @@
                 },
                 {
                     "name": "binary_data",
-                    "type": "bytes"
+                    "type": "string"
                 },
                 {
                     "name": "reward",
                     "type": "asset"
+                },
+                {
+                    "name": "min_verification",
+                    "type": "uint32"
                 }
             ]
         },
@@ -84,10 +118,6 @@
             "name": "global_configuration_struct",
             "base": "",
             "fields": [
-                {
-                    "name": "verification_amount",
-                    "type": "uint8"
-                },
                 {
                     "name": "token_contract",
                     "type": "name"
@@ -155,12 +185,20 @@
                     "type": "asset"
                 },
                 {
+                    "name": "min_verification",
+                    "type": "uint32"
+                },
+                {
+                    "name": "nonce",
+                    "type": "uint64"
+                },
+                {
                     "name": "body",
                     "type": "string"
                 },
                 {
                     "name": "binary_data",
-                    "type": "bytes"
+                    "type": "string"
                 },
                 {
                     "name": "timestamp",
@@ -213,6 +251,10 @@
                 {
                     "name": "request_id",
                     "type": "uint64"
+                },
+                {
+                    "name": "max_workers",
+                    "type": "uint32"
                 }
             ]
         },
@@ -230,6 +272,28 @@
                 },
                 {
                     "name": "reason",
+                    "type": "string"
+                }
+            ]
+        },
+        {
+            "name": "worker",
+            "base": "",
+            "fields": [
+                {
+                    "name": "account",
+                    "type": "name"
+                },
+                {
+                    "name": "joined",
+                    "type": "time_point_sec"
+                },
+                {
+                    "name": "left",
+                    "type": "time_point_sec"
+                },
+                {
+                    "name": "url",
                     "type": "string"
                 }
             ]
@@ -297,6 +361,13 @@
     ],
     "tables": [
         {
+            "name": "cards",
+            "type": "card",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": []
+        },
+        {
             "name": "config",
             "type": "global_configuration_struct",
             "index_type": "i64",
@@ -327,6 +398,13 @@
         {
             "name": "users",
             "type": "account",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": []
+        },
+        {
+            "name": "workers",
+            "type": "worker",
             "index_type": "i64",
             "key_names": [],
             "key_types": []
