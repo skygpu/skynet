@@ -46,6 +46,7 @@ def txt2img(*args, **kwargs):
     _, hf_token, _ = init_env_from_config()
     utils.txt2img(hf_token, **kwargs)
 
+
 @click.command()
 @click.option('--model', '-m', default=list(MODELS.keys())[0])
 @click.option(
@@ -71,6 +72,20 @@ def img2img(model, prompt, input, output, strength, guidance, steps, seed):
         seed=seed
     )
 
+
+@click.command()
+@click.option('--model', '-m', default='microsoft/DialoGPT-small')
+@click.option(
+    '--prompt', '-p', default='a red old tractor in a sunny wheat field')
+@click.option('--output', '-o', default='output.txt')
+@click.option('--temperature', '-t', default=1.0)
+@click.option('--max-length', '-ml', default=256)
+def txt2txt(*args, **kwargs):
+    from . import utils
+    _, hf_token, _, cfg = init_env_from_config()
+    utils.txt2txt(hf_token, **kwargs)
+
+
 @click.command()
 @click.option('--input', '-i', default='input.png')
 @click.option('--output', '-o', default='output.png')
@@ -88,6 +103,7 @@ def download():
     from . import utils
     _, hf_token, _ = init_env_from_config()
     utils.download_all_models(hf_token)
+
 
 @skynet.command()
 @click.option(
@@ -135,11 +151,13 @@ def enqueue(
         binary = ''
 
         ec, out = cleos.push_action(
-            'telos.gpu', 'enqueue', [account, req, binary, reward], f'{account}@{permission}'
+            'telos.gpu', 'enqueue', [account, req,
+                                     binary, reward], f'{account}@{permission}'
         )
 
         print(collect_stdout(out))
         assert ec == 0
+
 
 @skynet.command()
 @click.option('--loglevel', '-l', default='INFO', help='Logging level')
@@ -176,6 +194,7 @@ def clean(
         )
     )
 
+
 @skynet.command()
 @click.option(
     '--node-url', '-n', default='https://skynet.ancap.tech')
@@ -192,6 +211,7 @@ def queue(node_url: str):
         }
     )
     print(json.dumps(resp.json(), indent=4))
+
 
 @skynet.command()
 @click.option(
@@ -210,6 +230,7 @@ def status(node_url: str, request_id: int):
         }
     )
     print(json.dumps(resp.json(), indent=4))
+
 
 @skynet.command()
 @click.option(
@@ -236,11 +257,13 @@ def dequeue(
 
     with open_cleos(node_url, key=key) as cleos:
         ec, out = cleos.push_action(
-            'telos.gpu', 'dequeue', [account, request_id], f'{account}@{permission}'
+            'telos.gpu', 'dequeue', [
+                account, request_id], f'{account}@{permission}'
         )
 
         print(collect_stdout(out))
         assert ec == 0
+
 
 @skynet.command()
 @click.option(
@@ -276,6 +299,7 @@ def config(
         print(collect_stdout(out))
         assert ec == 0
 
+
 @skynet.command()
 @click.option(
     '--account', '-a', default='telegram')
@@ -304,9 +328,11 @@ def deposit(
         print(collect_stdout(out))
         assert ec == 0
 
+
 @skynet.group()
 def run(*args, **kwargs):
     pass
+
 
 @run.command()
 def db():
@@ -315,11 +341,13 @@ def db():
         container, passwd, host = db_params
         logging.info(('skynet', passwd, host))
 
+
 @run.command()
 def nodeos():
     logging.basicConfig(filename='skynet-nodeos.log', level=logging.INFO)
     with open_nodeos(cleanup=False):
         ...
+
 
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='Logging level')
@@ -397,7 +425,6 @@ def telegram(
         async with frontend.open():
             await frontend.bot.infinity_polling()
 
-
     asyncio.run(_async_main())
 
 
@@ -410,6 +437,7 @@ def ipfs(loglevel, name):
     logging.basicConfig(level=loglevel)
     with open_ipfs_node(name=name):
         ...
+
 
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='logging level')

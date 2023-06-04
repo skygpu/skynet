@@ -19,6 +19,7 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     EulerAncestralDiscreteScheduler
 )
+from tansformers import pipeline, Conversation
 from realesrgan import RealESRGANer
 from huggingface_hub import login
 
@@ -165,6 +166,43 @@ def img2img(
     image.save(output)
 
 
+def txt2txt(
+    hf_token: str,
+    # TODO: change this to actual model ref
+    #       add more granular control of models
+    model: str = 'microsoft/DialoGPT-small',
+    prompt: str = 'a red old tractor in a sunny wheat field',
+    output: str = 'output.txt',
+    temperature: float = 1.0,
+    max_length: int = 256,
+):
+    assert torch.cuda.is_available()
+    torch.cuda.empty_cache()
+    torch.cuda.set_per_process_memory_fraction(1.0)
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
+    login(token=hf_token)
+    chatbot = pipeline('text-generation', model=model, device_map='auto')
+
+    prompt = prompt
+    conversation = Conversation(prompt)
+    conversation = chatbot(
+        conversation,
+        max_length=max_length,
+        do_sample=True,
+        temperature=temperature
+    )
+    response = conversation.generated_responses[-1]
+    with open(output, 'w', encoding='utf-8') as f:
+        f.write(response)
+
+    # This if for continued conversatin, need to figure out how to store convo
+    # conversation.add_user_input("Is it an action movie?")
+    # conversation = chatbot(conversation)
+    # conversation.generated_responses[-1]
+
+
 def init_upscaler(model_path: str = 'weights/RealESRGAN_x4plus.pth'):
     return RealESRGANer(
         scale=4,
@@ -180,6 +218,7 @@ def init_upscaler(model_path: str = 'weights/RealESRGAN_x4plus.pth'):
         ),
         half=True
     )
+
 
 def upscale(
     img_path: str = 'input.png',
@@ -200,7 +239,6 @@ def upscale(
         convert_from_image_to_cv2(input_img), outscale=4)
 
     image = convert_from_cv2_to_image(up_img)
-
 
     image.save(output)
 
