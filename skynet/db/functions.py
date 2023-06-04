@@ -23,7 +23,7 @@ DB_INIT_SQL = '''
 CREATE SCHEMA IF NOT EXISTS skynet;
 
 CREATE TABLE IF NOT EXISTS skynet.user(
-    id SERIAL PRIMARY KEY NOT NULL,
+    id BIGSERIAL PRIMARY KEY NOT NULL,
     generated INT NOT NULL,
     joined TIMESTAMP NOT NULL,
     last_method TEXT,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS skynet.user(
 );
 
 CREATE TABLE IF NOT EXISTS skynet.user_config(
-    id SERIAL NOT NULL,
+    id BIGSERIAL NOT NULL,
     algo VARCHAR(128) NOT NULL,
     step INT NOT NULL,
     width INT NOT NULL,
@@ -49,11 +49,11 @@ ALTER TABLE skynet.user_config
     REFERENCES skynet.user(id);
 
 CREATE TABLE IF NOT EXISTS skynet.user_requests(
-    id SERIAL NOT NULL,
-    user_id SERIAL NOT NULL,
+    id BIGSERIAL NOT NULL,
+    user_id BIGSERIAL NOT NULL,
     sent TIMESTAMP NOT NULL,
     status TEXT NOT NULL,
-    status_msg SERIAL PRIMARY KEY NOT NULL
+    status_msg BIGSERIAL PRIMARY KEY NOT NULL
 );
 ALTER TABLE skynet.user_requests
     ADD FOREIGN KEY(user_id)
