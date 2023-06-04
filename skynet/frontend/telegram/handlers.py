@@ -151,6 +151,9 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
             **user_config
         }
 
+        params['model'] = get_model_by_shortname(params['algo'])
+        del params['algo']
+
         await db_call(
             'update_user_stats', user.id, 'txt2img', last_prompt=prompt)
 
@@ -227,6 +230,8 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
             'prompt': prompt,
             **user_config
         }
+        params['model'] = get_model_by_shortname(params['algo'])
+        del params['algo']
 
         await db_call(
             'update_user_stats',
@@ -297,6 +302,8 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
             'prompt': prompt,
             **user_config
         }
+        params['model'] = get_model_by_shortname(params['algo'])
+        del params['algo']
 
         await work_request(
             user, status_msg, 'redo', params,

@@ -8,6 +8,7 @@ from functools import partial
 
 import trio
 import requests
+from skynet.constants import DEFAULT_IPFS_REMOTE
 
 from skynet.dgpu import open_dgpu_node
 
@@ -32,7 +33,7 @@ def test_enqueue_work(cleos):
     binary = ''
 
     ec, out = cleos.push_action(
-        'telos.gpu', 'enqueue', [user, req, binary, '20.0000 GPU'], f'{user}@active'
+        'telos.gpu', 'enqueue', [user, req, binary, '20.0000 GPU', 1], f'{user}@active'
     )
 
     assert ec == 0
@@ -53,6 +54,8 @@ def test_enqueue_work(cleos):
             f'testworker1',
             'active',
             cleos,
+            DEFAULT_IPFS_REMOTE,
+            cleos.private_keys['testworker1'],
             initial_algos=['midj']
         )
     )
@@ -80,12 +83,13 @@ def test_enqueue_dequeue(cleos):
     binary = ''
 
     ec, out = cleos.push_action(
-        'telos.gpu', 'enqueue', [user, req, binary, '20.0000 GPU'], f'{user}@active'
+        'telos.gpu', 'enqueue', [user, req, binary, '20.0000 GPU', 1], f'{user}@active'
     )
 
     assert ec == 0
 
-    request_id = int(collect_stdout(out))
+    request_id, _ = collect_stdout(out).split(':')
+    request_id = int(request_id)
 
     queue = cleos.get_table('telos.gpu', 'telos.gpu', 'queue')
 

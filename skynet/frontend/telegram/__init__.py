@@ -214,7 +214,7 @@ class SkynetTelegramFrontend:
         if not ipfs_hash:
             await self.update_status_message(
                 status_msg,
-                '\n[{timestamp_pretty()}] <b>timeout processing request</b>',
+                f'\n[{timestamp_pretty()}] <b>timeout processing request</b>',
                 parse_mode='HTML'
             )
             return

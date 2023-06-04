@@ -1,20 +1,25 @@
 #!/usr/bin/python
 
-VERSION = '0.1a9'
+VERSION = '0.1a10'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
-ALGOS = {
-    'midj': 'prompthero/openjourney',
-    'stable': 'runwayml/stable-diffusion-v1-5',
-    'hdanime': 'Linaqruf/anything-v3.0',
-    'waifu': 'hakurei/waifu-diffusion',
-    'ghibli': 'nitrosocke/Ghibli-Diffusion',
-    'van-gogh': 'dallinmackay/Van-Gogh-diffusion',
-    'pokemon': 'lambdalabs/sd-pokemon-diffusers',
-    'ink': 'Envvi/Inkpunk-Diffusion',
-    'robot': 'nousr/robo-diffusion'
+MODELS = {
+    'prompthero/openjourney':          { 'short': 'midj'},
+    'runwayml/stable-diffusion-v1-5':  { 'short': 'stable'},
+    'Linaqruf/anything-v3.0':          { 'short': 'hdanime'},
+    'hakurei/waifu-diffusion':         { 'short': 'waifu'},
+    'nitrosocke/Ghibli-Diffusion':     { 'short': 'ghibli'},
+    'dallinmackay/Van-Gogh-diffusion': { 'short': 'van-gogh'},
+    'lambdalabs/sd-pokemon-diffusers': { 'short': 'pokemon'},
+    'Envvi/Inkpunk-Diffusion':         { 'short': 'ink'},
+    'nousr/robo-diffusion':            { 'short': 'robot'}
 }
+
+def get_model_by_shortname(short: str):
+    for model, info in MODELS.items():
+        if short == info['short']:
+            return model
 
 N = '\n'
 HELP_TEXT = f'''
@@ -36,7 +41,7 @@ config is individual to each user!
 
 /config algo NAME - select AI to use one of:
 
-{N.join(ALGOS.keys())}
+{N.join(MODELS.keys())}
 
 /config step NUMBER - set amount of iterations
 /config seed NUMBER - set the seed, deterministic results!
@@ -115,8 +120,10 @@ DEFAULT_UPSCALER = None
 
 DEFAULT_CONFIG_PATH = 'skynet.ini'
 
-DEFAULT_DGPU_MAX_TASKS = 2
-DEFAULT_INITAL_ALGOS = ['midj', 'stable', 'ink']
+DEFAULT_INITAL_MODELS = [
+    'prompthero/openjourney',
+    'runwayml/stable-diffusion-v1-5'
+]
 
 DATE_FORMAT = '%B the %dth %Y, %H:%M:%S'
 
