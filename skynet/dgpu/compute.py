@@ -144,7 +144,7 @@ class SkynetMM:
 
                     if upscaler == 'x4':
                         input_img = image.convert('RGB')
-                        up_img, _ = upscaler.enhance(
+                        up_img, _ = self.upscaler.enhance(
                             convert_from_image_to_cv2(input_img), outscale=4)
 
                         image = convert_from_cv2_to_image(up_img)
