@@ -6,6 +6,7 @@ import gc
 from hashlib import sha256
 import json
 import logging
+from diffusers import DiffusionPipeline
 
 import torch
 from skynet.constants import DEFAULT_INITAL_MODELS, MODELS
@@ -107,7 +108,7 @@ class SkynetMM:
         logging.info(f'loaded model {model_name}')
         return pipe
 
-    def get_model(self, model_name: str, image: bool):
+    def get_model(self, model_name: str, image: bool) -> DiffusionPipeline:
         if model_name not in MODELS:
             raise DGPUComputeError(f'Unknown model {model_name}')
 
@@ -115,7 +116,7 @@ class SkynetMM:
             pipe = self.load_model(model_name, image=image)
 
         else:
-            pipe = self._models[model_name]
+            pipe = self._models[model_name]['pipe']
 
         return pipe
 
@@ -134,7 +135,7 @@ class SkynetMM:
                     prompt, guidance, step, seed, upscaler, extra_params = arguments
                     model = self.get_model(params['model'], 'image' in params)
 
-                    image = model['pipe'](
+                    image = model(
                         prompt,
                         guidance_scale=guidance,
                         num_inference_steps=step,

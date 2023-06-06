@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS skynet.user(
 
 CREATE TABLE IF NOT EXISTS skynet.user_config(
     id BIGSERIAL NOT NULL,
-    algo VARCHAR(128) NOT NULL,
+    model VARCHAR(512) NOT NULL,
     step INT NOT NULL,
     width INT NOT NULL,
     height INT NOT NULL,
@@ -278,13 +278,13 @@ async def new_user(conn, uid: int):
 
         stmt = await conn.prepare('''
             INSERT INTO skynet.user_config(
-                id, algo, step, width, height, guidance, strength, upscaler)
+                id, model, step, width, height, guidance, strength, upscaler)
 
             VALUES($1, $2, $3, $4, $5, $6, $7, $8)
         ''')
         resp = await stmt.fetch(
             uid,
-            DEFAULT_ALGO,
+            DEFAULT_MODEL,
             DEFAULT_STEP,
             DEFAULT_WIDTH,
             DEFAULT_HEIGHT,
