@@ -16,6 +16,11 @@ MODELS = {
     'nousr/robo-diffusion':            { 'short': 'robot'}
 }
 
+SHORT_NAMES = [
+    model_info['short']
+    for model_info in MODELS.values()
+]
+
 def get_model_by_shortname(short: str):
     for model, info in MODELS.items():
         if short == info['short']:
@@ -40,8 +45,9 @@ config is individual to each user!
 /donate - see donation info
 
 /config algo NAME - select AI to use one of:
+/config model NAME - select AI to use one of:
 
-{N.join(MODELS.keys())}
+{N.join(SHORT_NAMES)}
 
 /config step NUMBER - set amount of iterations
 /config seed NUMBER - set the seed, deterministic results!
@@ -114,7 +120,7 @@ DEFAULT_GUIDANCE = 7.5
 DEFAULT_STRENGTH = 0.5
 DEFAULT_STEP = 35
 DEFAULT_CREDITS = 10
-DEFAULT_ALGO = 'midj'
+DEFAULT_MODEL = list(MODELS.keys())[0]
 DEFAULT_ROLE = 'pleb'
 DEFAULT_UPSCALER = None
 

@@ -42,7 +42,7 @@ class SkynetDGPUDaemon:
                     if rid not in my_results:
                         statuses = await self.conn.get_status_by_request_id(rid)
 
-                        if len(statuses) < req['min_verification']:
+                        if len(statuses) == 0:
 
                             # parse request
                             body = json.loads(req['body'])

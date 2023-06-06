@@ -30,11 +30,12 @@ def validate_user_config_request(req: str):
             attr = params[1]
 
             match attr:
-                case 'algo':
+                case 'model' | 'algo':
+                    attr = 'model'
                     val = params[2]
                     shorts = [model_info['short'] for model_info in MODELS.values()]
                     if val not in shorts:
-                        raise ConfigUnknownAlgorithm(f'no algo named {val}')
+                        raise ConfigUnknownAlgorithm(f'no model named {val}')
 
                     val = get_model_by_shortname(val)
 
