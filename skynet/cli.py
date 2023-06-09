@@ -50,7 +50,7 @@ def txt2img(*args, **kwargs):
     utils.txt2img(hf_token, **kwargs)
 
 @click.command()
-@click.option('--model', '-m', default='midj')
+@click.option('--model', '-m', default=list(MODELS.keys())[0])
 @click.option(
     '--prompt', '-p', default='a red old tractor in a sunny wheat field')
 @click.option('--input', '-i', default='input.png')

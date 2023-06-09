@@ -34,6 +34,7 @@ def init_env_from_config(
         sub_config = config['skynet.dgpu']
         if 'hf_token' in sub_config:
             hf_token = sub_config['hf_token']
+            os.environ['HF_TOKEN'] = hf_token
 
     if 'HF_HOME' in os.environ:
         hf_home = os.environ['HF_HOME']
@@ -42,6 +43,7 @@ def init_env_from_config(
         sub_config = config['skynet.dgpu']
         if 'hf_home' in sub_config:
             hf_home = sub_config['hf_home']
+            os.environ['HF_HOME'] = hf_home
 
     if 'TG_TOKEN' in os.environ:
         tg_token = os.environ['TG_TOKEN']
