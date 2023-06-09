@@ -133,7 +133,7 @@ class SkynetMM:
 
                     arguments = prepare_params_for_diffuse(params, binary)
                     prompt, guidance, step, seed, upscaler, extra_params = arguments
-                    model = self.get_model(params['model'], 'image' in params)
+                    model = self.get_model(params['model'], 'image' in extra_params)
 
                     image = model(
                         prompt,

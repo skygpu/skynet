@@ -55,6 +55,8 @@ def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
     if w > max_w or h > max_h:
         image.thumbnail((512, 512))
 
+    return image.convert('RGB')
+
 
 def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> DiffusionPipeline:
     assert torch.cuda.is_available()
@@ -147,7 +149,8 @@ def img2img(
     login(token=hf_token)
     pipe = pipeline_for(model, image=True)
 
-    input_img = Image.open(img_path).convert('RGB')
+    with open(img_path, 'rb') as img_file:
+        input_img = convert_from_bytes_and_crop(img_file.read(), 512, 512)
 
     seed = seed if seed else random.randint(0, 2 ** 64)
     prompt = prompt
@@ -160,7 +163,6 @@ def img2img(
     ).images[0]
 
     image.save(output)
-
 
 
 def init_upscaler(model_path: str = 'weights/RealESRGAN_x4plus.pth'):
