@@ -12,7 +12,7 @@ import torch
 from skynet.constants import DEFAULT_INITAL_MODELS, MODELS
 from skynet.dgpu.errors import DGPUComputeError
 
-from skynet.utils import convert_from_bytes_and_crop, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
+from skynet.utils import convert_from_bytes_and_crop, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for_image
 
 
 def prepare_params_for_diffuse(
@@ -62,7 +62,7 @@ class SkynetMM:
     def is_model_loaded(self, model_name: str, image: bool):
         for model_key, model_data in self._models.items():
             if (model_key == model_name and
-                model_data['image'] == image):
+                    model_data['image'] == image):
                 return True
 
         return False
@@ -75,7 +75,7 @@ class SkynetMM:
     ):
         logging.info(f'loading model {model_name}...')
         if force or len(self._models.keys()) == 0:
-            pipe = pipeline_for(model_name, image=image)
+            pipe = pipeline_for_image(model_name, image=image)
             self._models[model_name] = {
                 'pipe': pipe,
                 'generated': 0,
@@ -87,7 +87,7 @@ class SkynetMM:
 
             for model in self._models:
                 if self._models[
-                    least_used]['generated'] > self._models[model]['generated']:
+                        least_used]['generated'] > self._models[model]['generated']:
                     least_used = model
 
             del self._models[least_used]
@@ -97,7 +97,7 @@ class SkynetMM:
             gc.collect()
             torch.cuda.empty_cache()
 
-            pipe = pipeline_for(model_name, image=image)
+            pipe = pipeline_for_image(model_name, image=image)
 
             self._models[model_name] = {
                 'pipe': pipe,
@@ -133,7 +133,8 @@ class SkynetMM:
 
                     arguments = prepare_params_for_diffuse(params, binary)
                     prompt, guidance, step, seed, upscaler, extra_params = arguments
-                    model = self.get_model(params['model'], 'image' in extra_params)
+                    model = self.get_model(
+                        params['model'], 'image' in extra_params)
 
                     image = model(
                         prompt,
@@ -155,6 +156,9 @@ class SkynetMM:
 
                     return img_sha, img_raw
 
+                case 'transformer':
+                    # TODO: Understand dpgu code and figure out what to put here
+                    pass
                 case _:
                     raise DGPUComputeError('Unsupported compute method')
 

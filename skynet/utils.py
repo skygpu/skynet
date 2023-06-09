@@ -19,7 +19,7 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     EulerAncestralDiscreteScheduler
 )
-from transformers import pipeline, Conversation
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from realesrgan import RealESRGANer
 from huggingface_hub import login
 
@@ -59,7 +59,7 @@ def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
     return image.convert('RGB')
 
 
-def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> DiffusionPipeline:
+def pipeline_for_image(model: str, mem_fraction: float = 1.0, image=False) -> DiffusionPipeline:
     assert torch.cuda.is_available()
     torch.cuda.empty_cache()
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
@@ -98,6 +98,41 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
     return pipe.to('cuda')
 
 
+def pipeline_for_text(model: str, mem_fraction: float = 1.0, image=False) -> DiffusionPipeline:
+    assert torch.cuda.is_available()
+    torch.cuda.empty_cache()
+    torch.cuda.set_per_process_memory_fraction(mem_fraction)
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
+    # NOTE: image could be used for image to text
+    # NOTE: note sure if this is necessary or what it does exactly
+    # full determinism
+    # https://huggingface.co/docs/diffusers/using-diffusers/reproducibility#deterministic-algorithms
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
+
+    params = {
+        'torch_dtype': torch.float16,
+        'safety_checker': None
+    }
+
+    pipe = AutoModelForCausalLM.from_pretrained(
+        model, **params
+    )
+
+    # TODO: look if scheduler is necessary and what does this code do
+    # pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
+    #     pipe.scheduler.config)
+    #
+    # if not image:
+    #     pipe.enable_vae_slicing()
+    #
+    return pipe.to('cuda')
+
+
 def txt2img(
     hf_token: str,
     model: str = 'prompthero/openjourney',
@@ -115,7 +150,7 @@ def txt2img(
     torch.backends.cudnn.allow_tf32 = True
 
     login(token=hf_token)
-    pipe = pipeline_for(model)
+    pipe = pipeline_for_image(model)
 
     seed = seed if seed else random.randint(0, 2 ** 64)
     prompt = prompt
@@ -148,7 +183,7 @@ def img2img(
     torch.backends.cudnn.allow_tf32 = True
 
     login(token=hf_token)
-    pipe = pipeline_for(model, image=True)
+    pipe = pipeline_for_image(model, image=True)
 
     with open(img_path, 'rb') as img_file:
         input_img = convert_from_bytes_and_crop(img_file.read(), 512, 512)
@@ -168,11 +203,12 @@ def img2img(
 
 def txt2txt(
     hf_token: str,
-    # TODO: change this to actual model ref
-    #       add more granular control of models
-    model: str = 'microsoft/DialoGPT-small',
+    model: str = 'tiiuae/falcon-40b-instruct',
     prompt: str = 'a red old tractor in a sunny wheat field',
     output: str = 'output.txt',
+    num_return_sequences: int = 1,
+    no_repeat_ngram_size: int = 2,
+    top_p: float = 0.95,
     temperature: float = 1.0,
     max_length: int = 256,
 ):
@@ -183,24 +219,25 @@ def txt2txt(
     torch.backends.cudnn.allow_tf32 = True
 
     login(token=hf_token)
-    chatbot = pipeline('text-generation', model=model, device_map='auto')
+    tokenizer = AutoTokenizer.from_pretrained(model)
+    pipe = pipeline_for_text(model)
 
     prompt = prompt
-    conversation = Conversation(prompt)
-    conversation = chatbot(
-        conversation,
+    # TODO: learn more about return tensors and model params
+    tokenized_input = tokenizer.encode(prompt, return_tensors='pt')
+    tokenized_output = pipe.generate(
+        tokenized_input,
         max_length=max_length,
-        do_sample=True,
+        num_return_sequences=num_return_sequences,
+        no_repeat_ngram_size=2,
+        top_p=0.95,
         temperature=temperature
     )
-    response = conversation.generated_responses[-1]
+    response = tokenizer.decode(tokenized_output, skip_special_tokens=True)
     with open(output, 'w', encoding='utf-8') as f:
         f.write(response)
 
-    # This if for continued conversatin, need to figure out how to store convo
-    # conversation.add_user_input("Is it an action movie?")
-    # conversation = chatbot(conversation)
-    # conversation.generated_responses[-1]
+    # TODO: figure out continued conversation, store data on frontend?
 
 
 def init_upscaler(model_path: str = 'weights/RealESRGAN_x4plus.pth'):
@@ -249,6 +286,6 @@ def download_all_models(hf_token: str):
     login(token=hf_token)
     for model in MODELS:
         print(f'DOWNLOADING {model.upper()}')
-        pipeline_for(model)
+        pipeline_for_image(model)
         print(f'DOWNLOADING IMAGE {model.upper()}')
-        pipeline_for(model, image=True)
+        pipeline_for_image(model, image=True)

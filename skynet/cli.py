@@ -80,6 +80,9 @@ def img2img(model, prompt, input, output, strength, guidance, steps, seed):
 @click.option('--output', '-o', default='output.txt')
 @click.option('--temperature', '-t', default=1.0)
 @click.option('--max-length', '-ml', default=256)
+@click.option('--num-return-sequences', '-rs', defautl=1)
+@click.option('--no-repeat-ngram', '-nr', default=2)
+@click.option('--top-p', '-tp', default=0.95)
 def txt2txt(*args, **kwargs):
     from . import utils
     _, hf_token, _, cfg = init_env_from_config()
@@ -151,8 +154,9 @@ def enqueue(
         binary = ''
 
         ec, out = cleos.push_action(
-            'telos.gpu', 'enqueue', [account, req,
-                                     binary, reward], f'{account}@{permission}'
+            'telos.gpu', 'enqueue',
+            [account, req, binary, reward],
+            f'{account}@{permission}'
         )
 
         print(collect_stdout(out))
@@ -293,7 +297,8 @@ def config(
         'user', node_url, None, None)
     with open_cleos(node_url, key=key) as cleos:
         ec, out = cleos.push_action(
-            'telos.gpu', 'config', [token_contract, token_symbol], f'{account}@{permission}'
+            'telos.gpu', 'config', [token_contract,
+                                    token_symbol], f'{account}@{permission}'
         )
 
         print(collect_stdout(out))
