@@ -88,6 +88,7 @@ class SkynetPinner:
                     resp = await self.ipfs_http.a_pin(cid)
                     if resp.status_code != 200:
                         logging.error(f'error pinning {cid}:\n{resp.text}')
+                        del self._pinned[cid]
 
                     else:
                         logging.info(f'pinned {cid}')
