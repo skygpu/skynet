@@ -13,14 +13,13 @@ from contextlib import asynccontextmanager as acm
 from leap.cleos import CLEOS
 from leap.sugar import Name, asset_from_str, collect_stdout
 from leap.hyperion import HyperionAPI
-from telebot.asyncio_helper import ApiTelegramException
 from telebot.types import InputMediaPhoto
 
-from telebot.types import CallbackQuery
 from telebot.async_telebot import AsyncTeleBot
 
 from skynet.db import open_new_database, open_database_connection
-from skynet.ipfs import open_ipfs_node, get_ipfs_file
+from skynet.ipfs import get_ipfs_file
+from skynet.ipfs.docker import open_ipfs_node
 from skynet.constants import *
 
 from . import *
@@ -164,7 +163,7 @@ class SkynetTelegramFrontend:
         enqueue_tx_id = res['transaction_id']
         enqueue_tx_link = hlink(
             'Your request on Skynet Explorer',
-            f'https://skynet.ancap.tech/v2/explore/transaction/{enqueue_tx_id}'
+            f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{enqueue_tx_id}'
         )
 
         await self.append_status_message(
@@ -221,7 +220,7 @@ class SkynetTelegramFrontend:
 
         tx_link = hlink(
             'Your result on Skynet Explorer',
-            f'https://skynet.ancap.tech/v2/explore/transaction/{tx_hash}'
+            f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash}'
         )
 
         await self.append_status_message(
@@ -233,11 +232,11 @@ class SkynetTelegramFrontend:
         )
 
         # attempt to get the image and send it
-        ipfs_link = f'https://ipfs.ancap.tech/ipfs/{ipfs_hash}/image.png'
+        ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png'
         resp = await get_ipfs_file(ipfs_link)
 
         caption = generate_reply_caption(
-            user, params, ipfs_hash, tx_hash, worker, reward)
+            user, params, tx_hash, worker, reward)
 
         if not resp or resp.status_code != 200:
             logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')

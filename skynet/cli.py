@@ -1,19 +1,14 @@
 #!/usr/bin/python
 
-import os
-import time
 import json
 import logging
 import random
 
-from typing import Optional
-from datetime import datetime, timedelta
 from functools import partial
 
 import trio
 import asks
 import click
-import docker
 import asyncio
 import requests
 
@@ -21,8 +16,10 @@ from leap.cleos import CLEOS
 from leap.sugar import collect_stdout
 from leap.hyperion import HyperionAPI
 
+from skynet.ipfs import IPFSHTTP
+
+
 from .db import open_new_database
-from .ipfs import open_ipfs_node
 from .config import *
 from .nodeos import open_cleos, open_nodeos
 from .constants import *
@@ -352,9 +349,9 @@ def dgpu(
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--hyperion-url', '-y', default='https://skynet.ancap.tech')
+    '--hyperion-url', '-y', default=f'https://{DEFAULT_DOMAIN}')
 @click.option(
-    '--node-url', '-n', default='https://skynet.ancap.tech')
+    '--node-url', '-n', default=f'https://{DEFAULT_DOMAIN}')
 @click.option(
     '--ipfs-url', '-i', default=DEFAULT_IPFS_REMOTE)
 @click.option(
@@ -404,28 +401,12 @@ def telegram(
     asyncio.run(_async_main())
 
 
-class IPFSHTTP:
-
-    def __init__(self, endpoint: str):
-        self.endpoint = endpoint
-
-    def pin(self, cid: str):
-        return requests.post(
-            f'{self.endpoint}/api/v0/pin/add',
-            params={'arg': cid}
-        )
-
-    async def a_pin(self, cid: str):
-        return await asks.post(
-            f'{self.endpoint}/api/v0/pin/add',
-            params={'arg': cid}
-        )
-
-
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='logging level')
 @click.option('--name', '-n', default='skynet-ipfs', help='container name')
 def ipfs(loglevel, name):
+    from skynet.ipfs.docker import open_ipfs_node
+
     logging.basicConfig(level=loglevel)
     with open_ipfs_node(name=name):
         ...
@@ -437,90 +418,12 @@ def ipfs(loglevel, name):
 @click.option(
     '--hyperion-url', '-y', default='http://127.0.0.1:42001')
 def pinner(loglevel, ipfs_rpc, hyperion_url):
+    from .ipfs.pinner import SkynetPinner
+
     logging.basicConfig(level=loglevel)
     ipfs_node = IPFSHTTP(ipfs_rpc)
     hyperion = HyperionAPI(hyperion_url)
 
-    pinned = set()
-    async def _async_main():
+    pinner = SkynetPinner(hyperion, ipfs_node)
 
-        async def capture_enqueues(after: datetime):
-            enqueues = await hyperion.aget_actions(
-                account='telos.gpu',
-                filter='telos.gpu:enqueue',
-                sort='desc',
-                after=after.isoformat(),
-                limit=1000
-            )
-
-            logging.info(f'got {len(enqueues["actions"])} enqueue actions.')
-
-            cids = []
-            for action in enqueues['actions']:
-                cid = action['act']['data']['binary_data']
-                if cid and cid not in pinned:
-                    pinned.add(cid)
-                    cids.append(cid)
-
-            return cids
-
-        async def capture_submits(after: datetime):
-            submits = await hyperion.aget_actions(
-                account='telos.gpu',
-                filter='telos.gpu:submit',
-                sort='desc',
-                after=after.isoformat(),
-                limit=1000
-            )
-
-            logging.info(f'got {len(submits["actions"])} submits actions.')
-
-            cids = []
-            for action in submits['actions']:
-                cid = action['act']['data']['ipfs_hash']
-                if cid and cid not in pinned:
-                    pinned.add(cid)
-                    cids.append(cid)
-
-            return cids
-
-        async def task_pin(cid: str):
-            logging.info(f'pinning {cid}...')
-            for _ in range(6):
-                try:
-                    with trio.move_on_after(5):
-                        resp = await ipfs_node.a_pin(cid)
-                        if resp.status_code != 200:
-                            logging.error(f'error pinning {cid}:\n{resp.text}')
-
-                        else:
-                            logging.info(f'pinned {cid}')
-                            return
-
-                except trio.TooSlowError:
-                    logging.error(f'timed out pinning {cid}')
-
-            logging.error(f'gave up pinning {cid}')
-
-        try:
-            async with trio.open_nursery() as n:
-                while True:
-                    now = datetime.now()
-                    prev_second = now - timedelta(seconds=10)
-
-                    # filter for the ones not already pinned
-                    cids = [
-                        *(await capture_enqueues(prev_second)),
-                        *(await capture_submits(prev_second))
-                    ]
-
-                    # pin and remember (in parallel)
-                    for cid in cids:
-                        n.start_soon(task_pin, cid)
-
-                    await trio.sleep(1)
-
-        except KeyboardInterrupt:
-            ...
-
-    trio.run(_async_main)
+    trio.run(pinner.pin_forever)
