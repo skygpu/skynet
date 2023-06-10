@@ -59,7 +59,7 @@ def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
     return image.convert('RGB')
 
 
-def pipeline_for_image(model: str, mem_fraction: float = 1.0, image=False) -> DiffusionPipeline:
+def pipeline_for_diffuse(model: str, mem_fraction: float = 1.0, image=False) -> DiffusionPipeline:
     assert torch.cuda.is_available()
     torch.cuda.empty_cache()
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
@@ -98,7 +98,7 @@ def pipeline_for_image(model: str, mem_fraction: float = 1.0, image=False) -> Di
     return pipe.to('cuda')
 
 
-def pipeline_for_text(model: str, mem_fraction: float = 1.0, image=False) -> DiffusionPipeline:
+def pipeline_for_transform(model: str, mem_fraction: float = 1.0, image=False) -> DiffusionPipeline:
     assert torch.cuda.is_available()
     torch.cuda.empty_cache()
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
@@ -150,7 +150,7 @@ def txt2img(
     torch.backends.cudnn.allow_tf32 = True
 
     login(token=hf_token)
-    pipe = pipeline_for_image(model)
+    pipe = pipeline_for_diffuse(model)
 
     seed = seed if seed else random.randint(0, 2 ** 64)
     prompt = prompt
@@ -183,7 +183,7 @@ def img2img(
     torch.backends.cudnn.allow_tf32 = True
 
     login(token=hf_token)
-    pipe = pipeline_for_image(model, image=True)
+    pipe = pipeline_for_diffuse(model, image=True)
 
     with open(img_path, 'rb') as img_file:
         input_img = convert_from_bytes_and_crop(img_file.read(), 512, 512)
@@ -220,7 +220,7 @@ def txt2txt(
 
     login(token=hf_token)
     tokenizer = AutoTokenizer.from_pretrained(model)
-    pipe = pipeline_for_text(model)
+    pipe = pipeline_for_transform(model)
 
     prompt = prompt
     # TODO: learn more about return tensors and model params
@@ -286,6 +286,6 @@ def download_all_models(hf_token: str):
     login(token=hf_token)
     for model in MODELS:
         print(f'DOWNLOADING {model.upper()}')
-        pipeline_for_image(model)
+        pipeline_for_diffuse(model)
         print(f'DOWNLOADING IMAGE {model.upper()}')
-        pipeline_for_image(model, image=True)
+        pipeline_for_diffuse(model, image=True)
