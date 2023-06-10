@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+from json import JSONDecodeError
 import random
 import logging
 import asyncio
@@ -188,25 +189,29 @@ class SkynetTelegramFrontend:
         tx_hash = None
         ipfs_hash = None
         for i in range(60):
-            submits = await self.hyperion.aget_actions(
-                account=self.account,
-                filter='telos.gpu:submit',
-                sort='desc',
-                after=request_time
-            )
-            actions = [
-                action
-                for action in submits['actions']
-                if action[
-                    'act']['data']['request_hash'] == request_hash
-            ]
-            if len(actions) > 0:
-                tx_hash = actions[0]['trx_id']
-                data = actions[0]['act']['data']
-                ipfs_hash = data['ipfs_hash']
-                worker = data['worker']
-                logging.info('Found matching submit!')
-                break
+            try:
+                submits = await self.hyperion.aget_actions(
+                    account=self.account,
+                    filter='telos.gpu:submit',
+                    sort='desc',
+                    after=request_time
+                )
+                actions = [
+                    action
+                    for action in submits['actions']
+                    if action[
+                        'act']['data']['request_hash'] == request_hash
+                ]
+                if len(actions) > 0:
+                    tx_hash = actions[0]['trx_id']
+                    data = actions[0]['act']['data']
+                    ipfs_hash = data['ipfs_hash']
+                    worker = data['worker']
+                    logging.info('Found matching submit!')
+                    break
+
+            except JSONDecodeError:
+                logging.error(f'network error while getting actions, retry..')
 
             await asyncio.sleep(1)
 
