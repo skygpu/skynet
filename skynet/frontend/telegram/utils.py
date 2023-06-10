@@ -65,32 +65,25 @@ def prepare_metainfo_caption(tguser, worker: str, reward: str, meta: dict) -> st
 def generate_reply_caption(
     tguser,  # telegram user
     params: dict,
-    ipfs_hash: str,
     tx_hash: str,
     worker: str,
     reward: str
 ):
-    ipfs_link = hlink(
-        'Get your image on IPFS',
-        f'https://ipfs.ancap.tech/ipfs/{ipfs_hash}/image.png'
-    )
     explorer_link = hlink(
         'SKYNET Transaction Explorer',
-        f'https://skynet.ancap.tech/v2/explore/transaction/{tx_hash}'
+        f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash}'
     )
 
     meta_info = prepare_metainfo_caption(tguser, worker, reward, params)
 
     final_msg = '\n'.join([
         'Worker finished your task!',
-        ipfs_link,
         explorer_link,
         f'PARAMETER INFO:\n{meta_info}'
     ])
 
     final_msg = '\n'.join([
-        f'<b>{ipfs_link}</b>',
-        f'<i>{explorer_link}</i>',
+        f'<b><i>{explorer_link}</i></b>',
         f'{meta_info}'
     ])
 

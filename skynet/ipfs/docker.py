@@ -1,34 +1,16 @@
 #!/usr/bin/python
 
 import os
+import sys
 import logging
 
 from pathlib import Path
 from contextlib import contextmanager as cm
 
-import asks
 import docker
 
-from asks.errors import RequestTimeout
 from docker.types import Mount
 from docker.models.containers import Container
-
-
-async def get_ipfs_file(ipfs_link: str):
-    logging.info(f'attempting to get image at {ipfs_link}')
-    resp = None
-    for i in range(10):
-        try:
-            resp = await asks.get(ipfs_link, timeout=3)
-
-        except asks.errors.RequestTimeout:
-            logging.warning('timeout...')
-
-    if resp:
-        logging.info(f'status_code: {resp.status_code}')
-    else:
-        logging.error(f'timeout')
-    return resp
 
 
 class IPFSDocker:
@@ -44,7 +26,7 @@ class IPFSDocker:
         return out.decode().rstrip()
 
     def pin(self, ipfs_hash: str):
-        ec, out = self._container.exec_run(
+        ec, _ = self._container.exec_run(
             ['ipfs', 'pin', 'add', ipfs_hash])
         assert ec == 0
 
@@ -90,14 +72,15 @@ def open_ipfs_node(name='skynet-ipfs'):
             remove=True
         )
 
-        uid = os.getuid()
-        gid = os.getgid()
-        ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', export_target])
-        logging.info(out)
-        assert ec == 0
-        ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', data_target])
-        logging.info(out)
-        assert ec == 0
+        if sys.platform != 'win32':
+            uid = os.getuid()
+            gid = os.getgid()
+            ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', export_target])
+            logging.info(out)
+            assert ec == 0
+            ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', data_target])
+            logging.info(out)
+            assert ec == 0
 
         for log in container.logs(stream=True):
             log = log.decode().rstrip()
@@ -106,4 +89,3 @@ def open_ipfs_node(name='skynet-ipfs'):
                 break
 
     yield IPFSDocker(container)
-

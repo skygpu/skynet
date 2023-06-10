@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+from functools import partial
 import io
 import json
 import time
@@ -15,7 +16,19 @@ from leap.cleos import CLEOS
 from leap.sugar import Checksum256, Name, asset_from_str
 
 from skynet.dgpu.errors import DGPUComputeError
-from skynet.ipfs import get_ipfs_file, open_ipfs_node
+from skynet.ipfs import get_ipfs_file
+from skynet.ipfs.docker import open_ipfs_node
+
+
+async def failable(fn: partial, ret_fail=None):
+    try:
+        return await fn()
+
+    except (
+        asks.errors.RequestTimeout,
+        json.JSONDecodeError
+    ):
+        return ret_fail
 
 
 class SkynetGPUConnector:
@@ -46,74 +59,88 @@ class SkynetGPUConnector:
         yield self
         self.disconnect()
 
+
     # blockchain helpers
 
     async def get_work_requests_last_hour(self):
         logging.info('get_work_requests_last_hour')
-        try:
-            return await self.cleos.aget_table(
+        return await failable(
+            partial(
+                self.cleos.aget_table,
                 'telos.gpu', 'telos.gpu', 'queue',
                 index_position=2,
                 key_type='i64',
                 lower_bound=int(time.time()) - 3600
-            )
-
-        except (
-            asks.errors.RequestTimeout,
-            json.JSONDecodeError
-        ):
-            return []
+            ), ret_fail=[])
 
     async def get_status_by_request_id(self, request_id: int):
         logging.info('get_status_by_request_id')
-        return await self.cleos.aget_table(
-            'telos.gpu', request_id, 'status')
+        return await failable(
+            partial(
+                self.cleos.aget_table,
+                'telos.gpu', request_id, 'status'), ret_fail=[])
 
     async def get_global_config(self):
         logging.info('get_global_config')
-        return (await self.cleos.aget_table(
-            'telos.gpu', 'telos.gpu', 'config'))[0]
+        rows = await failable(
+            partial(
+                self.cleos.aget_table,
+                'telos.gpu', 'telos.gpu', 'config'))
+
+        if rows:
+            return rows[0]
+        else:
+            return None
 
     async def get_worker_balance(self):
         logging.info('get_worker_balance')
-        rows = await self.cleos.aget_table(
-            'telos.gpu', 'telos.gpu', 'users',
-            index_position=1,
-            key_type='name',
-            lower_bound=self.account,
-            upper_bound=self.account
-        )
-        if len(rows) == 1:
+        rows = await failable(
+            partial(
+                self.cleos.aget_table,
+                'telos.gpu', 'telos.gpu', 'users',
+                index_position=1,
+                key_type='name',
+                lower_bound=self.account,
+                upper_bound=self.account
+            ))
+
+        if rows:
             return rows[0]['balance']
         else:
             return None
 
     async def begin_work(self, request_id: int):
         logging.info('begin_work')
-        return await self.cleos.a_push_action(
-            'telos.gpu',
-            'workbegin',
-            {
-                'worker': self.account,
-                'request_id': request_id,
-                'max_workers': 2
-            },
-            self.account, self.key,
-            permission=self.permission
+        return await failable(
+            partial(
+                self.cleos.a_push_action,
+                'telos.gpu',
+                'workbegin',
+                {
+                    'worker': self.account,
+                    'request_id': request_id,
+                    'max_workers': 2
+                },
+                self.account, self.key,
+                permission=self.permission
+            )
         )
 
     async def cancel_work(self, request_id: int, reason: str):
         logging.info('cancel_work')
-        return await self.cleos.a_push_action(
-            'telos.gpu',
-            'workcancel',
-            {
-                'worker': self.account,
-                'request_id': request_id,
-                'reason': reason
-            },
-            self.account, self.key,
-            permission=self.permission
+        return await failable(
+            partial(
+                self.cleos.a_push_action,
+                'telos.gpu',
+                'workcancel',
+                {
+                    'worker': self.account,
+                    'request_id': request_id,
+                    'reason': reason
+                },
+                self.account, self.key,
+                permission=self.permission
+            )
         )
 
     async def maybe_withdraw_all(self):
@@ -124,25 +151,31 @@ class SkynetGPUConnector:
 
         balance_amount = float(balance.split(' ')[0])
         if balance_amount > 0:
-            await self.cleos.a_push_action(
-                'telos.gpu',
-                'withdraw',
-                {
-                    'user': self.account,
-                    'quantity': asset_from_str(balance)
-                },
-                self.account, self.key,
-                permission=self.permission
+            await failable(
+                partial(
+                    self.cleos.a_push_action,
+                    'telos.gpu',
+                    'withdraw',
+                    {
+                        'user': self.account,
+                        'quantity': asset_from_str(balance)
+                    },
+                    self.account, self.key,
+                    permission=self.permission
+                )
             )
 
     async def find_my_results(self):
         logging.info('find_my_results')
-        return await self.cleos.aget_table(
-            'telos.gpu', 'telos.gpu', 'results',
-            index_position=4,
-            key_type='name',
-            lower_bound=self.account,
-            upper_bound=self.account
+        return await failable(
+            partial(
+                self.cleos.aget_table,
+                'telos.gpu', 'telos.gpu', 'results',
+                index_position=4,
+                key_type='name',
+                lower_bound=self.account,
+                upper_bound=self.account
+            )
         )
 
     async def submit_work(
@@ -153,18 +186,21 @@ class SkynetGPUConnector:
         ipfs_hash: str
     ):
         logging.info('submit_work')
-        await self.cleos.a_push_action(
-            'telos.gpu',
-            'submit',
-            {
-                'worker': self.account,
-                'request_id': request_id,
-                'request_hash': Checksum256(request_hash),
-                'result_hash': Checksum256(result_hash),
-                'ipfs_hash': ipfs_hash
-            },
-            self.account, self.key,
-            permission=self.permission
+        return await failable(
+            partial(
+                self.cleos.a_push_action,
+                'telos.gpu',
+                'submit',
+                {
+                    'worker': self.account,
+                    'request_id': request_id,
+                    'request_hash': Checksum256(request_hash),
+                    'result_hash': Checksum256(result_hash),
+                    'ipfs_hash': ipfs_hash
+                },
+                self.account, self.key,
+                permission=self.permission
+            )
         )
 
     # IPFS helpers

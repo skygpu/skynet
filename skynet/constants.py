@@ -144,4 +144,6 @@ CONFIG_ATTRS = [
     'upscaler'
 ]
 
+DEFAULT_DOMAIN = 'skygpu.net'
+
 DEFAULT_IPFS_REMOTE = '/ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv'
