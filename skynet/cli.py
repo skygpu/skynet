@@ -213,7 +213,7 @@ def status(node_url: str, request_id: int):
 
 @skynet.command()
 @click.option(
-    '--account', '-a', default='telegram1')
+    '--account', '-a', default='telegram')
 @click.option(
     '--permission', '-p', default='active')
 @click.option(
@@ -244,7 +244,7 @@ def dequeue(
 
 @skynet.command()
 @click.option(
-    '--account', '-a', default='telegram1')
+    '--account', '-a', default='telos.gpu')
 @click.option(
     '--permission', '-p', default='active')
 @click.option(
@@ -278,7 +278,7 @@ def config(
 
 @skynet.command()
 @click.option(
-    '--account', '-a', default='telegram1')
+    '--account', '-a', default='telegram')
 @click.option(
     '--permission', '-p', default='active')
 @click.option(
