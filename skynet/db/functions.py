@@ -42,22 +42,22 @@ CREATE TABLE IF NOT EXISTS skynet.user_config(
     seed NUMERIC,
     guidance DECIMAL NOT NULL,
     strength DECIMAL NOT NULL,
-    upscaler VARCHAR(128)
+    upscaler VARCHAR(128),
+    CONSTRAINT fk_config
+      FOREIGN KEY(id)
+        REFERENCES skynet.user(id)
 );
-ALTER TABLE skynet.user_config
-    ADD FOREIGN KEY(id)
-    REFERENCES skynet.user(id);
 
 CREATE TABLE IF NOT EXISTS skynet.user_requests(
     id BIGSERIAL NOT NULL,
     user_id BIGSERIAL NOT NULL,
     sent TIMESTAMP NOT NULL,
     status TEXT NOT NULL,
-    status_msg BIGSERIAL PRIMARY KEY NOT NULL
+    status_msg BIGSERIAL PRIMARY KEY NOT NULL,
+    CONSTRAINT fk_user_req
+      FOREIGN KEY(user_id)
+        REFERENCES skynet.user(id)
 );
-ALTER TABLE skynet.user_requests
-    ADD FOREIGN KEY(user_id)
-    REFERENCES skynet.user(id);
 '''
 
 
