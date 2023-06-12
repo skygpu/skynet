@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager as acm
 
 from leap.cleos import CLEOS
 from leap.sugar import Checksum256, Name, asset_from_str
+from skynet.constants import DEFAULT_DOMAIN
 
 from skynet.dgpu.errors import DGPUComputeError
 from skynet.ipfs import get_ipfs_file
@@ -220,8 +221,8 @@ class SkynetGPUConnector:
         if ipfs_hash == '':
             return b''
 
-        resp = await get_ipfs_file(f'https://ipfs.ancap.tech/ipfs/{ipfs_hash}/image.png')
-        if resp.status_code != 200:
+        resp = await get_ipfs_file(f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png')
+        if not resp:
             raise DGPUComputeError('Couldn\'t gather input data from ipfs')
 
         return resp.raw
