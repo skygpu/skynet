@@ -66,7 +66,7 @@ class SkynetDGPUDaemon:
 
                             resp = await self.conn.begin_work(rid)
                             if 'code' in resp:
-                                logging.info(f'probably beign worked on already... skip.')
+                                logging.info(f'probably being worked on already... skip.')
 
                             else:
                                 try:
