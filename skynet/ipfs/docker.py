@@ -38,6 +38,15 @@ class IPFSDocker:
 
         assert ec == 0
 
+    def check_connect(self):
+        ec, out = self._container.exec_run(
+            ['ipfs', 'swarm', 'peers'])
+        if ec != 0:
+            logging.error(out)
+        assert ec == 0
+
+        return out
+
 
 @cm
 def open_ipfs_node(name='skynet-ipfs'):
