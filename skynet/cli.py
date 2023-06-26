@@ -110,6 +110,7 @@ def download():
 @click.option('--step', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 @click.option('--upscaler', '-U', default='x4')
+@click.option('--jobs', '-j', default=1)
 def enqueue(
     account: str,
     permission: str,
@@ -134,12 +135,19 @@ def enqueue(
         })
         binary = ''
 
-        ec, out = cleos.push_action(
-            'telos.gpu', 'enqueue', [account, req, binary, reward], f'{account}@{permission}'
-        )
-
-        print(collect_stdout(out))
-        assert ec == 0
+        if not kwargs['jobs']:
+            ec, out = cleos.push_action(
+                'telos.gpu', 'enqueue', [account, req, binary, reward], f'{account}@{permission}'
+            )
+            print(collect_stdout(out))
+            assert ec == 0
+        else:
+            for i in kwargs['jobs']:
+                ec, out = cleos.push_action(
+                    'telos.gpu', 'enqueue', [account, req, binary, reward], f'{account}@{permission}'
+                )
+                print(collect_stdout(out))
+                assert ec == 0
 
 @skynet.command()
 @click.option('--loglevel', '-l', default='INFO', help='Logging level')
