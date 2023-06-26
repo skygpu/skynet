@@ -47,7 +47,7 @@ class IPFSDocker:
             logging.error(out)
         assert ec == 0
 
-        return out
+        return out.splitlines()
 
 
 @cm
