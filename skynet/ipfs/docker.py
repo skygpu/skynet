@@ -21,6 +21,8 @@ class IPFSDocker:
     def add(self, file: str) -> str:
         ec, out = self._container.exec_run(
             ['ipfs', 'add', '-w', f'/export/{file}', '-Q'])
+        if ec != 0:
+            logging.error(out)
         assert ec == 0
 
         return out.decode().rstrip()
@@ -37,6 +39,15 @@ class IPFSDocker:
             logging.error(out)
 
         assert ec == 0
+
+    def check_connect(self):
+        ec, out = self._container.exec_run(
+            ['ipfs', 'swarm', 'peers'])
+        if ec != 0:
+            logging.error(out)
+        assert ec == 0
+
+        return out.splitlines()
 
 
 @cm
