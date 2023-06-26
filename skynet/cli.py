@@ -111,6 +111,7 @@ def download():
 @click.option('--seed', '-S', default=None)
 @click.option('--upscaler', '-U', default='x4')
 @click.option('--jobs', '-j', default=1)
+@click.option('--min-verification', '-mv', default=1)
 def enqueue(
     account: str,
     permission: str,
@@ -135,9 +136,9 @@ def enqueue(
         })
         binary = ''
 
-        for i in kwargs['jobs']:
+        for i in range(kwargs['jobs']):
             ec, out = cleos.push_action(
-                'telos.gpu', 'enqueue', [account, req, binary, reward], f'{account}@{permission}'
+                'telos.gpu', 'enqueue', [account, req, binary, reward, kwargs['min-verification']], f'{account}@{permission}'
             )
             print(collect_stdout(out))
             assert ec == 0
