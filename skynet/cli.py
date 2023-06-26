@@ -135,19 +135,12 @@ def enqueue(
         })
         binary = ''
 
-        if not kwargs['jobs']:
+        for i in kwargs['jobs']:
             ec, out = cleos.push_action(
                 'telos.gpu', 'enqueue', [account, req, binary, reward], f'{account}@{permission}'
             )
             print(collect_stdout(out))
             assert ec == 0
-        else:
-            for i in kwargs['jobs']:
-                ec, out = cleos.push_action(
-                    'telos.gpu', 'enqueue', [account, req, binary, reward], f'{account}@{permission}'
-                )
-                print(collect_stdout(out))
-                assert ec == 0
 
 @skynet.command()
 @click.option('--loglevel', '-l', default='INFO', help='Logging level')
