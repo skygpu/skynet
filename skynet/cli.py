@@ -13,7 +13,7 @@ import asyncio
 import requests
 
 from leap.cleos import CLEOS
-from leap.sugar import collect_stdout
+from leap.sugar import collect_stdout, Name
 from leap.hyperion import HyperionAPI
 
 from skynet.ipfs import IPFSHTTP
@@ -100,6 +100,7 @@ def download():
     '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.option(
     '--reward', '-r', default='20.0000 GPU')
+@click.option('--jobs', '-j', default=1)
 @click.option('--algo', '-a', default='midj')
 @click.option(
     '--prompt', '-p', default='a red old tractor in a sunny wheat field')
@@ -110,14 +111,13 @@ def download():
 @click.option('--step', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 @click.option('--upscaler', '-U', default='x4')
-@click.option('--jobs', '-j', default=1)
-@click.option('--min-verification', '-mv', default=1)
 def enqueue(
     account: str,
     permission: str,
     key: str | None,
     node_url: str,
     reward: str,
+    jobs: int,
     **kwargs
 ):
     key, account, permission = load_account_info(
@@ -136,12 +136,25 @@ def enqueue(
         })
         binary = ''
 
-        for i in range(kwargs['jobs']):
-            ec, out = cleos.push_action(
-                'telos.gpu', 'enqueue', [account, req, binary, reward, kwargs['min-verification']], f'{account}@{permission}'
+        for i in range(jobs):
+            res = trio.run(cleos.a_push_action,
+                'telos.gpu',
+                'enqueue',
+                {
+                    'user': Name(account),
+                    'request_body': req,
+                    'binary_data': binary,
+                    'reward': reward,
+                    'min_verification': 1
+                },
+                # [account, req, binary, reward],
+                # [account, req, binary, reward, kwargs['min_verification']],
+                account, key, permission,
+                #f'{account}@{permission}'
             )
-            print(collect_stdout(out))
-            assert ec == 0
+            print(res)
+            # print(collect_stdout(out))
+            # assert ec == 0
 
 @skynet.command()
 @click.option('--loglevel', '-l', default='INFO', help='Logging level')
