@@ -13,7 +13,7 @@ import asyncio
 import requests
 
 from leap.cleos import CLEOS
-from leap.sugar import collect_stdout, Name
+from leap.sugar import collect_stdout, Name, asset_from_str
 from leap.hyperion import HyperionAPI
 
 from skynet.ipfs import IPFSHTTP
@@ -101,7 +101,7 @@ def download():
 @click.option(
     '--reward', '-r', default='20.0000 GPU')
 @click.option('--jobs', '-j', default=1)
-@click.option('--algo', '-a', default='midj')
+@click.option('--model', '-m', default='prompthero/openjourney')
 @click.option(
     '--prompt', '-p', default='a red old tractor in a sunny wheat field')
 @click.option('--output', '-o', default='output.png')
@@ -121,10 +121,10 @@ def enqueue(
     **kwargs
 ):
     key, account, permission = load_account_info(
-        'user', key, account, permission)
+        'dgpu', key, account, permission)
 
     node_url, _, _ = load_endpoint_info(
-        'user', node_url, None, None)
+        'dgpu', node_url, None, None)
 
     with open_cleos(node_url, key=key) as cleos:
         if not kwargs['seed']:
@@ -144,7 +144,7 @@ def enqueue(
                     'user': Name(account),
                     'request_body': req,
                     'binary_data': binary,
-                    'reward': reward,
+                    'reward': asset_from_str(reward),
                     'min_verification': 1
                 },
                 # [account, req, binary, reward],
@@ -299,25 +299,45 @@ def config(
 @click.option(
     '--key', '-k', default=None)
 @click.option(
+    '--sender', '-s', default=None)
+@click.option(
+    '--recipient', '-r', default=None)
+@click.option(
+    '--memo', '-m', default="")
+@click.option(
     '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.argument('quantity')
 def deposit(
     account: str,
     permission: str,
     key: str | None,
+    sender: str,
+    recipient: str,
+    memo: str,
     node_url: str,
     quantity: str
 ):
     key, account, permission = load_account_info(
-        'user', key, account, permission)
+        'dgpu', key, account, permission)
 
     node_url, _, _ = load_endpoint_info(
-        'user', node_url, None, None)
+        'dgpu', node_url, None, None)
     with open_cleos(node_url, key=key) as cleos:
-        ec, out = cleos.transfer_token(account, 'telos.gpu', quantity)
+        res = trio.run(cleos.a_push_action,
+            'eosio.token',
+            'transfer',
+            {
+                'sender': Name(sender),
+                'recipient': Name(recipient),
+                'amount': asset_from_str(quantity),
+                'memo': memo
+            },
+            # [sender, recipient, quantity, memo],
+            account, key, permission,
+            # f"{account}@{permission}",
+        )
+        print(res)
 
-        print(collect_stdout(out))
-        assert ec == 0
 
 @skynet.group()
 def run(*args, **kwargs):
