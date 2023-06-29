@@ -111,6 +111,7 @@ def download():
 @click.option('--step', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 @click.option('--upscaler', '-U', default='x4')
+@click.option('--binary_data', '-b', default='')
 def enqueue(
     account: str,
     permission: str,
@@ -127,16 +128,25 @@ def enqueue(
         'dgpu', node_url, None, None)
 
     with open_cleos(node_url, key=key) as cleos:
-        if not kwargs['seed']:
-            kwargs['seed'] = random.randint(0, 10e9)
-
-        req = json.dumps({
-            'method': 'diffuse',
-            'params': kwargs
-        })
-        binary = ''
+        # if not kwargs['seed']:
+        #     kwargs['seed'] = random.randint(0, 10e9)
+        #
+        # req = json.dumps({
+        #     'method': 'diffuse',
+        #     'params': kwargs
+        # })
+        # binary = ''
 
         for i in range(jobs):
+            if not kwargs['seed']:
+                kwargs['seed'] = random.randint(0, 10e9)
+
+            req = json.dumps({
+                'method': 'diffuse',
+                'params': kwargs
+            })
+            binary = kwargs['binary_data']
+
             res = trio.run(cleos.a_push_action,
                 'telos.gpu',
                 'enqueue',
