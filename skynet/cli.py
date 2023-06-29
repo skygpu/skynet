@@ -250,12 +250,20 @@ def dequeue(
         'user', node_url, None, None)
 
     with open_cleos(node_url, key=key) as cleos:
-        ec, out = cleos.push_action(
-            'telos.gpu', 'dequeue', [account, request_id], f'{account}@{permission}'
+        res = trio.run(cleos.a_push_action,
+            'telos.gpu',
+            'dequeue',
+            {
+                'user': Name(account),
+                'request_id': request_id,
+            },
+            account, key, permission,
+            # [account, request_id], f'{account}@{permission}'
         )
+        print(res)
+        # print(collect_stdout(out))
+        # assert ec == 0
 
-        print(collect_stdout(out))
-        assert ec == 0
 
 @skynet.command()
 @click.option(
@@ -284,12 +292,20 @@ def config(
     node_url, _, _ = load_endpoint_info(
         'user', node_url, None, None)
     with open_cleos(node_url, key=key) as cleos:
-        ec, out = cleos.push_action(
-            'telos.gpu', 'config', [token_contract, token_symbol], f'{account}@{permission}'
+        res = trio.run(cleos.a_push_action,
+            'telos.gpu',
+            'config',
+            {
+                'token_contract': token_contract,
+                'token_symbol': token_symbol,
+            },
+            account, key, permission,
+            # [token_contract, token_symbol],
+            # f'{account}@{permission}'
         )
-
-        print(collect_stdout(out))
-        assert ec == 0
+        print(res)
+        # print(collect_stdout(out))
+        # assert ec == 0
 
 @skynet.command()
 @click.option(
