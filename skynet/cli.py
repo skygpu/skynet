@@ -265,7 +265,7 @@ def dequeue(
             'dequeue',
             {
                 'user': Name(account),
-                'request_id': request_id,
+                'request_id': int(request_id),
             },
             account, key, permission,
             # [account, request_id], f'{account}@{permission}'
