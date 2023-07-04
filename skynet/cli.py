@@ -122,49 +122,38 @@ def enqueue(
     **kwargs
 ):
     key, account, permission = load_account_info(
-        'dgpu', key, account, permission)
+        'user', key, account, permission)
 
     node_url, _, _ = load_endpoint_info(
-        'dgpu', node_url, None, None)
+        'user', node_url, None, None)
 
     with open_cleos(node_url, key=key) as cleos:
-        # if not kwargs['seed']:
-        #     kwargs['seed'] = random.randint(0, 10e9)
-        #
-        # req = json.dumps({
-        #     'method': 'diffuse',
-        #     'params': kwargs
-        # })
-        # binary = ''
+        async def enqueue_n_jobs():
+            for i in range(jobs):
+                if not kwargs['seed']:
+                    kwargs['seed'] = random.randint(0, 10e9)
 
-        for i in range(jobs):
-            if not kwargs['seed']:
-                kwargs['seed'] = random.randint(0, 10e9)
+                req = json.dumps({
+                    'method': 'diffuse',
+                    'params': kwargs
+                })
+                binary = kwargs['binary_data']
 
-            req = json.dumps({
-                'method': 'diffuse',
-                'params': kwargs
-            })
-            binary = kwargs['binary_data']
+                res = await cleos.a_push_action(
+                    'telos.gpu',
+                    'enqueue',
+                    {
+                        'user': Name(account),
+                        'request_body': req,
+                        'binary_data': binary,
+                        'reward': asset_from_str(reward),
+                        'min_verification': 1
+                    },
+                    account, key, permission,
+                )
+                print(res)
+        trio.run(enqueue_n_jobs)
 
-            res = trio.run(cleos.a_push_action,
-                'telos.gpu',
-                'enqueue',
-                {
-                    'user': Name(account),
-                    'request_body': req,
-                    'binary_data': binary,
-                    'reward': asset_from_str(reward),
-                    'min_verification': 1
-                },
-                # [account, req, binary, reward],
-                # [account, req, binary, reward, kwargs['min_verification']],
-                account, key, permission,
-                #f'{account}@{permission}'
-            )
-            print(res)
-            # print(collect_stdout(out))
-            # assert ec == 0
 
 @skynet.command()
 @click.option('--loglevel', '-l', default='INFO', help='Logging level')
@@ -268,11 +257,8 @@ def dequeue(
                 'request_id': int(request_id),
             },
             account, key, permission,
-            # [account, request_id], f'{account}@{permission}'
         )
         print(res)
-        # print(collect_stdout(out))
-        # assert ec == 0
 
 
 @skynet.command()
@@ -310,12 +296,9 @@ def config(
                 'token_symbol': token_symbol,
             },
             account, key, permission,
-            # [token_contract, token_symbol],
-            # f'{account}@{permission}'
         )
         print(res)
-        # print(collect_stdout(out))
-        # assert ec == 0
+
 
 @skynet.command()
 @click.option(
@@ -325,42 +308,32 @@ def config(
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--sender', '-s', default=None)
-@click.option(
-    '--recipient', '-r', default=None)
-@click.option(
-    '--memo', '-m', default="")
-@click.option(
     '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.argument('quantity')
 def deposit(
     account: str,
     permission: str,
     key: str | None,
-    sender: str,
-    recipient: str,
-    memo: str,
     node_url: str,
     quantity: str
 ):
     key, account, permission = load_account_info(
-        'dgpu', key, account, permission)
+        'user', key, account, permission)
 
     node_url, _, _ = load_endpoint_info(
-        'dgpu', node_url, None, None)
+        'user', node_url, None, None)
+
     with open_cleos(node_url, key=key) as cleos:
         res = trio.run(cleos.a_push_action,
             'eosio.token',
             'transfer',
             {
-                'sender': Name(sender),
-                'recipient': Name(recipient),
+                'sender': Name(account),
+                'recipient': Name('telos.gpu'),
                 'amount': asset_from_str(quantity),
-                'memo': memo
+                'memo': f'{account} transferred {quantity} to telos.gpu'
             },
-            # [sender, recipient, quantity, memo],
             account, key, permission,
-            # f"{account}@{permission}",
         )
         print(res)
 
