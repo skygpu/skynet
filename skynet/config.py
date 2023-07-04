@@ -71,8 +71,8 @@ def load_account_info(
         if not key and 'key' in sub_config:
             key = sub_config['key']
 
-        if not account and 'name' in sub_config:
-            account = sub_config['name']
+        if not account and 'account' in sub_config:
+            account = sub_config['account']
 
         if not permission and 'permission' in sub_config:
             permission = sub_config['permission']
