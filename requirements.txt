@@ -10,5 +10,6 @@ docker
 aiohttp
 psycopg2-binary
 pyTelegramBotAPI
+discord.py
 
 py-leap@git+https://github.com/guilledk/py-leap.git@v0.1a14
