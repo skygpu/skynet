@@ -38,8 +38,12 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
         user = 'tests'
         status_msg = 'status'
         params = {
-            'prompt': prompt,
+            'prompt': arg,
+            'seed': None,
+            'step': 35,
+            'guidance': 1,
         }
+        # import pdb; pdb.set_trace()
         ec = await work_request(user, status_msg, 'txt2img', params)
         print(ec)
 

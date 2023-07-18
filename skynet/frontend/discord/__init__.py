@@ -134,6 +134,7 @@ class SkynetDiscordFrontend:
         })
         request_time = datetime.now().isoformat()
 
+        # import pdb; pdb.set_trace()
         # await self.update_status_message(
         #     status_msg,
         #     f'processing a \'{method}\' request by {tg_user_pretty(user)}\n'
@@ -154,13 +155,14 @@ class SkynetDiscordFrontend:
             },
             self.account, self.key, permission=self.permission
         )
+        print(res)
 
         if 'code' in res or 'statusCode' in res:
             logging.error(json.dumps(res, indent=4))
-            # await self.update_status_message(
-            #     status_msg,
-            #     'skynet has suffered an internal error trying to fill this request')
-            # return
+            await self.bot.send(
+                status_msg,
+                'skynet has suffered an internal error trying to fill this request')
+            return
 
         enqueue_tx_id = res['transaction_id']
         enqueue_tx_link = hlink(
