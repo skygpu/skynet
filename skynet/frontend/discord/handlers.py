@@ -100,6 +100,44 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
         if ec == 0:
             await db_call('increment_generated', user.id)
 
+    @bot.command(name='redo', help='Redo last request')
+    async def redo(ctx):
+        init_msg = 'started processing redo request...'
+        status_msg = await ctx.reply(init_msg)
+        user = ctx.author
+
+        method = await db_call('get_last_method_of', user.id)
+        prompt = await db_call('get_last_prompt_of', user.id)
+
+        file_id = None
+        binary = ''
+        if method == 'img2img':
+            file_id = await db_call('get_last_file_of', user.id)
+            binary = await db_call('get_last_binary_of', user.id)
+
+        if not prompt:
+            await ctx.reply(
+                'no last prompt found, do a txt2img cmd first!'
+            )
+            return
+
+        user_row = await db_call('get_or_create_user', user.id)
+        await db_call(
+            'new_user_request', user.id, message.id, status_msg.id, status=init_msg)
+        user_config = {**user_row}
+        del user_config['id']
+
+        params = {
+            'prompt': prompt,
+            **user_config
+        }
+
+        await work_request(
+            user, status_msg, 'redo', params,
+            file_id=file_id,
+            binary_data=binary
+        )
+
         # TODO: DELETE BELOW
         # user = 'testworker3'
         # status_msg = 'status'
