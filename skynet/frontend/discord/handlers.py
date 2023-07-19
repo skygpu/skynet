@@ -58,7 +58,7 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
 
     @bot.command(name='cool', help='Display a list of cool prompt words')
     async def send_cool_words(ctx):
-        await ctx.reply(content='\n'.join(COOL_WORDS))
+        await ctx.reply(content='\n'.join(CLEAN_COOL_WORDS))
 
     @bot.command(name='txt2img', help='Responds with an image')
     async def send_txt2img(ctx):

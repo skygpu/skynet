@@ -82,6 +82,28 @@ COOL_WORDS = [
     'michelangelo'
 ]
 
+CLEAN_COOL_WORDS = [
+    'cyberpunk',
+    'soviet propaganda poster',
+    'rastafari',
+    'cannabis',
+    'art deco',
+    'H R Giger Necronom IV',
+    'dimethyltryptamine',
+    'lysergic',
+    'psilocybin',
+    'trippy',
+    'lucy in the sky with diamonds',
+    'fractal',
+    'da vinci',
+    'pencil illustration',
+    'blueprint',
+    'internal diagram',
+    'baroque',
+    'the last judgment',
+    'michelangelo'
+]
+
 HELP_TOPICS = {
     'step': '''
 Diffusion models are iterative processes – a repeated cycle that starts with a\
