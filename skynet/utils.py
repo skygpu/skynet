@@ -79,7 +79,7 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
 
     if model == 'snowkidy/stable-diffusion-xl-base-0.9':
         # TODO: figure out what this does
-        params['addition_embed_type'] = None
+        params['addition_embed_type'] = { 'text_time': None }
 
     if model == 'runwayml/stable-diffusion-v1-5':
         params['revision'] = 'fp16'
