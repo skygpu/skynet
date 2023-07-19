@@ -29,7 +29,7 @@ class DiscordBot(commands.Bot):
             message_content=True,
             voice_states=True
         )
-        super().__init__(command_prefix='\\', intents=intents, *args, **kwargs)
+        super().__init__(command_prefix='/', intents=intents, *args, **kwargs)
 
     # async def setup_hook(self):
     #     db.poll_db.start()

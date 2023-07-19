@@ -35,16 +35,21 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
 
     @bot.command(name='txt2img', help='Responds with an image')
     async def send_txt2img(ctx, *, arg):
-        user = 'tests'
+        user = 'testworker3'
         status_msg = 'status'
         params = {
             'prompt': arg,
             'seed': None,
             'step': 35,
-            'guidance': 1,
+            'guidance': 7.5,
+            'strength': 0.5,
+            'width': 512,
+            'height': 512,
+            'upscaler': None,
+            'model': 'prompthero/openjourney',
         }
-        # import pdb; pdb.set_trace()
-        ec = await work_request(user, status_msg, 'txt2img', params)
+
+        ec = await work_request(user, status_msg, 'txt2img', params, ctx)
         print(ec)
 
         # if ec == 0:
