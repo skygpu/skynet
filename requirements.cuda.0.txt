@@ -3,6 +3,7 @@ triton
 accelerate
 transformers
 huggingface_hub
-diffusers[torch]
+diffusers[torch]>=0.18.0
+invisible-watermark
 torch==1.13.0+cu117
 --extra-index-url https://download.pytorch.org/whl/cu117
