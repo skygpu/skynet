@@ -47,6 +47,11 @@ class DiscordBot(commands.Bot):
         print(self.user.id)
         print("==============")
 
+    async def on_message(self, message):
+        if message.channel.name != 'skynet':
+            return
+        await self.process_commands(message)
+
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):
             await ctx.send('You missed a required argument, please try again.')
