@@ -5,15 +5,17 @@ VERSION = '0.1a10'
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
 MODELS = {
-    'prompthero/openjourney':          { 'short': 'midj'},
-    'runwayml/stable-diffusion-v1-5':  { 'short': 'stable'},
-    'Linaqruf/anything-v3.0':          { 'short': 'hdanime'},
-    'hakurei/waifu-diffusion':         { 'short': 'waifu'},
-    'nitrosocke/Ghibli-Diffusion':     { 'short': 'ghibli'},
-    'dallinmackay/Van-Gogh-diffusion': { 'short': 'van-gogh'},
-    'lambdalabs/sd-pokemon-diffusers': { 'short': 'pokemon'},
-    'Envvi/Inkpunk-Diffusion':         { 'short': 'ink'},
-    'nousr/robo-diffusion':            { 'short': 'robot'}
+    'prompthero/openjourney':                   { 'short': 'midj'},
+    'runwayml/stable-diffusion-v1-5':           { 'short': 'stable'},
+    'stabilityai/stable-diffusion-2-1':         { 'short': 'stable2'},
+    'stabilityai/stable-diffusion-xl-base-0.9': { 'short': 'stablexl'},
+    'Linaqruf/anything-v3.0':                   { 'short': 'hdanime'},
+    'hakurei/waifu-diffusion':                  { 'short': 'waifu'},
+    'nitrosocke/Ghibli-Diffusion':              { 'short': 'ghibli'},
+    'dallinmackay/Van-Gogh-diffusion':          { 'short': 'van-gogh'},
+    'lambdalabs/sd-pokemon-diffusers':          { 'short': 'pokemon'},
+    'Envvi/Inkpunk-Diffusion':                  { 'short': 'ink'},
+    'nousr/robo-diffusion':                     { 'short': 'robot'}
 }
 
 SHORT_NAMES = [
