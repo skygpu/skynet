@@ -439,7 +439,7 @@ def telegram(
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='logging level')
 @click.option(
-    '--account', '-a', default='discord')
+    '--account', '-a', default=None)
 @click.option(
     '--permission', '-p', default='active')
 @click.option(
@@ -485,7 +485,7 @@ def discord(
             permission,
             node_url,
             hyperion_url,
-            db_host, db_user, db_pass,
+            # db_host, db_user, db_pass,
             remote_ipfs_node=ipfs_url,
             key=key
         )

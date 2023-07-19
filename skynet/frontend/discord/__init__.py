@@ -16,7 +16,8 @@ from leap.sugar import Name, asset_from_str, collect_stdout
 from leap.hyperion import HyperionAPI
 # from telebot.types import InputMediaPhoto
 
-# import discord
+import discord
+import io
 
 from skynet.db import open_new_database, open_database_connection
 from skynet.ipfs import get_ipfs_file
@@ -34,24 +35,24 @@ class SkynetDiscordFrontend:
 
     def __init__(
         self,
-        token: str,
+        # token: str,
         account: str,
         permission: str,
         node_url: str,
         hyperion_url: str,
-        db_host: str,
-        db_user: str,
+        # db_host: str,
+        # db_user: str,
         # db_pass: str,
         remote_ipfs_node: str,
         key: str
     ):
-        self.token = token
+        # self.token = token
         self.account = account
         self.permission = permission
         self.node_url = node_url
         self.hyperion_url = hyperion_url
-        self.db_host = db_host
-        self.db_user = db_user
+        # self.db_host = db_host
+        # self.db_user = db_user
         # self.db_pass = db_pass
         self.remote_ipfs_node = remote_ipfs_node
         self.key = key
@@ -115,6 +116,7 @@ class SkynetDiscordFrontend:
         status_msg,
         method: str,
         params: dict,
+        ctx: discord.TextChannel,
         file_id: str | None = None,
         binary_data: str = ''
     ):
@@ -134,13 +136,17 @@ class SkynetDiscordFrontend:
         })
         request_time = datetime.now().isoformat()
 
-        # import pdb; pdb.set_trace()
+        # maybe get rid of this
         # await self.update_status_message(
         #     status_msg,
         #     f'processing a \'{method}\' request by {tg_user_pretty(user)}\n'
         #     f'[{timestamp_pretty()}] <i>broadcasting transaction to chain...</i>',
         #     parse_mode='HTML'
         # )
+        message = await ctx.send(
+            f'processing a \'{method}\' request by {user}\n \
+            [{timestamp_pretty()}] *broadcasting transaction to chain...*'
+        )
 
         reward = '20.0000 GPU'
         res = await self.cleos.a_push_action(
@@ -177,6 +183,12 @@ class SkynetDiscordFrontend:
         #     f'[{timestamp_pretty()}] <i>workers are processing request...</i>',
         #     parse_mode='HTML'
         # )
+
+        await message.edit(
+            f'**broadcasted!**\n \
+            **{enqueue_tx_link}**\n \
+            [{timestamp_pretty()}] *workers are processing request...*'
+        )
 
         out = collect_stdout(res)
 
@@ -238,13 +250,18 @@ class SkynetDiscordFrontend:
         #     f'[{timestamp_pretty()}] <i>trying to download image...</i>\n',
         #     parse_mode='HTML'
         # )
+        await message.edit(
+            f'**request processed!**\n \
+            **{tx_link}**\n \
+            [{timestamp_pretty()}] *trying to download image...*\n'
+        )
 
         # attempt to get the image and send it
         ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png'
         resp = await get_ipfs_file(ipfs_link)
 
-        caption = generate_reply_caption(
-            user, params, tx_hash, worker, reward)
+        # caption = generate_reply_caption(
+        #     user, params, tx_hash, worker, reward)
 
         if not resp or resp.status_code != 200:
             logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
@@ -257,9 +274,11 @@ class SkynetDiscordFrontend:
             #
         else:
             logging.info(f'success! sending generated image')
+            image = io.BytesIO(resp.raw)
             # await self.bot.delete_message(
             #     chat_id=status_msg.chat.id, message_id=status_msg.id)
-            # if file_id:  # img2img
+            if file_id:  # img2img
+                pass
             #     await self.bot.send_media_group(
             #         status_msg.chat.id,
             #         media=[
@@ -272,11 +291,14 @@ class SkynetDiscordFrontend:
             #         ],
             #     )
             #
-            # else:  # txt2img
-            #     await self.bot.send_photo(
-            #         status_msg.chat.id,
-            #         caption=caption,
-            #         photo=resp.raw,
-            #         reply_markup=build_redo_menu(),
-            #         parse_mode='HTML'
-            #     )
+            else:  # txt2img
+                # await self.bot.send_photo(
+                #     status_msg.chat.id,
+                #     caption=caption,
+                #     photo=resp.raw,
+                #     reply_markup=build_redo_menu(),
+                #     parse_mode='HTML'
+                # )
+                await ctx.send(
+                    file=discord.File(image, 'image.png')
+                )
