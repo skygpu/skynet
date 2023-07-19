@@ -298,6 +298,6 @@ class SkynetDiscordFrontend:
                 #     reply_markup=build_redo_menu(),
                 #     parse_mode='HTML'
                 # )
-                await ctx.send(
+                await ctx.reply(
                     file=discord.File(image, 'image.png')
                 )
