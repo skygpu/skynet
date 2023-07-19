@@ -123,7 +123,7 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
 
         user_row = await db_call('get_or_create_user', user.id)
         await db_call(
-            'new_user_request', user.id, message.id, status_msg.id, status=init_msg)
+            'new_user_request', user.id, ctx.message.id, status_msg.id, status=init_msg)
         user_config = {**user_row}
         del user_config['id']
 
@@ -133,7 +133,7 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
         }
 
         await work_request(
-            user, status_msg, 'redo', params,
+            user, status_msg, 'redo', params, ctx,
             file_id=file_id,
             binary_data=binary
         )
