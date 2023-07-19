@@ -485,7 +485,7 @@ def discord(
             permission,
             node_url,
             hyperion_url,
-            # db_host, db_user, db_pass,
+            db_host, db_user, db_pass,
             remote_ipfs_node=ipfs_url,
             key=key
         )
