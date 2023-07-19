@@ -17,46 +17,112 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
 
     bot = frontend.bot
     cleos = frontend.cleos
-    # db_call = frontend.db_call
+    db_call = frontend.db_call
     work_request = frontend.work_request
 
     ipfs_node = frontend.ipfs_node
 
 
     @bot.command(name='config', help='Responds with the configuration')
-    async def config(ctx):
-        response = "This is the bot configuration"  # Put your bot configuration here
-        await ctx.send(response)
+    async def set_config(ctx):
+
+        user = ctx.author
+        try:
+            attr, val, reply_txt = validate_user_config_request(
+                ctx.message.content)
+
+            logging.info(f'user config update: {attr} to {val}')
+            await db_call('update_user_config', user.id, attr, val)
+            logging.info('done')
+
+        except BaseException as e:
+            reply_txt = str(e)
+
+        finally:
+            await ctx.reply(content=reply_txt)
 
     @bot.command(name='helper', help='Responds with a help')
     async def helper(ctx):
-        response = "This is help information" # Put your help response here
-        await ctx.send(response)
+        splt_msg = ctx.message.content.split(' ')
+
+        if len(splt_msg) == 1:
+            await ctx.reply(content=HELP_TEXT)
+
+        else:
+            param = splt_msg[1]
+            if param in HELP_TOPICS:
+                await ctx.reply(content=HELP_TOPICS[param])
+
+            else:
+                await ctx.reply(content=HELP_UNKWNOWN_PARAM)
+
+    @bot.command(name='cool', help='Display a list of cool prompt words')
+    async def send_cool_words(ctx):
+        await ctx.reply(content='\n'.join(COOL_WORDS))
 
     @bot.command(name='txt2img', help='Responds with an image')
-    async def send_txt2img(ctx, *, arg):
-        user = 'testworker3'
-        status_msg = 'status'
+    async def send_txt2img(ctx):
+
+        # grab user from ctx
+        user = ctx.author
+        user_row = await db_call('get_or_create_user', user.id)
+
+        # init new msg
+        init_msg = 'started processing txt2img request...'
+        status_msg = await ctx.reply(init_msg)
+        await db_call(
+            'new_user_request', user.id, ctx.message.id, status_msg.id, status=init_msg)
+
+        prompt = ' '.join(ctx.message.content.split(' ')[1:])
+
+        if len(prompt) == 0:
+            await status_msg.edit(content=
+                'Empty text prompt ignored.'
+            )
+            await db_call('update_user_request', status_msg.id, 'Empty text prompt ignored.')
+            return
+
+        logging.info(f'mid: {ctx.message.id}')
+
+        user_config = {**user_row}
+        del user_config['id']
+
         params = {
-            'prompt': arg,
-            'seed': None,
-            'step': 35,
-            'guidance': 7.5,
-            'strength': 0.5,
-            'width': 512,
-            'height': 512,
-            'upscaler': None,
-            'model': 'prompthero/openjourney',
+            'prompt': prompt,
+            **user_config
         }
 
-        ec = await work_request(user, status_msg, 'txt2img', params, ctx)
-        print(ec)
+        await db_call(
+            'update_user_stats', user.id, 'txt2img', last_prompt=prompt)
+
+        ec = await work_request(user.name, status_msg, 'txt2img', params, ctx)
+
+        if ec == 0:
+            await db_call('increment_generated', user.id)
+
+        # TODO: DELETE BELOW
+        # user = 'testworker3'
+        # status_msg = 'status'
+        # params = {
+        #     'prompt': arg,
+        #     'seed': None,
+        #     'step': 35,
+        #     'guidance': 7.5,
+        #     'strength': 0.5,
+        #     'width': 512,
+        #     'height': 512,
+        #     'upscaler': None,
+        #     'model': 'prompthero/openjourney',
+        # }
+        #
+        # ec = await work_request(user, status_msg, 'txt2img', params, ctx)
+        # print(ec)
 
         # if ec == 0:
             # await db_call('increment_generated', user.id)
 
-        response = f"This is your prompt: {arg}"
-        await ctx.send(response)
+        # response = f"This is your prompt: {arg}"
+        # await ctx.send(response)
 
     # generic / simple handlers
 

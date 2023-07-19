@@ -40,9 +40,9 @@ class SkynetDiscordFrontend:
         permission: str,
         node_url: str,
         hyperion_url: str,
-        # db_host: str,
-        # db_user: str,
-        # db_pass: str,
+        db_host: str,
+        db_user: str,
+        db_pass: str,
         remote_ipfs_node: str,
         key: str
     ):
@@ -51,9 +51,9 @@ class SkynetDiscordFrontend:
         self.permission = permission
         self.node_url = node_url
         self.hyperion_url = hyperion_url
-        # self.db_host = db_host
-        # self.db_user = db_user
-        # self.db_pass = db_pass
+        self.db_host = db_host
+        self.db_user = db_user
+        self.db_pass = db_pass
         self.remote_ipfs_node = remote_ipfs_node
         self.key = key
 
@@ -72,9 +72,9 @@ class SkynetDiscordFrontend:
         logging.info(
             f'connected to remote ipfs node: {self.remote_ipfs_node}')
 
-        # self.db_call = await self._async_exit_stack.enter_async_context(
-        #     open_database_connection(
-        #         self.db_user, self.db_pass, self.db_host))
+        self.db_call = await self._async_exit_stack.enter_async_context(
+            open_database_connection(
+                self.db_user, self.db_pass, self.db_host))
 
         create_handler_context(self)
 
@@ -143,10 +143,10 @@ class SkynetDiscordFrontend:
         #     f'[{timestamp_pretty()}] <i>broadcasting transaction to chain...</i>',
         #     parse_mode='HTML'
         # )
-        message = await ctx.send(
-            f'processing a \'{method}\' request by {user}\n \
-            [{timestamp_pretty()}] *broadcasting transaction to chain...*'
-        )
+        # message = await ctx.send(
+        #     f'processing a \'{method}\' request by {user}\n \
+        #     [{timestamp_pretty()}] *broadcasting transaction to chain...*'
+        # )
 
         reward = '20.0000 GPU'
         res = await self.cleos.a_push_action(
@@ -183,12 +183,11 @@ class SkynetDiscordFrontend:
         #     f'[{timestamp_pretty()}] <i>workers are processing request...</i>',
         #     parse_mode='HTML'
         # )
-
-        await message.edit(
-            f'**broadcasted!**\n \
-            **{enqueue_tx_link}**\n \
-            [{timestamp_pretty()}] *workers are processing request...*'
-        )
+        # await message.edit(content=
+        #     f'**broadcasted!**\n \
+        #     **{enqueue_tx_link}**\n \
+        #     [{timestamp_pretty()}] *workers are processing request...*'
+        # )
 
         out = collect_stdout(res)
 
@@ -250,11 +249,11 @@ class SkynetDiscordFrontend:
         #     f'[{timestamp_pretty()}] <i>trying to download image...</i>\n',
         #     parse_mode='HTML'
         # )
-        await message.edit(
-            f'**request processed!**\n \
-            **{tx_link}**\n \
-            [{timestamp_pretty()}] *trying to download image...*\n'
-        )
+        # await message.edit(content=
+        #     f'**request processed!**\n \
+        #     **{tx_link}**\n \
+        #     [{timestamp_pretty()}] *trying to download image...*\n'
+        # )
 
         # attempt to get the image and send it
         ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png'
