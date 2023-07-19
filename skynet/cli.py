@@ -439,7 +439,7 @@ def telegram(
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='logging level')
 @click.option(
-    '--account', '-a', default=None)
+    '--account', '-a', default='discord')
 @click.option(
     '--permission', '-p', default='active')
 @click.option(
