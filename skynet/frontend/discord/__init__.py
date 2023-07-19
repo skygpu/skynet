@@ -161,7 +161,7 @@ class SkynetDiscordFrontend:
             },
             self.account, self.key, permission=self.permission
         )
-        print(res)
+        # print(res)
 
         if 'code' in res or 'statusCode' in res:
             logging.error(json.dumps(res, indent=4))
