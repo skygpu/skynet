@@ -77,15 +77,13 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
         'safety_checker': None
     }
 
-    if model == 'snowkidy/stable-diffusion-xl-base-0.9':
-        # TODO: figure out what this does
-        params['addition_embed_type'] = { 'text_time': None }
-
     if model == 'runwayml/stable-diffusion-v1-5':
         params['revision'] = 'fp16'
 
     if image:
         pipe_class = StableDiffusionImg2ImgPipeline
+    elif model == 'snowkidy/stable-diffusion-xl-base-0.9':
+        pipe_class = DiffusionPipeline
     else:
         pipe_class = StableDiffusionPipeline
 
