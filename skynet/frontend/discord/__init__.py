@@ -116,10 +116,12 @@ class SkynetDiscordFrontend:
         status_msg,
         method: str,
         params: dict,
-        ctx: discord.TextChannel,
+        ctx: discord.ext.commands.context.Context | discord.Message,
         file_id: str | None = None,
         binary_data: str = ''
     ):
+        send = ctx.channel.send
+
         if params['seed'] == None:
             params['seed'] = random.randint(0, 0xFFFFFFFF)
 
@@ -258,9 +260,9 @@ class SkynetDiscordFrontend:
         # attempt to get the image and send it
         ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png'
         resp = await get_ipfs_file(ipfs_link)
-
-        # caption = generate_reply_caption(
-        #     user, params, tx_hash, worker, reward)
+        
+        caption, embed = generate_reply_caption(
+            user, params, tx_hash, worker, reward)
 
         if not resp or resp.status_code != 200:
             logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
@@ -273,7 +275,9 @@ class SkynetDiscordFrontend:
             #
         else:
             logging.info(f'success! sending generated image')
-            image = io.BytesIO(resp.raw)
+            # image = io.BytesIO(resp.raw)
+            # embed.set_image(url=ipfs_link)
+            # embed.add_field(name='params', value=caption)
             # await self.bot.delete_message(
             #     chat_id=status_msg.chat.id, message_id=status_msg.id)
             if file_id:  # img2img
@@ -298,6 +302,7 @@ class SkynetDiscordFrontend:
                 #     reply_markup=build_redo_menu(),
                 #     parse_mode='HTML'
                 # )
-                await ctx.reply(
-                    file=discord.File(image, 'image.png')
-                )
+
+                embed.set_image(url=ipfs_link)
+                embed.add_field(name='Parameters:', value=caption)
+                await send(embed=embed)
