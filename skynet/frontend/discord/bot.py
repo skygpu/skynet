@@ -1,6 +1,6 @@
 # import os
 import discord
-# import asyncio
+import asyncio
 # from dotenv import load_dotenv
 # from pathlib import Path
 from discord.ext import commands
@@ -57,6 +57,7 @@ class DiscordBot(commands.Bot):
         elif message.author == self.user:
             return
         await self.process_commands(message)
+        await asyncio.sleep(3)
         await message.channel.send('', view=SkynetView(self.bot))
 
     async def on_command_error(self, ctx, error):
