@@ -54,8 +54,9 @@ class DiscordBot(commands.Bot):
             return
         elif message.channel.name != 'skynet':
             return
-        elif message.author != self.user:
-            await self.process_commands(message)
+        elif message.author == self.user:
+            return
+        await self.process_commands(message)
         await message.channel.send('', view=SkynetView(self.bot))
 
     async def on_command_error(self, ctx, error):
