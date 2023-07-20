@@ -57,7 +57,7 @@ class SkynetDiscordFrontend:
         self.remote_ipfs_node = remote_ipfs_node
         self.key = key
 
-        self.bot = DiscordBot()
+        self.bot = DiscordBot(self)
         self.cleos = CLEOS(None, None, url=node_url, remote=node_url)
         self.hyperion = HyperionAPI(hyperion_url)
 

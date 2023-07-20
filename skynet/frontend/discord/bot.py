@@ -4,6 +4,7 @@ import discord
 # from dotenv import load_dotenv
 # from pathlib import Path
 from discord.ext import commands
+from .ui import SkynetView
 
 
 # # Auth
@@ -18,7 +19,8 @@ from discord.ext import commands
 # Actual Discord bot.
 class DiscordBot(commands.Bot):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, bot, *args, **kwargs):
+        self.bot = bot
         intents = discord.Intents(
             messages=True,
             guilds=True,
@@ -39,7 +41,7 @@ class DiscordBot(commands.Bot):
         for guild in self.guilds:
             for channel in guild.channels:
                 if channel.name == "skynet":
-                    await channel.send('Skynet bot online')
+                    await channel.send('Skynet bot online', view=SkynetView(self.bot))
 
         print("\n==============")
         print("Logged in as")
@@ -48,7 +50,12 @@ class DiscordBot(commands.Bot):
         print("==============")
 
     async def on_message(self, message):
-        if message.channel.name != 'skynet':
+        if isinstance(message.channel, discord.DMChannel):
+            return
+        elif message.channel.name != 'skynet':
+            return
+        elif message.author != self.user:
+            await message.channel.send('', view=SkynetView(self.bot))
             return
         await self.process_commands(message)
 
