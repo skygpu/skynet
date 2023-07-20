@@ -22,7 +22,6 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
 
     ipfs_node = frontend.ipfs_node
 
-
     @bot.command(name='config', help='Responds with the configuration')
     async def set_config(ctx):
 
@@ -138,6 +137,7 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
             binary_data=binary
         )
 
+        
         # TODO: DELETE BELOW
         # user = 'testworker3'
         # status_msg = 'status'
