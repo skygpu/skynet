@@ -54,7 +54,7 @@ class Txt2ImgButton(discord.ui.Button):
         await db_call(
             'update_user_stats', user.id, 'txt2img', last_prompt=prompt)
 
-        ec = await work_request(user.name, status_msg, 'txt2img', params, msg)
+        ec = await work_request(user, status_msg, 'txt2img', params, msg)
 
         if ec == 0:
             await db_call('increment_generated', user.id)

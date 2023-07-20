@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 from telebot.async_telebot import ExceptionHandler
 from telebot.formatting import hlink
+import discord
 
 from skynet.constants import *
 
@@ -37,59 +38,59 @@ def build_redo_menu():
     return inline_keyboard
 
 
-def prepare_metainfo_caption(tguser, worker: str, reward: str, meta: dict) -> str:
+def prepare_metainfo_caption(user, worker: str, reward: str, meta: dict) -> str:
     prompt = meta["prompt"]
     if len(prompt) > 256:
         prompt = prompt[:256]
 
+    meta_str = f'__by {user.name}__\n'
+    meta_str += f'*performed by {worker}*\n'
+    meta_str += f'__**reward: {reward}**__\n'
 
-    meta_str = f'<u>by {tg_user_pretty(tguser)}</u>\n'
-    meta_str += f'<i>performed by {worker}</i>\n'
-    meta_str += f'<b><u>reward: {reward}</u></b>\n'
-
-    meta_str += f'<code>prompt:</code> {prompt}\n'
-    meta_str += f'<code>seed: {meta["seed"]}</code>\n'
-    meta_str += f'<code>step: {meta["step"]}</code>\n'
-    meta_str += f'<code>guidance: {meta["guidance"]}</code>\n'
+    meta_str += f'`prompt:` {prompt}\n'
+    meta_str += f'`seed: {meta["seed"]}`\n'
+    meta_str += f'`step: {meta["step"]}`\n'
+    meta_str += f'`guidance: {meta["guidance"]}`\n'
     if meta['strength']:
-        meta_str += f'<code>strength: {meta["strength"]}</code>\n'
-    meta_str += f'<code>algo: {meta["model"]}</code>\n'
+        meta_str += f'`strength: {meta["strength"]}`\n'
+    meta_str += f'`algo: {meta["model"]}`\n'
     if meta['upscaler']:
-        meta_str += f'<code>upscaler: {meta["upscaler"]}</code>\n'
+        meta_str += f'`upscaler: {meta["upscaler"]}`\n'
 
-    meta_str += f'<b><u>Made with Skynet v{VERSION}</u></b>\n'
-    meta_str += f'<b>JOIN THE SWARM: @skynetgpu</b>'
+    meta_str += f'__**Made with Skynet v{VERSION}**__\n'
+    meta_str += f'**JOIN THE SWARM: @skynetgpu**'
     return meta_str
 
 
 def generate_reply_caption(
-    tguser,  # telegram user
+    user,  # discord user
     params: dict,
     tx_hash: str,
     worker: str,
     reward: str
 ):
-    explorer_link = hlink(
-        'SKYNET Transaction Explorer',
-        f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash}'
-    )
+    explorer_link = discord.Embed(
+        title='[SKYNET Transaction Explorer]',
+        url=f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash}',
+        color=discord.Color.blue())
 
-    meta_info = prepare_metainfo_caption(tguser, worker, reward, params)
+    meta_info = prepare_metainfo_caption(user, worker, reward, params)
 
+    # why do we have this?
     final_msg = '\n'.join([
         'Worker finished your task!',
-        explorer_link,
+        # explorer_link,
         f'PARAMETER INFO:\n{meta_info}'
     ])
 
     final_msg = '\n'.join([
-        f'<b><i>{explorer_link}</i></b>',
+        # f'***{explorer_link}***',
         f'{meta_info}'
     ])
 
     logging.info(final_msg)
 
-    return final_msg
+    return final_msg, explorer_link
 
 
 async def get_global_config(cleos):
