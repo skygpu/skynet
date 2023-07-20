@@ -55,9 +55,8 @@ class DiscordBot(commands.Bot):
         elif message.channel.name != 'skynet':
             return
         elif message.author != self.user:
-            await message.channel.send('', view=SkynetView(self.bot))
-            return
-        await self.process_commands(message)
+            await self.process_commands(message)
+        await message.channel.send('', view=SkynetView(self.bot))
 
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):
