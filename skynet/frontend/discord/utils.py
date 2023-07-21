@@ -69,7 +69,7 @@ def prepare_metainfo_caption(user, worker: str, reward: str, meta: dict, embed) 
     embed.add_field(name='Parameters', value=f'```{meta_str}```', inline=False)
 
     foot_str = f'Made with Skynet v{VERSION}\n'
-    foot_str += f'JOIN THE SWARM: @skynetgpu'
+    foot_str += f'JOIN THE SWARM. Join our [**server**](https://discord.gg/JYM4YPMgK) for more info.'
 
     embed.set_footer(text=foot_str)
 
