@@ -168,7 +168,7 @@ class SkynetDiscordFrontend:
 
         if 'code' in res or 'statusCode' in res:
             logging.error(json.dumps(res, indent=4))
-            await self.bot.send(
+            await self.bot.channel.send(
                 status_msg,
                 'skynet has suffered an internal error trying to fill this request')
             return
