@@ -252,6 +252,7 @@ class SkynetDiscordFrontend:
 
         if not resp or resp.status_code != 200:
             logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
+            embed.add_field(name='Error', value=f'couldn\'t get ipfs hosted image [**here**]({ipfs_link})!')
             await message.edit(embed=embed, view=SkynetView(self))
         else:
             logging.info(f'success! sending generated image')
