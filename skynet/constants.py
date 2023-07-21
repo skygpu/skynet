@@ -36,6 +36,7 @@ commands work on a user per user basis!
 config is individual to each user!
 
 /txt2img TEXT - request an image based on a prompt
+/img2img <attach_image> TEXT - request an image base on an image and a promtp
 
 /redo - redo last command (only works for txt2img for now!)
 

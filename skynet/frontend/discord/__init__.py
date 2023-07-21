@@ -89,6 +89,7 @@ class SkynetDiscordFrontend:
         yield self
         await self.stop()
 
+    # maybe do this?
     # async def update_status_message(
     #     self, status_msg, new_text: str, **kwargs
     # ):
@@ -139,17 +140,14 @@ class SkynetDiscordFrontend:
         })
         request_time = datetime.now().isoformat()
 
-        # maybe get rid of this
-        # await self.update_status_message(
-        #     status_msg,
-        #     f'processing a \'{method}\' request by {tg_user_pretty(user)}\n'
-        #     f'[{timestamp_pretty()}] <i>broadcasting transaction to chain...</i>',
-        #     parse_mode='HTML'
-        # )
-        # message = await ctx.send(
-        #     f'processing a \'{method}\' request by {user}\n \
-        #     [{timestamp_pretty()}] *broadcasting transaction to chain...*'
-        # )
+        await status_msg.delete()
+        msg_text = f'processing a \'{method}\' request by {user.name}\n[{timestamp_pretty()}] *broadcasting transaction to chain...* '
+        embed = discord.Embed(
+            title='live updates',
+            description=msg_text,
+            color=discord.Color.blue())
+
+        message = await send(embed=embed)
 
         reward = '20.0000 GPU'
         res = await self.cleos.a_push_action(
@@ -164,7 +162,6 @@ class SkynetDiscordFrontend:
             },
             self.account, self.key, permission=self.permission
         )
-        # print(res)
 
         if 'code' in res or 'statusCode' in res:
             logging.error(json.dumps(res, indent=4))
@@ -174,23 +171,15 @@ class SkynetDiscordFrontend:
             return
 
         enqueue_tx_id = res['transaction_id']
-        enqueue_tx_link = hlink(
-            'Your request on Skynet Explorer',
-            f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{enqueue_tx_id}'
-        )
+        enqueue_tx_link = f'[**Your request on Skynet Explorer**](https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{enqueue_tx_id})'
 
-        # await self.append_status_message(
-        #     status_msg,
-        #     f' <b>broadcasted!</b>\n'
-        #     f'<b>{enqueue_tx_link}</b>\n'
-        #     f'[{timestamp_pretty()}] <i>workers are processing request...</i>',
-        #     parse_mode='HTML'
-        # )
-        # await message.edit(content=
-        #     f'**broadcasted!**\n \
-        #     **{enqueue_tx_link}**\n \
-        #     [{timestamp_pretty()}] *workers are processing request...*'
-        # )
+        msg_text += f'**broadcasted!** \n{enqueue_tx_link}\n[{timestamp_pretty()}] *workers are processing request...* '
+        embed = discord.Embed(
+            title='live updates',
+            description=msg_text,
+            color=discord.Color.blue())
+
+        await message.edit(embed=embed)
 
         out = collect_stdout(res)
 
@@ -233,77 +222,45 @@ class SkynetDiscordFrontend:
             await asyncio.sleep(1)
 
         if not ipfs_hash:
-            # await self.update_status_message(
-            #     status_msg,
-            #     f'\n[{timestamp_pretty()}] <b>timeout processing request</b>',
-            #     parse_mode='HTML'
-            # )
+
+            msg_text += f'\n[{timestamp_pretty()}] **timeout processing request**'
+            embed = discord.Embed(
+                title='live updates',
+                description=msg_text,
+                color=discord.Color.blue())
+
+            await message.edit(embed=embed)
             return
 
-        tx_link = hlink(
-            'Your result on Skynet Explorer',
-            f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash}'
-        )
+        tx_link = f'[**Your result on Skynet Explorer**](https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash})'
 
-        # await self.append_status_message(
-        #     status_msg,
-        #     f' <b>request processed!</b>\n'
-        #     f'<b>{tx_link}</b>\n'
-        #     f'[{timestamp_pretty()}] <i>trying to download image...</i>\n',
-        #     parse_mode='HTML'
-        # )
-        # await message.edit(content=
-        #     f'**request processed!**\n \
-        #     **{tx_link}**\n \
-        #     [{timestamp_pretty()}] *trying to download image...*\n'
-        # )
+        msg_text += f'**request processed!**\n{tx_link}\n[{timestamp_pretty()}] *trying to download image...*\n '
+        embed = discord.Embed(
+            title='live updates',
+            description=msg_text,
+            color=discord.Color.blue())
+
+        await message.edit(embed=embed)
 
         # attempt to get the image and send it
         ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png'
         resp = await get_ipfs_file(ipfs_link)
 
+        # reword this function, may not need caption
         caption, embed = generate_reply_caption(
             user, params, tx_hash, worker, reward)
 
         if not resp or resp.status_code != 200:
             logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
-            # await self.update_status_message(
-            #     status_msg,
-            #     caption,
-            #     reply_markup=build_redo_menu(),
-            #     parse_mode='HTML'
-            # )
-            #
+            await message.edit(embed=embed, view=SkynetView(self))
         else:
             logging.info(f'success! sending generated image')
-            # image = io.BytesIO(resp.raw)
-            # embed.set_image(url=ipfs_link)
-            # embed.add_field(name='params', value=caption)
-            # await self.bot.delete_message(
-            #     chat_id=status_msg.chat.id, message_id=status_msg.id)
+            await message.delete()
             if file_id:  # img2img
-                pass
-            #     await self.bot.send_media_group(
-            #         status_msg.chat.id,
-            #         media=[
-            #             InputMediaPhoto(file_id),
-            #             InputMediaPhoto(
-            #                 resp.raw,
-            #                 caption=caption,
-            #                 parse_mode='HTML'
-            #             )
-            #         ],
-            #     )
-            #
-            else:  # txt2img
-                # await self.bot.send_photo(
-                #     status_msg.chat.id,
-                #     caption=caption,
-                #     photo=resp.raw,
-                #     reply_markup=build_redo_menu(),
-                #     parse_mode='HTML'
-                # )
-
+                embed.set_thumbnail(
+                    url='https://ipfs.skygpu.net/ipfs/' + binary_data + '/image.png')
                 embed.set_image(url=ipfs_link)
-                embed.add_field(name='Parameters:', value=caption)
+                await send(embed=embed, view=SkynetView(self))
+            else:  # txt2img
+                embed.set_image(url=ipfs_link)
                 await send(embed=embed, view=SkynetView(self))

@@ -41,24 +41,44 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
         finally:
             await ctx.reply(content=reply_txt, view=SkynetView(frontend))
 
-    @bot.command(name='helper', help='Responds with a help')
-    async def helper(ctx):
+    bot.remove_command('help')
+    @bot.command(name='help', help='Responds with a help')
+    async def help(ctx):
         splt_msg = ctx.message.content.split(' ')
 
         if len(splt_msg) == 1:
-            await ctx.reply(content=HELP_TEXT, view=SkynetView(frontend))
+            await ctx.send(content=f'```{HELP_TEXT}```', view=SkynetView(frontend))
 
         else:
             param = splt_msg[1]
             if param in HELP_TOPICS:
-                await ctx.reply(content=HELP_TOPICS[param], view=SkynetView(frontend))
+                await ctx.send(content=f'```{HELP_TOPICS[param]}```', view=SkynetView(frontend))
 
             else:
-                await ctx.reply(content=HELP_UNKWNOWN_PARAM, view=SkynetView(frontend))
+                await ctx.send(content=f'```{HELP_UNKWNOWN_PARAM}```', view=SkynetView(frontend))
 
     @bot.command(name='cool', help='Display a list of cool prompt words')
     async def send_cool_words(ctx):
-        await ctx.reply(content='\n'.join(CLEAN_COOL_WORDS), view=SkynetView(frontend))
+        clean_cool_word = '\n'.join(CLEAN_COOL_WORDS)
+        await ctx.send(content=f'```{clean_cool_word}```', view=SkynetView(frontend))
+
+    @bot.command(name='stats', help='See user statistics' )
+    async def user_stats(ctx):
+        user = ctx.author
+
+        await db_call('get_or_create_user', user.id)
+        generated, joined, role = await db_call('get_user_stats', user.id)
+
+        stats_str = f'```generated: {generated}\n'
+        stats_str += f'joined: {joined}\n'
+        stats_str += f'role: {role}\n```'
+
+        await ctx.reply(stats_str, view=SkynetView(frontend))
+
+    @bot.command(name='donate', help='See donate info')
+    async def donation_info(ctx):
+        await ctx.reply(
+            f'```\n{DONATION_INFO}```', view=SkynetView(frontend))
 
     @bot.command(name='txt2img', help='Responds with an image')
     async def send_txt2img(ctx):
@@ -69,7 +89,7 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
 
         # init new msg
         init_msg = 'started processing txt2img request...'
-        status_msg = await ctx.reply(init_msg)
+        status_msg = await ctx.send(init_msg)
         await db_call(
             'new_user_request', user.id, ctx.message.id, status_msg.id, status=init_msg)
 
@@ -97,13 +117,13 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
 
         ec = await work_request(user, status_msg, 'txt2img', params, ctx)
 
-        if ec == 0:
+        if ec == None:
             await db_call('increment_generated', user.id)
 
     @bot.command(name='redo', help='Redo last request')
     async def redo(ctx):
         init_msg = 'started processing redo request...'
-        status_msg = await ctx.reply(init_msg)
+        status_msg = await ctx.send(init_msg)
         user = ctx.author
 
         method = await db_call('get_last_method_of', user.id)
@@ -116,8 +136,9 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
             binary = await db_call('get_last_binary_of', user.id)
 
         if not prompt:
-            await ctx.reply(
-                'no last prompt found, do a txt2img cmd first!'
+            await status_msg.edit(
+                content='no last prompt found, do a txt2img cmd first!',
+                view=SkynetView(frontend)
             )
             return
 
@@ -132,11 +153,105 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
             **user_config
         }
 
-        await work_request(
+        ec = await work_request(
             user, status_msg, 'redo', params, ctx,
             file_id=file_id,
             binary_data=binary
         )
+
+        if ec == None:
+            await db_call('increment_generated', user.id)
+
+    @bot.command(name='img2img', help='Responds with an image')
+    async def send_img2img(ctx):
+        # if isinstance(message_or_query, CallbackQuery):
+        #     query = message_or_query
+        #     message = query.message
+        #     user = query.from_user
+        #     chat = query.message.chat
+        #
+        # else:
+        #     message = message_or_query
+        #     user = message.from_user
+        #     chat = message.chat
+
+        # reply_id = None
+        # if chat.type == 'group' and chat.id == GROUP_ID:
+        #     reply_id = message.message_id
+        #
+        user = ctx.author
+        user_row = await db_call('get_or_create_user', user.id)
+
+        # init new msg
+        init_msg = 'started processing img2img request...'
+        status_msg = await ctx.send(init_msg)
+        await db_call(
+            'new_user_request', user.id, ctx.message.id, status_msg.id, status=init_msg)
+
+        if not ctx.message.content.startswith('/img2img'):
+            await ctx.reply(
+                'For image to image you need to add /img2img to the beggining of your caption'
+            )
+            return
+
+        prompt = ' '.join(ctx.message.content.split(' ')[1:])
+
+        if len(prompt) == 0:
+            await ctx.reply('Empty text prompt ignored.')
+            return
+
+        # file_id = message.photo[-1].file_id
+        # file_path = (await bot.get_file(file_id)).file_path
+        # image_raw = await bot.download_file(file_path)
+        #
+
+        file = ctx.message.attachments[-1]
+        file_id = str(file.id)
+        # file bytes
+        image_raw = await file.read()
+        with Image.open(io.BytesIO(image_raw)) as image:
+            w, h = image.size
+
+            if w > 512 or h > 512:
+                logging.warning(f'user sent img of size {image.size}')
+                image.thumbnail((512, 512))
+                logging.warning(f'resized it to {image.size}')
+
+            image.save(f'ipfs-docker-staging/image.png', format='PNG')
+
+            ipfs_hash = ipfs_node.add('image.png')
+            ipfs_node.pin(ipfs_hash)
+
+            logging.info(f'published input image {ipfs_hash} on ipfs')
+
+        logging.info(f'mid: {ctx.message.id}')
+
+        user_config = {**user_row}
+        del user_config['id']
+
+        params = {
+            'prompt': prompt,
+            **user_config
+        }
+
+        await db_call(
+            'update_user_stats',
+            user.id,
+            'img2img',
+            last_file=file_id,
+            last_prompt=prompt,
+            last_binary=ipfs_hash
+        )
+
+        ec = await work_request(
+            user, status_msg, 'img2img', params, ctx,
+            file_id=file_id,
+            binary_data=ipfs_hash
+        )
+
+        if ec == None:
+            await db_call('increment_generated', user.id)
+
 
         
         # TODO: DELETE BELOW
