@@ -27,7 +27,7 @@ class IPFSHTTP:
 async def get_ipfs_file(ipfs_link: str):
     logging.info(f'attempting to get image at {ipfs_link}')
     resp = None
-    for i in range(10):
+    for i in range(20):
         try:
             resp = await asks.get(ipfs_link, timeout=3)
 
