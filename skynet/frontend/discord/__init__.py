@@ -223,10 +223,10 @@ class SkynetDiscordFrontend:
 
         if not ipfs_hash:
 
-            msg_text += f'\n[{timestamp_pretty()}] **timeout processing request**'
+            timeout_text = f'\n[{timestamp_pretty()}] **timeout processing request**'
             embed = discord.Embed(
                 title='live updates',
-                description=msg_text,
+                description=timeout_text,
                 color=discord.Color.blue())
 
             await message.edit(embed=embed)
