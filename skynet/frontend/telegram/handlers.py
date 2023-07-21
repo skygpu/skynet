@@ -159,7 +159,7 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
 
         ec = await work_request(user, status_msg, 'txt2img', params)
 
-        if ec == 0:
+        if ec == None:
             await db_call('increment_generated', user.id)
 
 
@@ -187,7 +187,7 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
         user_row = await db_call('get_or_create_user', user.id)
 
         # init new msg
-        init_msg = 'started processing txt2img request...'
+        init_msg = 'started processing img2img request...'
         status_msg = await bot.reply_to(message, init_msg)
         await db_call(
             'new_user_request', user.id, message.id, status_msg.id, status=init_msg)
@@ -249,7 +249,7 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
             binary_data=ipfs_hash
         )
 
-        if ec == 0:
+        if ec == None:
             await db_call('increment_generated', user.id)
 
 
@@ -307,12 +307,14 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
             **user_config
         }
 
-        await work_request(
+        ec = await work_request(
             user, status_msg, 'redo', params,
             file_id=file_id,
             binary_data=binary
         )
 
+        if ec == None:
+            await db_call('increment_generated', user.id)
 
     # "proxy" handlers just request routers
 
