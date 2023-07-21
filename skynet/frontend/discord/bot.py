@@ -57,8 +57,8 @@ class DiscordBot(commands.Bot):
         elif message.author == self.user:
             return
         await self.process_commands(message)
-        await asyncio.sleep(3)
-        await message.channel.send('', view=SkynetView(self.bot))
+        # await asyncio.sleep(3)
+        # await message.channel.send('', view=SkynetView(self.bot))
 
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):

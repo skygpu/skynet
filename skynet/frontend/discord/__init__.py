@@ -29,6 +29,7 @@ from .bot import DiscordBot
 
 from .utils import *
 from .handlers import create_handler_context
+from .ui import SkynetView
 
 
 class SkynetDiscordFrontend:
@@ -260,7 +261,7 @@ class SkynetDiscordFrontend:
         # attempt to get the image and send it
         ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png'
         resp = await get_ipfs_file(ipfs_link)
-        
+
         caption, embed = generate_reply_caption(
             user, params, tx_hash, worker, reward)
 
@@ -305,4 +306,4 @@ class SkynetDiscordFrontend:
 
                 embed.set_image(url=ipfs_link)
                 embed.add_field(name='Parameters:', value=caption)
-                await send(embed=embed)
+                await send(embed=embed, view=SkynetView(self))
