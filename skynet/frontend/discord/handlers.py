@@ -11,6 +11,7 @@ from PIL import Image
 
 from skynet.frontend import validate_user_config_request
 from skynet.constants import *
+from .ui import SkynetView
 
 
 def create_handler_context(frontend: 'SkynetDiscordFrontend'):
@@ -38,26 +39,26 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
             reply_txt = str(e)
 
         finally:
-            await ctx.reply(content=reply_txt)
+            await ctx.reply(content=reply_txt, view=SkynetView(frontend))
 
     @bot.command(name='helper', help='Responds with a help')
     async def helper(ctx):
         splt_msg = ctx.message.content.split(' ')
 
         if len(splt_msg) == 1:
-            await ctx.reply(content=HELP_TEXT)
+            await ctx.reply(content=HELP_TEXT, view=SkynetView(frontend))
 
         else:
             param = splt_msg[1]
             if param in HELP_TOPICS:
-                await ctx.reply(content=HELP_TOPICS[param])
+                await ctx.reply(content=HELP_TOPICS[param], view=SkynetView(frontend))
 
             else:
-                await ctx.reply(content=HELP_UNKWNOWN_PARAM)
+                await ctx.reply(content=HELP_UNKWNOWN_PARAM, view=SkynetView(frontend))
 
     @bot.command(name='cool', help='Display a list of cool prompt words')
     async def send_cool_words(ctx):
-        await ctx.reply(content='\n'.join(CLEAN_COOL_WORDS))
+        await ctx.reply(content='\n'.join(CLEAN_COOL_WORDS), view=SkynetView(frontend))
 
     @bot.command(name='txt2img', help='Responds with an image')
     async def send_txt2img(ctx):
@@ -94,7 +95,7 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
         await db_call(
             'update_user_stats', user.id, 'txt2img', last_prompt=prompt)
 
-        ec = await work_request(user.name, status_msg, 'txt2img', params, ctx)
+        ec = await work_request(user, status_msg, 'txt2img', params, ctx)
 
         if ec == 0:
             await db_call('increment_generated', user.id)
