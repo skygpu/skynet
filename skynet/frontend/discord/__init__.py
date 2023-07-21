@@ -194,7 +194,7 @@ class SkynetDiscordFrontend:
 
         tx_hash = None
         ipfs_hash = None
-        for i in range(60):
+        for i in range(120):
             try:
                 submits = await self.hyperion.aget_actions(
                     account=self.account,
