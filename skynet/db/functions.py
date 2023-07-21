@@ -96,7 +96,8 @@ def open_new_database(cleanup=True):
             'POSTGRES_PASSWORD': rpassword
         },
         detach=True,
-        remove=True
+        # could remove this if we ant the dockers to be persistent.
+        # remove=True
     )
     try:
 
