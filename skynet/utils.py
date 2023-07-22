@@ -82,6 +82,8 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
 
     if image:
         pipe_class = StableDiffusionImg2ImgPipeline
+    elif model == 'snowkidy/stable-diffusion-xl-base-0.9':
+        pipe_class = DiffusionPipeline
     else:
         pipe_class = StableDiffusionPipeline
 

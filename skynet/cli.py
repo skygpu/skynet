@@ -24,6 +24,7 @@ from .config import *
 from .nodeos import open_cleos, open_nodeos
 from .constants import *
 from .frontend.telegram import SkynetTelegramFrontend
+from .frontend.discord import SkynetDiscordFrontend
 
 
 @click.group()
@@ -43,7 +44,7 @@ def skynet(*args, **kwargs):
 @click.option('--seed', '-S', default=None)
 def txt2img(*args, **kwargs):
     from . import utils
-    _, hf_token, _ = init_env_from_config()
+    _, hf_token, _, _ = init_env_from_config()
     utils.txt2img(hf_token, **kwargs)
 
 @click.command()
@@ -58,7 +59,7 @@ def txt2img(*args, **kwargs):
 @click.option('--seed', '-S', default=None)
 def img2img(model, prompt, input, output, strength, guidance, steps, seed):
     from . import utils
-    _, hf_token, _ = init_env_from_config()
+    _, hf_token, _, _ = init_env_from_config()
     utils.img2img(
         hf_token,
         model=model,
@@ -86,7 +87,7 @@ def upscale(input, output, model):
 @skynet.command()
 def download():
     from . import utils
-    _, hf_token, _ = init_env_from_config()
+    _, hf_token, _, _ = init_env_from_config()
     utils.download_all_models(hf_token)
 
 @skynet.command()
@@ -408,7 +409,7 @@ def telegram(
 ):
     logging.basicConfig(level=loglevel)
 
-    _, _, tg_token = init_env_from_config()
+    _, _, tg_token, _ = init_env_from_config()
 
     key, account, permission = load_account_info(
         'telegram', key, account, permission)
@@ -431,6 +432,66 @@ def telegram(
         async with frontend.open():
             await frontend.bot.infinity_polling()
 
+
+    asyncio.run(_async_main())
+
+
+@run.command()
+@click.option('--loglevel', '-l', default='INFO', help='logging level')
+@click.option(
+    '--account', '-a', default='discord')
+@click.option(
+    '--permission', '-p', default='active')
+@click.option(
+    '--key', '-k', default=None)
+@click.option(
+    '--hyperion-url', '-y', default=f'https://{DEFAULT_DOMAIN}')
+@click.option(
+    '--node-url', '-n', default=f'https://{DEFAULT_DOMAIN}')
+@click.option(
+    '--ipfs-url', '-i', default=DEFAULT_IPFS_REMOTE)
+@click.option(
+    '--db-host', '-h', default='localhost:5432')
+@click.option(
+    '--db-user', '-u', default='skynet')
+@click.option(
+    '--db-pass', '-u', default='password')
+def discord(
+    loglevel: str,
+    account: str,
+    permission: str,
+    key: str | None,
+    hyperion_url: str,
+    ipfs_url: str,
+    node_url: str,
+    db_host: str,
+    db_user: str,
+    db_pass: str
+):
+    logging.basicConfig(level=loglevel)
+
+    _, _, _, dc_token = init_env_from_config()
+
+    key, account, permission = load_account_info(
+        'discord', key, account, permission)
+
+    node_url, _, ipfs_url = load_endpoint_info(
+        'discord', node_url, None, None)
+
+    async def _async_main():
+        frontend = SkynetDiscordFrontend(
+            # dc_token,
+            account,
+            permission,
+            node_url,
+            hyperion_url,
+            db_host, db_user, db_pass,
+            remote_ipfs_node=ipfs_url,
+            key=key
+        )
+
+        async with frontend.open():
+            await frontend.bot.start(dc_token)
 
     asyncio.run(_async_main())
 
