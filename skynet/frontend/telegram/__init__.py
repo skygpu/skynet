@@ -118,7 +118,7 @@ class SkynetTelegramFrontend:
         params: dict,
         file_id: str | None = None,
         binary_data: str = ''
-    ):
+    ) -> bool:
         if params['seed'] == None:
             params['seed'] = random.randint(0, 0xFFFFFFFF)
 
@@ -161,7 +161,7 @@ class SkynetTelegramFrontend:
             await self.update_status_message(
                 status_msg,
                 'skynet has suffered an internal error trying to fill this request')
-            return
+            return False
 
         enqueue_tx_id = res['transaction_id']
         enqueue_tx_link = hlink(
@@ -223,7 +223,7 @@ class SkynetTelegramFrontend:
                 f'\n[{timestamp_pretty()}] <b>timeout processing request</b>',
                 parse_mode='HTML'
             )
-            return
+            return False
 
         tx_link = hlink(
             'Your result on Skynet Explorer',
@@ -253,7 +253,7 @@ class SkynetTelegramFrontend:
                 reply_markup=build_redo_menu(),
                 parse_mode='HTML'
             )
-            return
+            return False
 
         png_img = resp.raw
         with Image.open(io.BytesIO(resp.raw)) as image:
@@ -290,3 +290,5 @@ class SkynetTelegramFrontend:
                 reply_markup=build_redo_menu(),
                 parse_mode='HTML'
             )
+
+        return True

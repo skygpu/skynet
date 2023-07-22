@@ -115,9 +115,9 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
         await db_call(
             'update_user_stats', user.id, 'txt2img', last_prompt=prompt)
 
-        ec = await work_request(user, status_msg, 'txt2img', params, ctx)
+        success = await work_request(user, status_msg, 'txt2img', params, ctx)
 
-        if ec == None:
+        if success:
             await db_call('increment_generated', user.id)
 
     @bot.command(name='redo', help='Redo last request')
@@ -153,13 +153,13 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
             **user_config
         }
 
-        ec = await work_request(
+        success = await work_request(
             user, status_msg, 'redo', params, ctx,
             file_id=file_id,
             binary_data=binary
         )
 
-        if ec == None:
+        if success:
             await db_call('increment_generated', user.id)
 
     @bot.command(name='img2img', help='Responds with an image')
@@ -243,17 +243,16 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
             last_binary=ipfs_hash
         )
 
-        ec = await work_request(
+        sucess = await work_request(
             user, status_msg, 'img2img', params, ctx,
             file_id=file_id,
             binary_data=ipfs_hash
         )
 
-        if ec == None:
+        if success:
             await db_call('increment_generated', user.id)
 
 
-        
         # TODO: DELETE BELOW
         # user = 'testworker3'
         # status_msg = 'status'

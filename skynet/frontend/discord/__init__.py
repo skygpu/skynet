@@ -121,7 +121,7 @@ class SkynetDiscordFrontend:
         ctx: discord.ext.commands.context.Context | discord.Message,
         file_id: str | None = None,
         binary_data: str = ''
-    ):
+    ) -> bool:
         send = ctx.channel.send
 
         if params['seed'] == None:
@@ -168,7 +168,7 @@ class SkynetDiscordFrontend:
             await self.bot.channel.send(
                 status_msg,
                 'skynet has suffered an internal error trying to fill this request')
-            return
+            return False
 
         enqueue_tx_id = res['transaction_id']
         enqueue_tx_link = f'[**Your request on Skynet Explorer**](https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{enqueue_tx_id})'
@@ -222,7 +222,6 @@ class SkynetDiscordFrontend:
             await asyncio.sleep(1)
 
         if not ipfs_hash:
-
             timeout_text = f'\n[{timestamp_pretty()}] **timeout processing request**'
             embed = discord.Embed(
                 title='live updates',
@@ -230,7 +229,7 @@ class SkynetDiscordFrontend:
                 color=discord.Color.blue())
 
             await message.edit(embed=embed)
-            return
+            return False
 
         tx_link = f'[**Your result on Skynet Explorer**](https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash})'
 
@@ -254,6 +253,8 @@ class SkynetDiscordFrontend:
             logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
             embed.add_field(name='Error', value=f'couldn\'t get ipfs hosted image [**here**]({ipfs_link})!')
             await message.edit(embed=embed, view=SkynetView(self))
+            return False
+
         else:
             logging.info(f'success! sending generated image')
             await message.delete()
@@ -265,3 +266,5 @@ class SkynetDiscordFrontend:
             else:  # txt2img
                 embed.set_image(url=ipfs_link)
                 await send(embed=embed, view=SkynetView(self))
+
+        return True
