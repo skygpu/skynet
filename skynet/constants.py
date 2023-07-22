@@ -5,15 +5,17 @@ VERSION = '0.1a10'
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
 MODELS = {
-    'prompthero/openjourney':          { 'short': 'midj'},
-    'runwayml/stable-diffusion-v1-5':  { 'short': 'stable'},
-    'Linaqruf/anything-v3.0':          { 'short': 'hdanime'},
-    'hakurei/waifu-diffusion':         { 'short': 'waifu'},
-    'nitrosocke/Ghibli-Diffusion':     { 'short': 'ghibli'},
-    'dallinmackay/Van-Gogh-diffusion': { 'short': 'van-gogh'},
-    'lambdalabs/sd-pokemon-diffusers': { 'short': 'pokemon'},
-    'Envvi/Inkpunk-Diffusion':         { 'short': 'ink'},
-    'nousr/robo-diffusion':            { 'short': 'robot'}
+    'prompthero/openjourney':                   { 'short': 'midj'},
+    'runwayml/stable-diffusion-v1-5':           { 'short': 'stable'},
+    'stabilityai/stable-diffusion-2-1-base':    { 'short': 'stable2'},
+    'snowkidy/stable-diffusion-xl-base-0.9':    { 'short': 'stablexl'},
+    'Linaqruf/anything-v3.0':                   { 'short': 'hdanime'},
+    'hakurei/waifu-diffusion':                  { 'short': 'waifu'},
+    'nitrosocke/Ghibli-Diffusion':              { 'short': 'ghibli'},
+    'dallinmackay/Van-Gogh-diffusion':          { 'short': 'van-gogh'},
+    'lambdalabs/sd-pokemon-diffusers':          { 'short': 'pokemon'},
+    'Envvi/Inkpunk-Diffusion':                  { 'short': 'ink'},
+    'nousr/robo-diffusion':                     { 'short': 'robot'}
 }
 
 SHORT_NAMES = [
@@ -34,6 +36,7 @@ commands work on a user per user basis!
 config is individual to each user!
 
 /txt2img TEXT - request an image based on a prompt
+/img2img <attach_image> TEXT - request an image base on an image and a promtp
 
 /redo - redo last command (only works for txt2img for now!)
 
@@ -82,6 +85,28 @@ COOL_WORDS = [
     'michelangelo'
 ]
 
+CLEAN_COOL_WORDS = [
+    'cyberpunk',
+    'soviet propaganda poster',
+    'rastafari',
+    'cannabis',
+    'art deco',
+    'H R Giger Necronom IV',
+    'dimethyltryptamine',
+    'lysergic',
+    'psilocybin',
+    'trippy',
+    'lucy in the sky with diamonds',
+    'fractal',
+    'da vinci',
+    'pencil illustration',
+    'blueprint',
+    'internal diagram',
+    'baroque',
+    'the last judgment',
+    'michelangelo'
+]
+
 HELP_TOPICS = {
     'step': '''
 Diffusion models are iterative processes – a repeated cycle that starts with a\
@@ -109,8 +134,8 @@ MP_ENABLED_ROLES = ['god']
 
 MIN_STEP = 1
 MAX_STEP = 100
-MAX_WIDTH = 512
-MAX_HEIGHT = 656
+MAX_WIDTH = 1024
+MAX_HEIGHT = 1024
 MAX_GUIDANCE = 20
 
 DEFAULT_SEED = None

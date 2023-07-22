@@ -23,6 +23,7 @@ def init_env_from_config(
     hf_token: str | None = None,
     hf_home: str | None = None,
     tg_token: str | None = None,
+    dc_token: str | None = None,
     file_path=DEFAULT_CONFIG_PATH
 ):
     config = load_skynet_ini(file_path=file_path)
@@ -52,7 +53,14 @@ def init_env_from_config(
         if 'token' in sub_config:
             tg_token = sub_config['token']
 
-    return hf_home, hf_token, tg_token
+    if 'DC_TOKEN' in os.environ:
+        dc_token = os.environ['DC_TOKEN']
+    elif 'skynet.discord' in config:
+        sub_config = config['skynet.discord']
+        if 'token' in sub_config:
+            dc_token = sub_config['token']
+
+    return hf_home, hf_token, tg_token, dc_token
 
 
 def load_account_info(
