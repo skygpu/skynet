@@ -118,6 +118,9 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
             user = message.from_user
             chat = message.chat
 
+        if chat.type == 'private':
+            return
+
         reply_id = None
         if chat.type == 'group' and chat.id == GROUP_ID:
             reply_id = message.message_id
@@ -173,6 +176,9 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
             message = message_or_query
             user = message.from_user
             chat = message.chat
+
+        if chat.type == 'private':
+            return
 
         reply_id = None
         if chat.type == 'group' and chat.id == GROUP_ID:
@@ -262,6 +268,9 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
             message = message_or_query
             user = message.from_user
             chat = message.chat
+
+        if chat.type == 'private':
+            return
 
         init_msg = 'started processing redo request...'
         if is_query:

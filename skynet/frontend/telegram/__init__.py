@@ -1,10 +1,12 @@
 #!/usr/bin/python
 
-from json import JSONDecodeError
+import io
 import random
 import logging
 import asyncio
 
+from PIL import Image
+from json import JSONDecodeError
 from decimal import Decimal
 from hashlib import sha256
 from datetime import datetime
@@ -66,7 +68,7 @@ class SkynetTelegramFrontend:
         self.ipfs_node = self._exit_stack.enter_context(
             open_ipfs_node())
 
-        self.ipfs_node.connect(self.remote_ipfs_node)
+        # self.ipfs_node.connect(self.remote_ipfs_node)
         logging.info(
             f'connected to remote ipfs node: {self.remote_ipfs_node}')
 
@@ -236,12 +238,12 @@ class SkynetTelegramFrontend:
             parse_mode='HTML'
         )
 
+        caption = generate_reply_caption(
+            user, params, tx_hash, worker, reward)
+
         # attempt to get the image and send it
         ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png'
         resp = await get_ipfs_file(ipfs_link)
-
-        caption = generate_reply_caption(
-            user, params, tx_hash, worker, reward)
 
         if not resp or resp.status_code != 200:
             logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
@@ -251,29 +253,40 @@ class SkynetTelegramFrontend:
                 reply_markup=build_redo_menu(),
                 parse_mode='HTML'
             )
+            return
 
-        else:
-            logging.info(f'success! sending generated image')
-            await self.bot.delete_message(
-                chat_id=status_msg.chat.id, message_id=status_msg.id)
-            if file_id:  # img2img
-                await self.bot.send_media_group(
-                    status_msg.chat.id,
-                    media=[
-                        InputMediaPhoto(file_id),
-                        InputMediaPhoto(
-                            resp.raw,
-                            caption=caption,
-                            parse_mode='HTML'
-                        )
-                    ],
-                )
+        png_img = resp.raw
+        with Image.open(io.BytesIO(resp.raw)) as image:
+            w, h = image.size
 
-            else:  # txt2img
-                await self.bot.send_photo(
-                    status_msg.chat.id,
-                    caption=caption,
-                    photo=resp.raw,
-                    reply_markup=build_redo_menu(),
-                    parse_mode='HTML'
-                )
+            if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
+                logging.warning(f'result is of size {image.size}')
+                image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
+                tmp_buf = io.BytesIO()
+                image.save(tmp_buf, format='PNG')
+                png_img = tmp_buf.getvalue()
+
+        logging.info(f'success! sending generated image')
+        await self.bot.delete_message(
+            chat_id=status_msg.chat.id, message_id=status_msg.id)
+        if file_id:  # img2img
+            await self.bot.send_media_group(
+                status_msg.chat.id,
+                media=[
+                    InputMediaPhoto(file_id),
+                    InputMediaPhoto(
+                        png_img,
+                        caption=caption,
+                        parse_mode='HTML'
+                    )
+                ],
+            )
+
+        else:  # txt2img
+            await self.bot.send_photo(
+                status_msg.chat.id,
+                caption=caption,
+                photo=png_img,
+                reply_markup=build_redo_menu(),
+                parse_mode='HTML'
+            )
