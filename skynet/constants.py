@@ -8,7 +8,7 @@ MODELS = {
     'prompthero/openjourney':                   { 'short': 'midj'},
     'runwayml/stable-diffusion-v1-5':           { 'short': 'stable'},
     'stabilityai/stable-diffusion-2-1-base':    { 'short': 'stable2'},
-    'snowkidy/stable-diffusion-xl-base-0.9':    { 'short': 'stablexl'},
+    'snowkidy/stable-diffusion-xl-base-1.0':    { 'short': 'stablexl'},
     'Linaqruf/anything-v3.0':                   { 'short': 'hdanime'},
     'hakurei/waifu-diffusion':                  { 'short': 'waifu'},
     'nitrosocke/Ghibli-Diffusion':              { 'short': 'ghibli'},
