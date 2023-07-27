@@ -15,6 +15,8 @@ from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from diffusers import (
     DiffusionPipeline,
+    StableDiffusionXLPipeline,
+    StableDiffusionXLImg2ImgPipeline,
     StableDiffusionPipeline,
     StableDiffusionImg2ImgPipeline,
     EulerAncestralDiscreteScheduler
@@ -80,12 +82,16 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
     if model == 'runwayml/stable-diffusion-v1-5':
         params['revision'] = 'fp16'
 
-    if image:
-        pipe_class = StableDiffusionImg2ImgPipeline
-    elif model == 'snowkidy/stable-diffusion-xl-base-0.9':
-        pipe_class = DiffusionPipeline
+    if model == 'stabilityai/stable-diffusion-xl-base-1.0':
+        if image:
+            pipe_class = StableDiffusionXLImg2ImgPipeline
+        else:
+            pipe_class = StableDiffusionXLPipeline
     else:
-        pipe_class = StableDiffusionPipeline
+        if image:
+            pipe_class = StableDiffusionImg2ImgPipeline
+        else:
+            pipe_class = StableDiffusionPipeline
 
     pipe = pipe_class.from_pretrained(
         model, **params)
