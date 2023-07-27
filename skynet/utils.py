@@ -82,7 +82,8 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
     if model == 'runwayml/stable-diffusion-v1-5':
         params['revision'] = 'fp16'
 
-    if model == 'stabilityai/stable-diffusion-xl-base-1.0':
+    if (model == 'stabilityai/stable-diffusion-xl-base-1.0' or
+        model == 'snowkidy/stable-diffusion-xl-base-0.9'):
         if image:
             pipe_class = StableDiffusionXLImg2ImgPipeline
         else:
