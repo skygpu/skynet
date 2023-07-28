@@ -1,0 +1,29 @@
+from nvidia/cuda:11.7.0-devel-ubuntu20.04
+from python:3.11
+
+env DEBIAN_FRONTEND=noninteractive
+
+run apt-get update && \
+    apt-get install -y ffmpeg libsm6 libxext6
+
+workdir /skynet
+
+copy requirements.cuda* ./
+
+run pip install -U pip ninja
+run pip install -v -r requirements.cuda.0.txt
+run pip install -v -r requirements.cuda.1.txt
+run pip install -v -r requirements.cuda.2.txt
+
+copy requirements.txt requirements.txt
+copy pytest.ini pytest.ini
+copy setup.py setup.py
+copy skynet skynet
+
+run pip install -e . -r requirements.txt
+
+env PYTORCH_CUDA_ALLOC_CONF max_split_size_mb:128
+env NVIDIA_VISIBLE_DEVICES=all
+env HF_HOME /hf_home
+
+copy tests tests

@@ -1,27 +1,6 @@
 #!/usr/bin/python
 
-import json
-
-from typing import Union, Optional
-from pathlib import Path
-from contextlib import contextmanager as cm
-
-import pynng
-
-from pynng import TLSConfig
-from OpenSSL.crypto import (
-    load_privatekey,
-    load_certificate,
-    FILETYPE_PEM
-)
-
-from google.protobuf.struct_pb2 import Struct
-
-from ..network import SessionClient
 from ..constants import *
-
-from ..protobuf.auth import *
-from ..protobuf.skynet_pb2 import SkynetRPCRequest, SkynetRPCResponse
 
 
 class ConfigRequestFormatError(BaseException):
@@ -40,24 +19,6 @@ class ConfigSizeDivisionByEight(BaseException):
     ...
 
 
-@cm
-def open_skynet_rpc(
-    unique_id: str,
-    rpc_address: str = DEFAULT_RPC_ADDR,
-    cert_name: Optional[str] = None,
-    key_name: Optional[str] = None
-):
-    sesh = SessionClient(
-        rpc_address,
-        unique_id,
-        cert_name=cert_name,
-        key_name=key_name
-    )
-    logging.debug(f'opening skynet rpc...')
-    sesh.connect()
-    yield sesh
-    sesh.disconnect()
-
 def validate_user_config_request(req: str):
     params = req.split(' ')
 
@@ -69,10 +30,14 @@ def validate_user_config_request(req: str):
             attr = params[1]
 
             match attr:
-                case 'algo':
+                case 'model' | 'algo':
+                    attr = 'model'
                     val = params[2]
-                    if val not in ALGOS:
-                        raise ConfigUnknownAlgorithm(f'no algo named {val}')
+                    shorts = [model_info['short'] for model_info in MODELS.values()]
+                    if val not in shorts:
+                        raise ConfigUnknownAlgorithm(f'no model named {val}')
+
+                    val = get_model_by_shortname(val)
 
                 case 'step':
                     val = int(params[2])
@@ -117,7 +82,12 @@ def validate_user_config_request(req: str):
                     raise ConfigUnknownAttribute(
                         f'\"{attr}\" not a configurable parameter')
 
-            return attr, val, f'config updated! {attr} to {val}'
+            display_val = val
+            if attr == 'seed':
+                if not val:
+                    display_val = 'Random'
+
+            return attr, val, f'config updated! {attr} to {display_val}'
 
         except ValueError:
             raise ValueError(f'\"{val}\" is not a number silly')

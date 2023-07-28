@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+import io
+import os
 import time
 import random
 
@@ -12,6 +14,9 @@ import numpy as np
 from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from diffusers import (
+    DiffusionPipeline,
+    StableDiffusionXLPipeline,
+    StableDiffusionXLImg2ImgPipeline,
     StableDiffusionPipeline,
     StableDiffusionImg2ImgPipeline,
     EulerAncestralDiscreteScheduler
@@ -19,7 +24,7 @@ from diffusers import (
 from realesrgan import RealESRGANer
 from huggingface_hub import login
 
-from .constants import ALGOS
+from .constants import MODELS
 
 
 def time_ms():
@@ -36,28 +41,61 @@ def convert_from_image_to_cv2(img: Image) -> np.ndarray:
     return np.asarray(img)
 
 
-def pipeline_for(algo: str, mem_fraction: float = 1.0, image=False):
+def convert_from_bytes_to_img(raw: bytes) -> Image:
+    return Image.open(io.BytesIO(raw))
+
+
+def convert_from_img_to_bytes(image: Image, fmt='PNG') -> bytes:
+    byte_arr = io.BytesIO()
+    image.save(byte_arr, format=fmt)
+    return byte_arr.getvalue()
+
+
+def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
+    image = convert_from_bytes_to_img(raw)
+    w, h = image.size
+    if w > max_w or h > max_h:
+        image.thumbnail((512, 512))
+
+    return image.convert('RGB')
+
+
+def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> DiffusionPipeline:
     assert torch.cuda.is_available()
     torch.cuda.empty_cache()
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 
+    # full determinism
+    # https://huggingface.co/docs/diffusers/using-diffusers/reproducibility#deterministic-algorithms
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
+
     params = {
         'torch_dtype': torch.float16,
         'safety_checker': None
     }
 
-    if algo == 'stable':
+    if model == 'runwayml/stable-diffusion-v1-5':
         params['revision'] = 'fp16'
 
-    if image:
-        pipe_class = StableDiffusionImg2ImgPipeline
+    if (model == 'stabilityai/stable-diffusion-xl-base-1.0' or
+        model == 'snowkidy/stable-diffusion-xl-base-0.9'):
+        if image:
+            pipe_class = StableDiffusionXLImg2ImgPipeline
+        else:
+            pipe_class = StableDiffusionXLPipeline
     else:
-        pipe_class = StableDiffusionPipeline
+        if image:
+            pipe_class = StableDiffusionImg2ImgPipeline
+        else:
+            pipe_class = StableDiffusionPipeline
 
     pipe = pipe_class.from_pretrained(
-        ALGOS[algo], **params)
+        model, **params)
 
     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
         pipe.scheduler.config)
@@ -70,7 +108,7 @@ def pipeline_for(algo: str, mem_fraction: float = 1.0, image=False):
 
 def txt2img(
     hf_token: str,
-    model: str = 'midj',
+    model: str = 'prompthero/openjourney',
     prompt: str = 'a red old tractor in a sunny wheat field',
     output: str = 'output.png',
     width: int = 512, height: int = 512,
@@ -102,7 +140,7 @@ def txt2img(
 
 def img2img(
     hf_token: str,
-    model: str = 'midj',
+    model: str = 'prompthero/openjourney',
     prompt: str = 'a red old tractor in a sunny wheat field',
     img_path: str = 'input.png',
     output: str = 'output.png',
@@ -120,7 +158,8 @@ def img2img(
     login(token=hf_token)
     pipe = pipeline_for(model, image=True)
 
-    input_img = Image.open(img_path).convert('RGB')
+    with open(img_path, 'rb') as img_file:
+        input_img = convert_from_bytes_and_crop(img_file.read(), 512, 512)
 
     seed = seed if seed else random.randint(0, 2 ** 64)
     prompt = prompt
@@ -135,6 +174,22 @@ def img2img(
     image.save(output)
 
 
+def init_upscaler(model_path: str = 'weights/RealESRGAN_x4plus.pth'):
+    return RealESRGANer(
+        scale=4,
+        model_path=model_path,
+        dni_weight=None,
+        model=RRDBNet(
+            num_in_ch=3,
+            num_out_ch=3,
+            num_feat=64,
+            num_block=23,
+            num_grow_ch=32,
+            scale=4
+        ),
+        half=True
+    )
+
 def upscale(
     img_path: str = 'input.png',
     output: str = 'output.png',
@@ -148,19 +203,7 @@ def upscale(
 
     input_img = Image.open(img_path).convert('RGB')
 
-    upscaler = RealESRGANer(
-        scale=4,
-        model_path=model_path,
-        dni_weight=None,
-        model=RRDBNet(
-            num_in_ch=3,
-            num_out_ch=3,
-            num_feat=64,
-            num_block=23,
-            num_grow_ch=32,
-            scale=4
-        ),
-        half=True)
+    upscaler = init_upscaler(model_path=model_path)
 
     up_img, _ = upscaler.enhance(
         convert_from_image_to_cv2(input_img), outscale=4)
@@ -175,7 +218,8 @@ def download_all_models(hf_token: str):
     assert torch.cuda.is_available()
 
     login(token=hf_token)
-    for model in ALGOS:
+    for model in MODELS:
         print(f'DOWNLOADING {model.upper()}')
         pipeline_for(model)
-
+        print(f'DOWNLOADING IMAGE {model.upper()}')
+        pipeline_for(model, image=True)

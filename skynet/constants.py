@@ -1,20 +1,33 @@
 #!/usr/bin/python
 
-VERSION = '0.1a9'
+VERSION = '0.1a11'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
-ALGOS = {
-    'midj': 'prompthero/openjourney',
-    'stable': 'runwayml/stable-diffusion-v1-5',
-    'hdanime': 'Linaqruf/anything-v3.0',
-    'waifu': 'hakurei/waifu-diffusion',
-    'ghibli': 'nitrosocke/Ghibli-Diffusion',
-    'van-gogh': 'dallinmackay/Van-Gogh-diffusion',
-    'pokemon': 'lambdalabs/sd-pokemon-diffusers',
-    'ink': 'Envvi/Inkpunk-Diffusion',
-    'robot': 'nousr/robo-diffusion'
+MODELS = {
+    'prompthero/openjourney':                   { 'short': 'midj'},
+    'runwayml/stable-diffusion-v1-5':           { 'short': 'stable'},
+    'stabilityai/stable-diffusion-2-1-base':    { 'short': 'stable2'},
+    'snowkidy/stable-diffusion-xl-base-0.9':    { 'short': 'stablexl0.9'},
+    'stabilityai/stable-diffusion-xl-base-1.0': { 'short': 'stablexl'},
+    'Linaqruf/anything-v3.0':                   { 'short': 'hdanime'},
+    'hakurei/waifu-diffusion':                  { 'short': 'waifu'},
+    'nitrosocke/Ghibli-Diffusion':              { 'short': 'ghibli'},
+    'dallinmackay/Van-Gogh-diffusion':          { 'short': 'van-gogh'},
+    'lambdalabs/sd-pokemon-diffusers':          { 'short': 'pokemon'},
+    'Envvi/Inkpunk-Diffusion':                  { 'short': 'ink'},
+    'nousr/robo-diffusion':                     { 'short': 'robot'}
 }
+
+SHORT_NAMES = [
+    model_info['short']
+    for model_info in MODELS.values()
+]
+
+def get_model_by_shortname(short: str):
+    for model, info in MODELS.items():
+        if short == info['short']:
+            return model
 
 N = '\n'
 HELP_TEXT = f'''
@@ -24,6 +37,7 @@ commands work on a user per user basis!
 config is individual to each user!
 
 /txt2img TEXT - request an image based on a prompt
+/img2img <attach_image> TEXT - request an image base on an image and a promtp
 
 /redo - redo last command (only works for txt2img for now!)
 
@@ -35,8 +49,9 @@ config is individual to each user!
 /donate - see donation info
 
 /config algo NAME - select AI to use one of:
+/config model NAME - select AI to use one of:
 
-{N.join(ALGOS.keys())}
+{N.join(SHORT_NAMES)}
 
 /config step NUMBER - set amount of iterations
 /config seed NUMBER - set the seed, deterministic results!
@@ -58,6 +73,28 @@ COOL_WORDS = [
     'dimethyltryptamine',
     'lysergic',
     'slut',
+    'psilocybin',
+    'trippy',
+    'lucy in the sky with diamonds',
+    'fractal',
+    'da vinci',
+    'pencil illustration',
+    'blueprint',
+    'internal diagram',
+    'baroque',
+    'the last judgment',
+    'michelangelo'
+]
+
+CLEAN_COOL_WORDS = [
+    'cyberpunk',
+    'soviet propaganda poster',
+    'rastafari',
+    'cannabis',
+    'art deco',
+    'H R Giger Necronom IV',
+    'dimethyltryptamine',
+    'lysergic',
     'psilocybin',
     'trippy',
     'lucy in the sky with diamonds',
@@ -98,8 +135,8 @@ MP_ENABLED_ROLES = ['god']
 
 MIN_STEP = 1
 MAX_STEP = 100
-MAX_WIDTH = 512
-MAX_HEIGHT = 656
+MAX_WIDTH = 1024
+MAX_HEIGHT = 1024
 MAX_GUIDANCE = 20
 
 DEFAULT_SEED = None
@@ -109,22 +146,16 @@ DEFAULT_GUIDANCE = 7.5
 DEFAULT_STRENGTH = 0.5
 DEFAULT_STEP = 35
 DEFAULT_CREDITS = 10
-DEFAULT_ALGO = 'midj'
+DEFAULT_MODEL = list(MODELS.keys())[0]
 DEFAULT_ROLE = 'pleb'
 DEFAULT_UPSCALER = None
 
 DEFAULT_CONFIG_PATH = 'skynet.ini'
-DEFAULT_CERTS_DIR = 'certs'
-DEFAULT_CERT_WHITELIST_DIR = 'whitelist'
-DEFAULT_CERT_SKYNET_PUB = 'brain.cert'
-DEFAULT_CERT_SKYNET_PRIV = 'brain.key'
-DEFAULT_CERT_DGPU = 'dgpu.key'
 
-DEFAULT_RPC_ADDR = 'tcp://127.0.0.1:41000'
-
-DEFAULT_DGPU_ADDR = 'tcp://127.0.0.1:41069'
-DEFAULT_DGPU_MAX_TASKS = 2
-DEFAULT_INITAL_ALGOS = ['midj', 'stable', 'ink']
+DEFAULT_INITAL_MODELS = [
+    'prompthero/openjourney',
+    'runwayml/stable-diffusion-v1-5'
+]
 
 DATE_FORMAT = '%B the %dth %Y, %H:%M:%S'
 
@@ -138,3 +169,10 @@ CONFIG_ATTRS = [
     'strength',
     'upscaler'
 ]
+
+DEFAULT_DOMAIN = 'skygpu.net'
+
+DEFAULT_IPFS_REMOTE = '/ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv'
+
+TG_MAX_WIDTH = 1280
+TG_MAX_HEIGHT = 1280
