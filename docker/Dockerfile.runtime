@@ -1,0 +1,16 @@
+from python:3.10.0
+
+env DEBIAN_FRONTEND=noninteractive
+
+workdir /skynet
+
+copy requirements.txt requirements.txt
+copy pytest.ini ./
+copy setup.py ./
+copy skynet ./skynet
+
+run pip install \
+    -e . \
+    -r requirements.txt
+
+copy tests ./

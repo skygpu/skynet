@@ -1,7 +1,7 @@
 docker build \
     -t skynet:runtime-cuda \
-    -f Dockerfile.runtime+cuda .
+    -f docker/Dockerfile.runtime+cuda .
 
 docker build \
     -t skynet:runtime \
-    -f Dockerfile.runtime .
+    -f docker/Dockerfile.runtime .

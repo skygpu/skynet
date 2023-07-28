@@ -1,13 +1,15 @@
+pytz
 trio
-pynng
+asks
 numpy
+pdbpp
 Pillow
 triopg
+pytest
+docker
 aiohttp
-msgspec
-protobuf
-pyOpenSSL
-trio_asyncio
+psycopg2-binary
 pyTelegramBotAPI
+discord.py
 
-git+https://github.com/goodboy/tractor.git@master#egg=tractor
+py-leap@git+https://github.com/guilledk/py-leap.git@v0.1a14

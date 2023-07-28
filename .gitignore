@@ -7,3 +7,7 @@ secrets
 *.egg-info
 **/*.key
 **/*.cert
+docs
+ipfs-docker-data
+ipfs-docker-staging
+weights
