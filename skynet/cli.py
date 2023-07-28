@@ -384,9 +384,9 @@ def dgpu(
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--hyperion-url', '-y', default=f'https://{DEFAULT_DOMAIN}')
+    '--hyperion-url', '-y', default=f'https://testnet.{DEFAULT_DOMAIN}')
 @click.option(
-    '--node-url', '-n', default=f'https://{DEFAULT_DOMAIN}')
+    '--node-url', '-n', default=f'https://testnet.{DEFAULT_DOMAIN}')
 @click.option(
     '--ipfs-url', '-i', default=DEFAULT_IPFS_REMOTE)
 @click.option(
@@ -445,9 +445,9 @@ def telegram(
 @click.option(
     '--key', '-k', default=None)
 @click.option(
-    '--hyperion-url', '-y', default=f'https://{DEFAULT_DOMAIN}')
+    '--hyperion-url', '-y', default=f'https://testnet.{DEFAULT_DOMAIN}')
 @click.option(
-    '--node-url', '-n', default=f'https://{DEFAULT_DOMAIN}')
+    '--node-url', '-n', default=f'https://testnet.{DEFAULT_DOMAIN}')
 @click.option(
     '--ipfs-url', '-i', default=DEFAULT_IPFS_REMOTE)
 @click.option(
