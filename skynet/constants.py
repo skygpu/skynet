@@ -37,7 +37,7 @@ commands work on a user per user basis!
 config is individual to each user!
 
 /txt2img TEXT - request an image based on a prompt
-/img2img <attach_image> TEXT - request an image base on an image and a promtp
+/img2img <attach_image> TEXT - request an image base on an image and a prompt
 
 /redo - redo last command (only works for txt2img for now!)
 
@@ -54,14 +54,17 @@ config is individual to each user!
 {N.join(SHORT_NAMES)}
 
 /config step NUMBER - set amount of iterations
-/config seed NUMBER - set the seed, deterministic results!
-/config size WIDTH HEIGHT - set size in pixels
+/config seed [auto|NUMBER] - set the seed, deterministic results!
+/config width NUMBER - set horizontal size in pixels
+/config height NUMBER - set vertical size in pixels
+/config upscaler [off/x4] - enable/disable x4 size upscaler
 /config guidance NUMBER - prompt text importance
+/config strength NUMBER - importance of the input image for img2img
 '''
 
 UNKNOWN_CMD_TEXT = 'Unknown command! Try sending \"/help\"'
 
-DONATION_INFO = '0xf95335682DF281FFaB7E104EB87B69625d9622B6\ngoal: 25/650usd'
+DONATION_INFO = '0xf95335682DF281FFaB7E104EB87B69625d9622B6\ngoal: 0.0465/1.0000 ETH'
 
 COOL_WORDS = [
     'cyberpunk',
@@ -120,10 +123,19 @@ ing more may produce a slightly different picture, but not necessarily better \
 quality.
 ''',
 
-'guidance': '''
+    'guidance': '''
 The guidance scale is a parameter that controls how much the image generation\
  process follows the text prompt. The higher the value, the more image sticks\
- to a given text input.
+ to a given text input. Value range 0 to 20. Recomended range: 4.5-7.5.
+''',
+
+    'strength': '''
+Noise is added to the image you use as an init image for img2img, and then the\
+ diffusion process continues according to the prompt. The amount of noise added\
+ depends on the \"Strength of img2img\"” parameter, which ranges from 0 to 1,\
+ where 0 adds no noise at all and you will get the exact image you added, and\
+ 1 completely replaces the image with noise and almost acts as if you used\
+ normal txt2img instead of img2img.
 '''
 }
 
@@ -140,13 +152,13 @@ MAX_HEIGHT = 1024
 MAX_GUIDANCE = 20
 
 DEFAULT_SEED = None
-DEFAULT_WIDTH = 512
-DEFAULT_HEIGHT = 512
+DEFAULT_WIDTH = 1024
+DEFAULT_HEIGHT = 1024
 DEFAULT_GUIDANCE = 7.5
 DEFAULT_STRENGTH = 0.5
-DEFAULT_STEP = 35
+DEFAULT_STEP = 28
 DEFAULT_CREDITS = 10
-DEFAULT_MODEL = list(MODELS.keys())[0]
+DEFAULT_MODEL = 'stablexl'
 DEFAULT_ROLE = 'pleb'
 DEFAULT_UPSCALER = None
 
