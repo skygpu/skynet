@@ -1,0 +1,36 @@
+from pytorch/pytorch:2.0.1-cuda11.7-cudnn8-devel
+env DEBIAN_FRONTEND=noninteractive
+
+run apt-get update -qq && apt-get install -qqy \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    git \
+    lxc \
+    vim \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    iptables
+    
+run curl -sSL https://get.docker.com/ | sh
+
+add ./wrapdocker /usr/local/bin/wrapdocker
+run chmod +x /usr/local/bin/wrapdocker
+
+volume /var/lib/docker
+
+env HF_HOME hf_home
+
+workdir /root/target
+
+add ./requirements.cuda.txt  requirements.cuda.txt
+add ./requirements.txt requirements.txt
+add ./setup.py setup.py
+add ./skynet skynet
+
+run pip install -r requirements.cuda.txt
+run pip install -r requirements.txt
+run pip install -e .
+
+cmd ["wrapdocker"]

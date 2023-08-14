@@ -83,9 +83,10 @@ def open_ipfs_node(name='skynet-ipfs'):
             remove=True
         )
 
+        uid = 1000
+        gid = 1000
+
         if sys.platform != 'win32':
-            uid = os.getuid()
-            gid = os.getgid()
             ec, out = container.exec_run(['chown', f'{uid}:{gid}', '-R', export_target])
             logging.info(out)
             assert ec == 0

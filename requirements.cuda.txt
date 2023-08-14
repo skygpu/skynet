@@ -1,9 +1,14 @@
+torch
 scipy
 triton
+xformers
 accelerate
 transformers
 huggingface_hub
-diffusers[torch]>=0.18.0
+diffusers[torch]
 invisible-watermark
-torch==1.13.0+cu117
+
+basicsr
+realesrgan
+
 --extra-index-url https://download.pytorch.org/whl/cu117

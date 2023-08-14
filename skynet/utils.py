@@ -4,6 +4,7 @@ import io
 import os
 import time
 import random
+import logging
 
 from typing import Optional
 from pathlib import Path
@@ -24,7 +25,7 @@ from diffusers import (
 from realesrgan import RealESRGANer
 from huggingface_hub import login
 
-from .constants import MODELS
+from .constants import MODELS, DEFAULT_SINGLE_CARD_MAP
 
 
 def time_ms():
@@ -74,16 +75,24 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True)
 
+    model_info = MODELS[model]
+
+    req_mem = model_info['mem']
+    mem_gb = torch.cuda.mem_get_info()[1] / (10**9)
+    over_mem = mem_gb < req_mem
+    if over_mem:
+        logging.warn(f'model requires {req_mem} but card has {mem_gb}, model will run slower..')
+
+    shortname = model_info['short']
     params = {
         'torch_dtype': torch.float16,
         'safety_checker': None
     }
 
-    if model == 'runwayml/stable-diffusion-v1-5':
+    if shortname == 'stable':
         params['revision'] = 'fp16'
 
-    if (model == 'stabilityai/stable-diffusion-xl-base-1.0' or
-        model == 'snowkidy/stable-diffusion-xl-base-0.9'):
+    if 'xl' in shortname:
         if image:
             pipe_class = StableDiffusionXLImg2ImgPipeline
         else:
@@ -100,10 +109,16 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
         pipe.scheduler.config)
 
-    if not image:
-        pipe.enable_vae_slicing()
+    if over_mem:
+        if not image:
+            pipe.enable_vae_slicing()
+            pipe.enable_vae_tiling()
 
-    return pipe.to('cuda')
+        pipe.enable_model_cpu_offload()
+
+    pipe.enable_xformers_memory_efficient_attention()
+
+    return pipe
 
 
 def txt2img(
