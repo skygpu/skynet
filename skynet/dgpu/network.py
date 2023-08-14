@@ -27,7 +27,8 @@ async def failable(fn: partial, ret_fail=None):
 
     except (
         asks.errors.RequestTimeout,
-        json.JSONDecodeError
+        json.JSONDecodeError,
+        OSError
     ):
         return ret_fail
 

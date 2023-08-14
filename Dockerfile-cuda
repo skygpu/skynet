@@ -15,9 +15,6 @@ run apt-get update -qq && apt-get install -qqy \
     
 run curl -sSL https://get.docker.com/ | sh
 
-add ./wrapdocker /usr/local/bin/wrapdocker
-run chmod +x /usr/local/bin/wrapdocker
-
 volume /var/lib/docker
 
 env HF_HOME hf_home
@@ -33,4 +30,7 @@ run pip install -r requirements.cuda.txt
 run pip install -r requirements.txt
 run pip install -e .
 
-cmd ["wrapdocker"]
+add ./wrapdocker /usr/local/bin/wrapdocker
+run chmod +x /usr/local/bin/wrapdocker
+
+cmd ["wrapdocker", "bash"]
