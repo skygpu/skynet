@@ -63,9 +63,9 @@ class Txt2ImgButton(discord.ui.Button):
         await db_call(
             'update_user_stats', user.id, 'txt2img', last_prompt=prompt)
 
-        ec = await work_request(user, status_msg, 'txt2img', params, msg)
+        success = await work_request(user, status_msg, 'txt2img', params, msg)
 
-        if ec == None:
+        if success:
             await db_call('increment_generated', user.id)
 
 
@@ -145,13 +145,13 @@ class Img2ImgButton(discord.ui.Button):
             last_binary=ipfs_hash
         )
 
-        ec = await work_request(
+        success = await work_request(
             user, status_msg, 'img2img', params, msg,
             file_id=file_id,
             binary_data=ipfs_hash
         )
 
-        if ec == None:
+        if success:
             await db_call('increment_generated', user.id)
 
 
@@ -195,13 +195,13 @@ class RedoButton(discord.ui.Button):
             'prompt': prompt,
             **user_config
         }
-        ec = await work_request(
+        success = await work_request(
             user, status_msg, 'redo', params, interaction,
             file_id=file_id,
             binary_data=binary
         )
 
-        if ec == None:
+        if success:
             await db_call('increment_generated', user.id)
 
 
