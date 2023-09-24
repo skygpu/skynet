@@ -125,8 +125,7 @@ def enqueue(
     key, account, permission = load_account_info(
         'user', key, account, permission)
 
-    node_url, _, _ = load_endpoint_info(
-        'user', node_url, None, None)
+    node_url, _, _, _ = load_endpoint_info('user', node_url=node_url)
 
     with open_cleos(node_url, key=key) as cleos:
         async def enqueue_n_jobs():
@@ -176,8 +175,7 @@ def clean(
     key, account, permission = load_account_info(
         'user', key, account, permission)
 
-    node_url, _, _ = load_endpoint_info(
-        'user', node_url, None, None)
+    node_url, _, _, _ = load_endpoint_info('user', node_url=node_url)
 
     logging.basicConfig(level=loglevel)
     cleos = CLEOS(None, None, url=node_url, remote=node_url)
@@ -195,8 +193,7 @@ def clean(
 @click.option(
     '--node-url', '-n', default='https://skynet.ancap.tech')
 def queue(node_url: str):
-    node_url, _, _ = load_endpoint_info(
-        'user', node_url, None, None)
+    node_url, _, _, _ = load_endpoint_info('user', node_url=node_url)
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
         json={
@@ -213,8 +210,7 @@ def queue(node_url: str):
     '--node-url', '-n', default='https://skynet.ancap.tech')
 @click.argument('request-id')
 def status(node_url: str, request_id: int):
-    node_url, _, _ = load_endpoint_info(
-        'user', node_url, None, None)
+    node_url, _, _, _ = load_endpoint_info('user', node_url=node_url)
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
         json={
@@ -246,20 +242,22 @@ def dequeue(
     key, account, permission = load_account_info(
         'user', key, account, permission)
 
-    node_url, _, _ = load_endpoint_info(
-        'user', node_url, None, None)
+    node_url, _, _, _ = load_endpoint_info('user', node_url=node_url)
 
-    with open_cleos(node_url, key=key) as cleos:
-        res = trio.run(cleos.a_push_action,
+    cleos = CLEOS(None, None, url=node_url, remote=node_url)
+    res = trio.run(
+        partial(
+            cleos.a_push_action,
             'telos.gpu',
             'dequeue',
             {
                 'user': Name(account),
                 'request_id': int(request_id),
             },
-            account, key, permission,
+            account, key, permission=permission
         )
-        print(res)
+    )
+    print(res)
 
 
 @skynet.command()
@@ -285,20 +283,21 @@ def config(
 ):
     key, account, permission = load_account_info(
         'user', key, account, permission)
-
-    node_url, _, _ = load_endpoint_info(
-        'user', node_url, None, None)
-    with open_cleos(node_url, key=key) as cleos:
-        res = trio.run(cleos.a_push_action,
+    node_url, _, _, _ = load_endpoint_info('user', node_url=node_url)
+    cleos = CLEOS(None, None, url=node_url, remote=node_url)
+    res = trio.run(
+        partial(
+            cleos.a_push_action,
             'telos.gpu',
             'config',
             {
                 'token_contract': token_contract,
                 'token_symbol': token_symbol,
             },
-            account, key, permission,
+            account, key, permission=permission
         )
-        print(res)
+    )
+    print(res)
 
 
 @skynet.command()
@@ -321,12 +320,12 @@ def deposit(
     key, account, permission = load_account_info(
         'user', key, account, permission)
 
-    node_url, _, _ = load_endpoint_info(
-        'user', node_url, None, None)
+    node_url, _, _, _ = load_endpoint_info('user', node_url=node_url)
 
-    with open_cleos(node_url, key=key) as cleos:
-        res = trio.run(cleos.a_push_action,
-            'eosio.token',
+    res = trio.run(
+        partial(
+            cleos.a_push_action,
+            'telos.gpu',
             'transfer',
             {
                 'sender': Name(account),
@@ -334,9 +333,10 @@ def deposit(
                 'amount': asset_from_str(quantity),
                 'memo': f'{account} transferred {quantity} to telos.gpu'
             },
-            account, key, permission,
+            account, key, permission=permission
         )
-        print(res)
+    )
+    print(res)
 
 
 @skynet.group()
@@ -388,7 +388,7 @@ def dgpu(
 @click.option(
     '--node-url', '-n', default=f'https://testnet.{DEFAULT_DOMAIN}')
 @click.option(
-    '--ipfs-url', '-i', default=DEFAULT_IPFS_REMOTE)
+    '--ipfs-gateway-url', '-i', default=DEFAULT_IPFS_REMOTE)
 @click.option(
     '--db-host', '-h', default='localhost:5432')
 @click.option(
@@ -401,7 +401,7 @@ def telegram(
     permission: str,
     key: str | None,
     hyperion_url: str,
-    ipfs_url: str,
+    ipfs_gateway_url: str,
     node_url: str,
     db_host: str,
     db_user: str,
@@ -414,8 +414,8 @@ def telegram(
     key, account, permission = load_account_info(
         'telegram', key, account, permission)
 
-    node_url, _, ipfs_url = load_endpoint_info(
-        'telegram', node_url, None, None)
+    node_url, _, ipfs_gateway_url, _ = load_endpoint_info(
+        'telegram', node_url=node_url, ipfs_gateway_url=ipfs_gateway_url)
 
     async def _async_main():
         frontend = SkynetTelegramFrontend(
@@ -425,7 +425,7 @@ def telegram(
             node_url,
             hyperion_url,
             db_host, db_user, db_pass,
-            remote_ipfs_node=ipfs_url,
+            remote_ipfs_node=ipfs_gateway_url,
             key=key
         )
 
@@ -449,7 +449,7 @@ def telegram(
 @click.option(
     '--node-url', '-n', default=f'https://testnet.{DEFAULT_DOMAIN}')
 @click.option(
-    '--ipfs-url', '-i', default=DEFAULT_IPFS_REMOTE)
+    '--ipfs-gateway-url', '-i', default=DEFAULT_IPFS_REMOTE)
 @click.option(
     '--db-host', '-h', default='localhost:5432')
 @click.option(
@@ -462,7 +462,7 @@ def discord(
     permission: str,
     key: str | None,
     hyperion_url: str,
-    ipfs_url: str,
+    ipfs_gateway_url: str,
     node_url: str,
     db_host: str,
     db_user: str,
@@ -475,8 +475,8 @@ def discord(
     key, account, permission = load_account_info(
         'discord', key, account, permission)
 
-    node_url, _, ipfs_url = load_endpoint_info(
-        'discord', node_url, None, None)
+    node_url, _, ipfs_gateway_url, _ = load_endpoint_info(
+        'telegram', node_url=node_url, ipfs_gateway_url=ipfs_gateway_url)
 
     async def _async_main():
         frontend = SkynetDiscordFrontend(
@@ -486,7 +486,7 @@ def discord(
             node_url,
             hyperion_url,
             db_host, db_user, db_pass,
-            remote_ipfs_node=ipfs_url,
+            remote_ipfs_node=ipfs_gateway_url,
             key=key
         )
 

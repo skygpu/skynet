@@ -200,9 +200,9 @@ class SkynetGPUConnector:
         img.save('ipfs-docker-staging/image.png')
 
         # check peer connections, reconnect to skynet gateway if not
+        gateway_id = Path(self.ipfs_gateway_url).name
         peers = await self.ipfs_client.peers()
-        peer_addresses = [peer['Addr'] for peer in peers]
-        if self.ipfs_gateway_url not in peer_addresses:
+        if gateway_id not in [p['Peer'] for p in peers]:
             await self.ipfs_client.connect(self.ipfs_gateway_url)
 
         file_info = await self.ipfs_client.add(Path('ipfs-docker-staging/image.png'))

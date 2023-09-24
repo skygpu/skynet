@@ -28,23 +28,19 @@ class AsyncIPFSHTTP:
 
     async def add(self, file_path: Path, **kwargs):
         files = {
-            'file': (str(file_path), open(file_path, 'rb'))
-        }
-        headers = {
-            'Content-Type': 'multipart/form-data'
+            'file': file_path
         }
         return await self._post(
             '/api/v0/add',
             files=files,
-            headers=headers,
             params=kwargs
         )
 
     async def pin(self, cid: str):
-        return await self._post(
+        return (await self._post(
             '/api/v0/pin/add',
             params={'arg': cid}
-        )
+        ))['Pins']
 
     async def connect(self, multi_addr: str):
         return await self._post(
@@ -53,10 +49,10 @@ class AsyncIPFSHTTP:
         )
 
     async def peers(self, **kwargs):
-        return await self._post(
+        return (await self._post(
             '/api/v0/swarm/peers',
             params=kwargs
-        )
+        ))['Peers']
 
 
 async def get_ipfs_file(ipfs_link: str, timeout: int = 60):
