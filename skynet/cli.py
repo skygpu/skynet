@@ -16,7 +16,7 @@ from leap.cleos import CLEOS
 from leap.sugar import collect_stdout, Name, asset_from_str
 from leap.hyperion import HyperionAPI
 
-from skynet.ipfs import IPFSHTTP
+from skynet.ipfs import AsyncIPFSHTTP
 
 
 from .db import open_new_database
@@ -516,7 +516,7 @@ def pinner(loglevel, ipfs_rpc, hyperion_url):
     from .ipfs.pinner import SkynetPinner
 
     logging.basicConfig(level=loglevel)
-    ipfs_node = IPFSHTTP(ipfs_rpc)
+    ipfs_node = AsyncIPFSHTTP(ipfs_rpc)
     hyperion = HyperionAPI(hyperion_url)
 
     pinner = SkynetPinner(hyperion, ipfs_node)

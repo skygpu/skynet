@@ -1,26 +1,61 @@
 #!/usr/bin/python
 
 import logging
+from pathlib import Path
 
 import asks
-import requests
 
 
-class IPFSHTTP:
+class IPFSClientException(BaseException):
+    ...
+
+
+class AsyncIPFSHTTP:
 
     def __init__(self, endpoint: str):
         self.endpoint = endpoint
 
-    def pin(self, cid: str):
-        return requests.post(
-            f'{self.endpoint}/api/v0/pin/add',
+    async def _post(self, sub_url: str, *args, **kwargs):
+        resp = await asks.post(
+            self.endpoint + sub_url,
+            *args, **kwargs
+        )
+
+        if resp.status_code != 200:
+            raise IPFSClientException(resp.text)
+
+        return resp.json()
+
+    async def add(self, file_path: Path, **kwargs):
+        files = {
+            'file': (str(file_path), open(file_path, 'rb'))
+        }
+        headers = {
+            'Content-Type': 'multipart/form-data'
+        }
+        return await self._post(
+            '/api/v0/add',
+            files=files,
+            headers=headers,
+            params=kwargs
+        )
+
+    async def pin(self, cid: str):
+        return await self._post(
+            '/api/v0/pin/add',
             params={'arg': cid}
         )
 
-    async def a_pin(self, cid: str):
-        return await asks.post(
-            f'{self.endpoint}/api/v0/pin/add',
-            params={'arg': cid}
+    async def connect(self, multi_addr: str):
+        return await self._post(
+            '/api/v0/swarm/connect',
+            params={'arg': multi_addr}
+        )
+
+    async def peers(self, **kwargs):
+        return await self._post(
+            '/api/v0/swarm/peers',
+            params=kwargs
         )
 
 

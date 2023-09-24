@@ -73,7 +73,7 @@ class SkynetDGPUDaemon:
                                     img_sha, img_raw = self.mm.compute_one(
                                         body['method'], body['params'], binary=binary)
 
-                                    ipfs_hash = self.conn.publish_on_ipfs( img_raw)
+                                    ipfs_hash = await self.conn.publish_on_ipfs(img_raw)
 
                                     await self.conn.submit_work(rid, request_hash, img_sha, ipfs_hash)
                                     break
