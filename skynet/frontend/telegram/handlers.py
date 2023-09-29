@@ -219,8 +219,9 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
 
             image.save(f'ipfs-docker-staging/image.png', format='PNG')
 
-            ipfs_hash = ipfs_node.add('image.png')
-            ipfs_node.pin(ipfs_hash)
+            ipfs_info = await ipfs_node.add('image.png')
+            ipfs_hash = ipfs_info['Hash']
+            await ipfs_node.pin(ipfs_hash)
 
             logging.info(f'published input image {ipfs_hash} on ipfs')
 
