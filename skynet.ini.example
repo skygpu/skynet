@@ -21,6 +21,7 @@ key = 5Xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 node_url = https://testnet.skygpu.net
 hyperion_url = https://testnet.skygpu.net
 ipfs_gateway_url = /ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv
+ipfs_url = http://127.0.0.1:5001
 
 token = XXXXXXXXXX:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
@@ -32,5 +33,6 @@ key = 5Xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 node_url = https://testnet.skygpu.net
 hyperion_url = https://testnet.skygpu.net
 ipfs_gateway_url = /ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv
+ipfs_url = http://127.0.0.1:5001
 
 token = XXXXXXXXXX:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

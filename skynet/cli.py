@@ -388,7 +388,9 @@ def dgpu(
 @click.option(
     '--node-url', '-n', default=f'https://testnet.{DEFAULT_DOMAIN}')
 @click.option(
-    '--ipfs-gateway-url', '-i', default=DEFAULT_IPFS_REMOTE)
+    '--ipfs-url', '-i', default=DEFAULT_IPFS_LOCAL)
+@click.option(
+    '--ipfs-gateway-url', '-I', default=None)
 @click.option(
     '--db-host', '-h', default='localhost:5432')
 @click.option(
@@ -401,6 +403,7 @@ def telegram(
     permission: str,
     key: str | None,
     hyperion_url: str,
+    ipfs_url: str,
     ipfs_gateway_url: str,
     node_url: str,
     db_host: str,
@@ -414,7 +417,7 @@ def telegram(
     key, account, permission = load_account_info(
         'telegram', key, account, permission)
 
-    node_url, _, ipfs_gateway_url, _ = load_endpoint_info(
+    node_url, _, ipfs_gateway_url, ipfs_url = load_endpoint_info(
         'telegram', node_url=node_url, ipfs_gateway_url=ipfs_gateway_url)
 
     async def _async_main():
@@ -425,6 +428,7 @@ def telegram(
             node_url,
             hyperion_url,
             db_host, db_user, db_pass,
+            ipfs_url,
             remote_ipfs_node=ipfs_gateway_url,
             key=key
         )
@@ -449,7 +453,9 @@ def telegram(
 @click.option(
     '--node-url', '-n', default=f'https://testnet.{DEFAULT_DOMAIN}')
 @click.option(
-    '--ipfs-gateway-url', '-i', default=DEFAULT_IPFS_REMOTE)
+    '--ipfs-url', '-i', default=DEFAULT_IPFS_LOCAL)
+@click.option(
+    '--ipfs-gateway-url', '-I', default=DEFAULT_IPFS_REMOTE)
 @click.option(
     '--db-host', '-h', default='localhost:5432')
 @click.option(
@@ -462,6 +468,7 @@ def discord(
     permission: str,
     key: str | None,
     hyperion_url: str,
+    ipfs_url: str,
     ipfs_gateway_url: str,
     node_url: str,
     db_host: str,
@@ -475,8 +482,8 @@ def discord(
     key, account, permission = load_account_info(
         'discord', key, account, permission)
 
-    node_url, _, ipfs_gateway_url, _ = load_endpoint_info(
-        'telegram', node_url=node_url, ipfs_gateway_url=ipfs_gateway_url)
+    node_url, _, ipfs_gateway_url, ipfs_url = load_endpoint_info(
+        'discord', node_url=node_url, ipfs_gateway_url=ipfs_gateway_url)
 
     async def _async_main():
         frontend = SkynetDiscordFrontend(
@@ -486,6 +493,7 @@ def discord(
             node_url,
             hyperion_url,
             db_host, db_user, db_pass,
+            ipfs_url,
             remote_ipfs_node=ipfs_gateway_url,
             key=key
         )
