@@ -56,6 +56,7 @@ docker run \
     --rm \
     --gpus all \
     --network host \
+    --name skynet-worker \
     --mount type=bind,source="$(pwd)",target=/root/target \
     guilledk/skynet:runtime-cuda \
     skynet run dgpu
