@@ -217,10 +217,12 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
                 image.thumbnail((512, 512))
                 logging.warning(f'resized it to {image.size}')
 
-            image.save(f'ipfs-docker-staging/image.png', format='PNG')
+            image_loc = 'ipfs-staging/image.png'
+            image.save(image_loc, format='PNG')
 
-            ipfs_hash = ipfs_node.add('image.png')
-            ipfs_node.pin(ipfs_hash)
+            ipfs_info = await ipfs_node.add(image_loc)
+            ipfs_hash = ipfs_info['Hash']
+            await ipfs_node.pin(ipfs_hash)
 
             logging.info(f'published input image {ipfs_hash} on ipfs')
 

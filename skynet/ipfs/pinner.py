@@ -9,7 +9,7 @@ import trio
 
 from leap.hyperion import HyperionAPI
 
-from . import IPFSHTTP
+from . import AsyncIPFSHTTP
 
 
 MAX_TIME = timedelta(seconds=20)
@@ -20,7 +20,7 @@ class SkynetPinner:
     def __init__(
         self,
         hyperion: HyperionAPI,
-        ipfs_http: IPFSHTTP
+        ipfs_http: AsyncIPFSHTTP
     ):
         self.hyperion = hyperion
         self.ipfs_http = ipfs_http
@@ -85,7 +85,7 @@ class SkynetPinner:
         for _ in range(6):
             try:
                 with trio.move_on_after(5):
-                    resp = await self.ipfs_http.a_pin(cid)
+                    resp = await self.ipfs_http.pin(cid)
                     if resp.status_code != 200:
                         logging.error(f'error pinning {cid}:\n{resp.text}')
                         del self._pinned[cid]

@@ -19,9 +19,8 @@ from leap.hyperion import HyperionAPI
 import discord
 import io
 
-from skynet.db import open_new_database, open_database_connection
-from skynet.ipfs import get_ipfs_file
-from skynet.ipfs.docker import open_ipfs_node
+from skynet.db import open_database_connection
+from skynet.ipfs import get_ipfs_file, AsyncIPFSHTTP
 from skynet.constants import *
 
 from . import *
@@ -44,6 +43,7 @@ class SkynetDiscordFrontend:
         db_host: str,
         db_user: str,
         db_pass: str,
+        ipfs_url: str,
         remote_ipfs_node: str,
         key: str
     ):
@@ -55,23 +55,21 @@ class SkynetDiscordFrontend:
         self.db_host = db_host
         self.db_user = db_user
         self.db_pass = db_pass
+        self.ipfs_url = ipfs_url
         self.remote_ipfs_node = remote_ipfs_node
         self.key = key
 
         self.bot = DiscordBot(self)
         self.cleos = CLEOS(None, None, url=node_url, remote=node_url)
         self.hyperion = HyperionAPI(hyperion_url)
+        self.ipfs_node = AsyncIPFSHTTP(ipfs_node)
 
         self._exit_stack = ExitStack()
         self._async_exit_stack = AsyncExitStack()
 
     async def start(self):
-        self.ipfs_node = self._exit_stack.enter_context(
-            open_ipfs_node())
-
-        self.ipfs_node.connect(self.remote_ipfs_node)
-        logging.info(
-            f'connected to remote ipfs node: {self.remote_ipfs_node}')
+        if self.remote_ipfs_node:
+            await self.ipfs_node.connect(self.remote_ipfs_node)
 
         self.db_call = await self._async_exit_stack.enter_async_context(
             open_database_connection(

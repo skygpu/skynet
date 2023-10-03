@@ -93,6 +93,7 @@ def load_endpoint_info(
     node_url: str | None = None,
     hyperion_url: str | None = None,
     ipfs_url: str | None = None,
+    ipfs_gateway_url: str | None = None,
     file_path=DEFAULT_CONFIG_PATH
 ):
     config = load_skynet_ini(file_path=file_path)
@@ -110,4 +111,7 @@ def load_endpoint_info(
         if not ipfs_url and 'ipfs_url' in sub_config:
             ipfs_url = sub_config['ipfs_url']
 
-    return node_url, hyperion_url, ipfs_url
+        if not ipfs_gateway_url and 'ipfs_gateway_url' in sub_config:
+            ipfs_gateway_url = sub_config['ipfs_gateway_url']
+
+    return node_url, hyperion_url, ipfs_gateway_url, ipfs_url

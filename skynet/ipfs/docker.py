@@ -51,9 +51,10 @@ class IPFSDocker:
 
 
 @cm
-def open_ipfs_node(name='skynet-ipfs'):
+def open_ipfs_node(name='skynet-ipfs', teardown=False):
     dclient = docker.from_env()
 
+    container = None
     try:
         container = dclient.containers.get(name)
 
@@ -100,3 +101,6 @@ def open_ipfs_node(name='skynet-ipfs'):
                 break
 
     yield IPFSDocker(container)
+
+    if teardown and container:
+        container.stop()
