@@ -10,8 +10,6 @@ import logging
 import asks
 from PIL import Image
 
-from contextlib import asynccontextmanager as acm
-
 from leap.cleos import CLEOS
 from leap.sugar import Checksum256, Name, asset_from_str
 from skynet.constants import DEFAULT_DOMAIN
@@ -26,7 +24,9 @@ async def failable(fn: partial, ret_fail=None):
 
     except (
         asks.errors.RequestTimeout,
-        json.JSONDecodeError
+        asks.errors.BadHttpResponse,
+        json.JSONDecodeError,
+        OSError
     ):
         return ret_fail
 
@@ -193,11 +193,11 @@ class SkynetGPUConnector:
         )
 
     # IPFS helpers
-
     async def publish_on_ipfs(self, raw_img: bytes):
+        Path('ipfs-staging').mkdir(exist_ok=True)
         logging.info('publish_on_ipfs')
         img = Image.open(io.BytesIO(raw_img))
-        img.save('ipfs-docker-staging/image.png')
+        img.save('ipfs-staging/image.png')
 
         # check peer connections, reconnect to skynet gateway if not
         gateway_id = Path(self.ipfs_gateway_url).name
@@ -205,7 +205,7 @@ class SkynetGPUConnector:
         if gateway_id not in [p['Peer'] for p in peers]:
             await self.ipfs_client.connect(self.ipfs_gateway_url)
 
-        file_info = await self.ipfs_client.add(Path('ipfs-docker-staging/image.png'))
+        file_info = await self.ipfs_client.add(Path('ipfs-staging/image.png'))
         file_cid = file_info['Hash']
 
         await self.ipfs_client.pin(file_cid)
