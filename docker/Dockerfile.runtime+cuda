@@ -1,29 +1,46 @@
-from nvidia/cuda:11.7.0-devel-ubuntu20.04
+from nvidia/cuda:11.8.0-devel-ubuntu20.04
 from python:3.11
 
 env DEBIAN_FRONTEND=noninteractive
 
-run apt-get update && \
-    apt-get install -y ffmpeg libsm6 libxext6
+run apt-get update && apt-get install -y \
+    git \
+    clang \
+    cmake \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    ninja-build
+
+env CC /usr/bin/clang
+env CXX /usr/bin/clang++
+
+# install llvm10 as required by llvm-lite
+run git clone https://github.com/llvm/llvm-project.git -b llvmorg-10.0.1
+workdir /llvm-project
+# this adds a commit from 12.0.0 that fixes build on newer compilers
+run git cherry-pick -n b498303066a63a203d24f739b2d2e0e56dca70d1
+run cmake -S llvm -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+run ninja -C build install  # -j8
+
+run curl -sSL https://install.python-poetry.org | python3 -
+
+env PATH "/root/.local/bin:$PATH"
+
+copy . /skynet
 
 workdir /skynet
 
-copy requirements.cuda* ./
+env POETRY_VIRTUALENVS_PATH /skynet/.venv
 
-run pip install -U pip ninja
-run pip install -v -r requirements.cuda.0.txt
-run pip install -v -r requirements.cuda.1.txt
-run pip install -v -r requirements.cuda.2.txt
+run poetry install --with=cuda -v
 
-copy requirements.txt requirements.txt
-copy pytest.ini pytest.ini
-copy setup.py setup.py
-copy skynet skynet
-
-run pip install -e . -r requirements.txt
+workdir /root/target
 
 env PYTORCH_CUDA_ALLOC_CONF max_split_size_mb:128
 env NVIDIA_VISIBLE_DEVICES=all
-env HF_HOME /hf_home
 
-copy tests tests
+copy docker/entrypoint.sh /entrypoint.sh
+entrypoint ["/entrypoint.sh"]
+
+cmd ["skynet", "--help"]

@@ -4,44 +4,12 @@ import json
 import time
 import logging
 
-from datetime import datetime
 from contextlib import contextmanager as cm
 
 import docker
 
-from pytz import timezone
-from leap.cleos import CLEOS, default_nodeos_image
-from leap.sugar import get_container, Symbol, random_string
-
-
-@cm
-def open_cleos(
-    node_url: str,
-    key: str | None
-):
-    vtestnet = None
-    try:
-        dclient = docker.from_env()
-        vtestnet = get_container(
-            dclient,
-            default_nodeos_image(),
-            name=f'skynet-wallet-{random_string(size=8)}',
-            force_unique=True,
-            detach=True,
-            network='host',
-            remove=True)
-
-        cleos = CLEOS(dclient, vtestnet, url=node_url, remote=node_url)
-
-        if key:
-            cleos.setup_wallet(key)
-
-        yield cleos
-
-    finally:
-        if vtestnet:
-            vtestnet.stop()
-
+from leap.cleos import CLEOS
+from leap.sugar import get_container, Symbol
 
 
 @cm
