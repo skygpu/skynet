@@ -3,13 +3,13 @@
 from functools import partial
 import io
 import json
+from pathlib import Path
 import time
 import logging
 
 import asks
 from PIL import Image
 
-from contextlib import ExitStack
 from contextlib import asynccontextmanager as acm
 
 from leap.cleos import CLEOS
@@ -17,8 +17,7 @@ from leap.sugar import Checksum256, Name, asset_from_str
 from skynet.constants import DEFAULT_DOMAIN
 
 from skynet.dgpu.errors import DGPUComputeError
-from skynet.ipfs import get_ipfs_file
-from skynet.ipfs.docker import open_ipfs_node
+from skynet.ipfs import AsyncIPFSHTTP, get_ipfs_file
 
 
 async def failable(fn: partial, ret_fail=None):
@@ -38,28 +37,17 @@ class SkynetGPUConnector:
         self.account = Name(config['account'])
         self.permission = config['permission']
         self.key = config['key']
+
         self.node_url = config['node_url']
         self.hyperion_url = config['hyperion_url']
-        self.ipfs_url = config['ipfs_url']
 
         self.cleos = CLEOS(
             None, None, self.node_url, remote=self.node_url)
 
-        self._exit_stack = ExitStack()
+        self.ipfs_gateway_url = config['ipfs_gateway_url']
+        self.ipfs_url = config['ipfs_url']
 
-    def connect(self):
-        self.ipfs_node = self._exit_stack.enter_context(
-            open_ipfs_node())
-
-    def disconnect(self):
-        self._exit_stack.close()
-
-    @acm
-    async def open(self):
-        self.connect()
-        yield self
-        self.disconnect()
-
+        self.ipfs_client = AsyncIPFSHTTP(self.ipfs_url)
 
     # blockchain helpers
 
@@ -206,21 +194,23 @@ class SkynetGPUConnector:
 
     # IPFS helpers
 
-    def publish_on_ipfs(self, raw_img: bytes):
+    async def publish_on_ipfs(self, raw_img: bytes):
         logging.info('publish_on_ipfs')
         img = Image.open(io.BytesIO(raw_img))
-        img.save(f'ipfs-docker-staging/image.png')
+        img.save('ipfs-docker-staging/image.png')
 
         # check peer connections, reconnect to skynet gateway if not
-        peers = self.ipfs_node.check_connect()
-        if self.ipfs_url not in peers:
-            self.ipfs_node.connect(self.ipfs_url)
+        gateway_id = Path(self.ipfs_gateway_url).name
+        peers = await self.ipfs_client.peers()
+        if gateway_id not in [p['Peer'] for p in peers]:
+            await self.ipfs_client.connect(self.ipfs_gateway_url)
 
-        ipfs_hash = self.ipfs_node.add('image.png')
+        file_info = await self.ipfs_client.add(Path('ipfs-docker-staging/image.png'))
+        file_cid = file_info['Hash']
 
-        self.ipfs_node.pin(ipfs_hash)
+        await self.ipfs_client.pin(file_cid)
 
-        return ipfs_hash
+        return file_cid
 
     async def get_input_data(self, ipfs_hash: str) -> bytes:
         if ipfs_hash == '':
