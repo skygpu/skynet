@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-VERSION = '0.1a11'
+VERSION = '0.1a12'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
