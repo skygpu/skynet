@@ -1,6 +1,6 @@
 [tool.poetry]
 name = 'skynet'
-version = '0.1a11'
+version = '0.1a12'
 description = 'Decentralized compute platform'
 authors = ['Guillermo Rodriguez <guillermo@telos.net>']
 license = 'AGPL'
