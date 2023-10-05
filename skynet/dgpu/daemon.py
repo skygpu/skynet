@@ -5,6 +5,7 @@ import logging
 import traceback
 
 from hashlib import sha256
+from functools import partial
 
 import trio
 
@@ -26,6 +27,16 @@ class SkynetDGPUDaemon:
             config['auto_withdraw']
             if 'auto_withdraw' in config else False
         )
+        self.non_compete = set(('testworker2', 'animus2.boid', 'animus1.boid'))
+        self.current_request = None
+
+    async def should_cancel_work(self):
+        competitors = set((
+            status['worker']
+            for status in
+            (await self.conn.get_status_by_request_id(self.current_request))
+        ))
+        return self.non_compete & competitors
 
     async def serve_forever(self):
         try:
@@ -43,7 +54,7 @@ class SkynetDGPUDaemon:
                         statuses = await self.conn.get_status_by_request_id(rid)
 
                         if len(statuses) == 0:
-
+                            self.current_request = rid
                             # parse request
                             body = json.loads(req['body'])
 
@@ -70,8 +81,13 @@ class SkynetDGPUDaemon:
 
                             else:
                                 try:
-                                    img_sha, img_raw = self.mm.compute_one(
-                                        body['method'], body['params'], binary=binary)
+                                    img_sha, img_raw = await trio.to_thread.run_sync(
+                                        partial(
+                                            self.mm.compute_one,
+                                            self.should_cancel_work,
+                                            body['method'], body['params'], binary=binary
+                                        )
+                                    )
 
                                     ipfs_hash = await self.conn.publish_on_ipfs(img_raw)
 
