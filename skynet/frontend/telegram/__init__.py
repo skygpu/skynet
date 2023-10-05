@@ -237,9 +237,24 @@ class SkynetTelegramFrontend:
             user, params, tx_hash, worker, reward)
 
         # attempt to get the image and send it
-        ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png'
-        resp = await get_ipfs_file(ipfs_link)
+        results = {}
+        ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}'
+        ipfs_link_legacy = ipfs_link + '/image.png'
 
+        async def get_and_set_results(link: str):
+            results[link] = await get_ipfs_file(link)
+
+        tasks = [
+            get_and_set_results(ipfs_link),
+            get_and_set_results(ipfs_link_legacy)
+        ]
+        await asyncio.gather(*tasks)
+
+        resp = results[ipfs_link_legacy]
+        if not resp or resp.status_code != 200:
+            logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link_legacy}!')
+
+        resp = results[ipfs_link]
         if not resp or resp.status_code != 200:
             logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
             await self.update_status_message(
