@@ -5,7 +5,7 @@ import random
 import logging
 import asyncio
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from json import JSONDecodeError
 from decimal import Decimal
 from hashlib import sha256
@@ -244,37 +244,64 @@ class SkynetTelegramFrontend:
         async def get_and_set_results(link: str):
             results[link] = await get_ipfs_file(link)
 
+        def get_image_from_resp(resp):
+            png_img = resp.raw
+            with Image.open(io.BytesIO(resp.raw)) as image:
+                w, h = image.size
+
+                if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
+                    logging.warning(f'result is of size {image.size}')
+                    image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
+                    tmp_buf = io.BytesIO()
+                    image.save(tmp_buf, format='PNG')
+                    png_img = tmp_buf.getvalue()
+
+            return png_img
+
         tasks = [
             get_and_set_results(ipfs_link),
             get_and_set_results(ipfs_link_legacy)
         ]
         await asyncio.gather(*tasks)
 
+        png_img = None
+
         resp = results[ipfs_link_legacy]
         if not resp or resp.status_code != 200:
             logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link_legacy}!')
 
-        resp = results[ipfs_link]
-        if not resp or resp.status_code != 200:
-            logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
-            await self.update_status_message(
-                status_msg,
-                caption,
-                reply_markup=build_redo_menu(),
-                parse_mode='HTML'
-            )
-            return True
+        else:
+            try:
+                png_img = get_image_from_resp(resp)
 
-        png_img = resp.raw
-        with Image.open(io.BytesIO(resp.raw)) as image:
-            w, h = image.size
+            except UnidentifiedImageError:
+                logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link_legacy}!')
 
-            if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
-                logging.warning(f'result is of size {image.size}')
-                image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
-                tmp_buf = io.BytesIO()
-                image.save(tmp_buf, format='PNG')
-                png_img = tmp_buf.getvalue()
+        if not png_img:
+            resp = results[ipfs_link]
+            if not resp or resp.status_code != 200:
+                logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
+                await self.update_status_message(
+                    status_msg,
+                    caption,
+                    reply_markup=build_redo_menu(),
+                    parse_mode='HTML'
+                )
+                return True
+
+            else:
+                try:
+                    png_img = get_image_from_resp(resp)
+
+                except UnidentifiedImageError:
+                    logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
+                    await self.update_status_message(
+                        status_msg,
+                        caption,
+                        reply_markup=build_redo_menu(),
+                        parse_mode='HTML'
+                    )
+                    return True
 
         logging.info(f'success! sending generated image')
         await self.bot.delete_message(
