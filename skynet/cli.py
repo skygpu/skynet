@@ -34,6 +34,8 @@ def txt2img(*args, **kwargs):
 
     config = load_skynet_ini()
     hf_token = load_key(config, 'skynet.dgpu', 'hf_token')
+    hf_home = load_key(config, 'skynet.dgpu', 'hf_home')
+    set_hf_vars(hf_token, hf_home)
     utils.txt2img(hf_token, **kwargs)
 
 @click.command()
@@ -50,6 +52,8 @@ def img2img(model, prompt, input, output, strength, guidance, steps, seed):
     from . import utils
     config = load_skynet_ini()
     hf_token = load_key(config, 'skynet.dgpu', 'hf_token')
+    hf_home = load_key(config, 'skynet.dgpu', 'hf_home')
+    set_hf_vars(hf_token, hf_home)
     utils.img2img(
         hf_token,
         model=model,
@@ -79,6 +83,8 @@ def download():
     from . import utils
     config = load_skynet_ini()
     hf_token = load_key(config, 'skynet.dgpu', 'hf_token')
+    hf_home = load_key(config, 'skynet.dgpu', 'hf_home')
+    set_hf_vars(hf_token, hf_home)
     utils.download_all_models(hf_token)
 
 @skynet.command()
@@ -329,6 +335,9 @@ def dgpu(
     logging.basicConfig(level=loglevel)
 
     config = load_skynet_ini(file_path=config_path)
+    hf_token = load_key(config, 'skynet.dgpu', 'hf_token')
+    hf_home = load_key(config, 'skynet.dgpu', 'hf_home')
+    set_hf_vars(hf_token, hf_home)
 
     assert 'skynet.dgpu' in config
 
