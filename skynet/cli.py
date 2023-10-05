@@ -369,10 +369,10 @@ def telegram(
     config, _ = load_skynet_ini()
     tg_token = load_key(config, 'skynet.telegram', 'tg_token')
 
-    key = load_key(config, 'skynet.user', 'key')
-    account = load_key(config, 'skynet.user', 'account')
-    permission = load_key(config, 'skynet.user', 'permission')
-    node_url = load_key(config, 'skynet.user', 'node_url')
+    key = load_key(config, 'skynet.telegram', 'key')
+    account = load_key(config, 'skynet.telegram', 'account')
+    permission = load_key(config, 'skynet.telegram', 'permission')
+    node_url = load_key(config, 'skynet.telegram', 'node_url')
     hyperion_url = load_key(config, 'skynet.telegram', 'hyperion_url')
 
     ipfs_gateway_url = load_key(config, 'skynet.telegram', 'ipfs_gateway_url')
