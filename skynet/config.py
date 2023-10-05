@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+import os
+
 from configparser import ConfigParser
 
 from .constants import DEFAULT_CONFIG_PATH
@@ -28,3 +30,7 @@ def load_key(config: ConfigParser, section: str, key: str) -> str:
         raise ConfigParsingError(f'key \"{key}\" not in {conf_keys}')
 
     return str(config[section][key])
+
+def set_hf_vars(hf_token: str, hf_home: str):
+    os.environ['HF_TOKEN'] = hf_token
+    os.environ['HF_HOME'] = hf_home
