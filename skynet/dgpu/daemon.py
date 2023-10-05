@@ -27,7 +27,7 @@ class SkynetDGPUDaemon:
             config['auto_withdraw']
             if 'auto_withdraw' in config else False
         )
-        self.non_compete = set(('testworker2', 'animus2.boid', 'animus1.boid'))
+        self.non_compete = set(config['non_compete'])
         self.current_request = None
 
     async def should_cancel_work(self):

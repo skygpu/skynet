@@ -9,5 +9,6 @@ secrets
 **/*.cert
 docs
 ipfs-docker-data
-ipfs-docker-staging
+ipfs-staging
 weights
+.non-compete

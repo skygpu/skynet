@@ -2,6 +2,7 @@
 
 import os
 
+from pathlib import Path
 from configparser import ConfigParser
 
 from .constants import DEFAULT_CONFIG_PATH
@@ -17,7 +18,15 @@ def load_skynet_ini(
     config = ConfigParser()
     config.read(file_path)
 
-    return config
+    non_compete = []
+    if Path('.non-compete').is_file():
+        with open('.non-compete', 'r') as non_compete_file:
+            for line in non_compete_file.readlines():
+                line = line.rstrip()
+                if line:
+                    non_compete.append(line)
+
+    return config, non_compete
 
 
 def load_key(config: ConfigParser, section: str, key: str) -> str:
