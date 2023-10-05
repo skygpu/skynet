@@ -32,7 +32,7 @@ def skynet(*args, **kwargs):
 def txt2img(*args, **kwargs):
     from . import utils
 
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
     hf_token = load_key(config, 'skynet.dgpu', 'hf_token')
     hf_home = load_key(config, 'skynet.dgpu', 'hf_home')
     set_hf_vars(hf_token, hf_home)
@@ -50,7 +50,7 @@ def txt2img(*args, **kwargs):
 @click.option('--seed', '-S', default=None)
 def img2img(model, prompt, input, output, strength, guidance, steps, seed):
     from . import utils
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
     hf_token = load_key(config, 'skynet.dgpu', 'hf_token')
     hf_home = load_key(config, 'skynet.dgpu', 'hf_home')
     set_hf_vars(hf_token, hf_home)
@@ -81,7 +81,7 @@ def upscale(input, output, model):
 @skynet.command()
 def download():
     from . import utils
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
     hf_token = load_key(config, 'skynet.dgpu', 'hf_token')
     hf_home = load_key(config, 'skynet.dgpu', 'hf_home')
     set_hf_vars(hf_token, hf_home)
@@ -110,7 +110,7 @@ def enqueue(
     import trio
     from leap.cleos import CLEOS
 
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
 
     key = load_key(config, 'skynet.user', 'key')
     account = load_key(config, 'skynet.user', 'account')
@@ -155,7 +155,7 @@ def clean(
     import trio
     from leap.cleos import CLEOS
 
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
     key = load_key(config, 'skynet.user', 'key')
     account = load_key(config, 'skynet.user', 'account')
     permission = load_key(config, 'skynet.user', 'permission')
@@ -176,7 +176,7 @@ def clean(
 @skynet.command()
 def queue():
     import requests
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
     node_url = load_key(config, 'skynet.user', 'node_url')
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
@@ -193,7 +193,7 @@ def queue():
 @click.argument('request-id')
 def status(request_id: int):
     import requests
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
     node_url = load_key(config, 'skynet.user', 'node_url')
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
@@ -212,7 +212,7 @@ def dequeue(request_id: int):
     import trio
     from leap.cleos import CLEOS
 
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
     key = load_key(config, 'skynet.user', 'key')
     account = load_key(config, 'skynet.user', 'account')
     permission = load_key(config, 'skynet.user', 'permission')
@@ -246,7 +246,7 @@ def config(
     import trio
     from leap.cleos import CLEOS
 
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
 
     key = load_key(config, 'skynet.user', 'key')
     account = load_key(config, 'skynet.user', 'account')
@@ -275,7 +275,7 @@ def deposit(quantity: str):
     import trio
     from leap.cleos import CLEOS
 
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
 
     key = load_key(config, 'skynet.user', 'key')
     account = load_key(config, 'skynet.user', 'account')
@@ -334,14 +334,17 @@ def dgpu(
 
     logging.basicConfig(level=loglevel)
 
-    config = load_skynet_ini(file_path=config_path)
+    config, non_compete = load_skynet_ini(file_path=config_path)
     hf_token = load_key(config, 'skynet.dgpu', 'hf_token')
     hf_home = load_key(config, 'skynet.dgpu', 'hf_home')
     set_hf_vars(hf_token, hf_home)
 
     assert 'skynet.dgpu' in config
 
-    trio.run(open_dgpu_node, config['skynet.dgpu'])
+    config = dict(config['skynet.dgpu'])
+    config['non_compete'] = non_compete
+
+    trio.run(open_dgpu_node, config)
 
 
 @run.command()
@@ -363,7 +366,7 @@ def telegram(
 
     logging.basicConfig(level=loglevel)
 
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
     tg_token = load_key(config, 'skynet.telegram', 'tg_token')
 
     key = load_key(config, 'skynet.user', 'key')
@@ -414,7 +417,7 @@ def discord(
 
     logging.basicConfig(level=loglevel)
 
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
     dc_token = load_key(config, 'skynet.discord', 'dc_token')
 
     key = load_key(config, 'skynet.discord', 'key')
@@ -464,7 +467,7 @@ def pinner(loglevel):
     from .ipfs import AsyncIPFSHTTP
     from .ipfs.pinner import SkynetPinner
 
-    config = load_skynet_ini()
+    config, _ = load_skynet_ini()
     hyperion_url = load_key(config, 'skynet.pinner', 'hyperion_url')
     ipfs_url = load_key(config, 'skynet.pinner', 'ipfs_url')
 
