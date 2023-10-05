@@ -3,12 +3,15 @@
 # Skynet Memory Manager
 
 import gc
-from hashlib import sha256
 import json
 import logging
+
+from hashlib import sha256
 from diffusers import DiffusionPipeline
 
+import trio
 import torch
+
 from skynet.constants import DEFAULT_INITAL_MODELS, MODELS
 from skynet.dgpu.errors import DGPUComputeError
 
@@ -122,10 +125,17 @@ class SkynetMM:
 
     def compute_one(
         self,
+        should_cancel_work,
         method: str,
         params: dict,
         binary: bytes | None = None
     ):
+        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor):
+            should_raise = trio.from_thread.run(should_cancel_work)
+            if should_raise:
+                logging.warn(f'cancelling work at step {step}')
+                raise DGPUComputeError('Inference cancelled')
+
         try:
             match method:
                 case 'diffuse':
@@ -140,6 +150,8 @@ class SkynetMM:
                         guidance_scale=guidance,
                         num_inference_steps=step,
                         generator=seed,
+                        callback=callback_fn,
+                        callback_steps=1,
                         **extra_params
                     ).images[0]
 
