@@ -375,7 +375,12 @@ def telegram(
     node_url = load_key(config, 'skynet.telegram', 'node_url')
     hyperion_url = load_key(config, 'skynet.telegram', 'hyperion_url')
 
-    ipfs_gateway_url = load_key(config, 'skynet.telegram', 'ipfs_gateway_url')
+    try:
+        ipfs_gateway_url = load_key(config, 'skynet.telegram', 'ipfs_gateway_url')
+
+    except ConfigParsingError:
+        ipfs_gateway_url = None
+
     ipfs_url = load_key(config, 'skynet.telegram', 'ipfs_url')
 
     async def _async_main():
