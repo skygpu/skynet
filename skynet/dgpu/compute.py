@@ -54,6 +54,10 @@ class SkynetMM:
             if 'initial_models' in config else DEFAULT_INITAL_MODELS
         )
 
+        self.cache_dir = None
+        if 'hf_home' in config:
+            self.cache_dir = config['hf_home']
+
         self._models = {}
         for model in self.initial_models:
             self.load_model(model, False, force=True)
@@ -78,7 +82,9 @@ class SkynetMM:
     ):
         logging.info(f'loading model {model_name}...')
         if force or len(self._models.keys()) == 0:
-            pipe = pipeline_for(model_name, image=image)
+            pipe = pipeline_for(
+                model_name, image=image, cache_dir=self.cache_dir)
+
             self._models[model_name] = {
                 'pipe': pipe,
                 'generated': 0,
@@ -100,7 +106,8 @@ class SkynetMM:
             gc.collect()
             torch.cuda.empty_cache()
 
-            pipe = pipeline_for(model_name, image=image)
+            pipe = pipeline_for(
+                model_name, image=image, cache_dir=self.cache_dir)
 
             self._models[model_name] = {
                 'pipe': pipe,

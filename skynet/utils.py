@@ -64,7 +64,13 @@ def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
     return image.convert('RGB')
 
 
-def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> DiffusionPipeline:
+def pipeline_for(
+    model: str,
+    mem_fraction: float = 1.0,
+    image: bool = False,
+    cache_dir: str | None = None
+) -> DiffusionPipeline:
+
     assert torch.cuda.is_available()
     torch.cuda.empty_cache()
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
@@ -90,7 +96,8 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
 
     params = {
         'torch_dtype': torch.float16,
-        'safety_checker': None
+        'safety_checker': None,
+        'cache_dir': cache_dir
     }
 
     if shortname == 'stable':
@@ -107,6 +114,7 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
         else:
             pipe_class = StableDiffusionPipeline
 
+    breakpoint()
     pipe = pipe_class.from_pretrained(
         model, **params)
 
