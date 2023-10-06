@@ -13,7 +13,7 @@ system dependencies:
 
 ```
 # create and edit config from template
-cp skynet.ini.example skynet.ini
+cp skynet.toml.example skynet.toml
 
 # install poetry package manager
 curl -sSL https://install.python-poetry.org | python3 -
@@ -41,6 +41,9 @@ system dependencies:
 - `docker` with gpu enabled
 
 ```
+# create and edit config from template
+cp skynet.toml.example skynet.toml
+
 # pull runtime container
 docker pull guilledk/skynet:runtime-cuda
 
@@ -50,13 +53,26 @@ docker pull guilledk/skynet:runtime-cuda
 # launch simple ipfs node
 ./launch_ipfs.sh
 
-# run worker
+# run worker with all gpus
 docker run \
     -it \
     --rm \
+    --env HF_HOME=hf_home \
     --gpus all \
     --network host \
     --name skynet-worker \
+    --mount type=bind,source="$(pwd)",target=/root/target \
+    guilledk/skynet:runtime-cuda \
+    skynet run dgpu
+
+# run worker with specific gpu
+docker run \
+    -it \
+    --rm \
+    --env HF_HOME=hf_home \
+    --gpus '"device=1"' \
+    --network host \
+    --name skynet-worker-1 \
     --mount type=bind,source="$(pwd)",target=/root/target \
     guilledk/skynet:runtime-cuda \
     skynet run dgpu

@@ -162,7 +162,7 @@ DEFAULT_MODEL = list(MODELS.keys())[4]
 DEFAULT_ROLE = 'pleb'
 DEFAULT_UPSCALER = None
 
-DEFAULT_CONFIG_PATH = 'skynet.ini'
+DEFAULT_CONFIG_PATH = 'skynet.toml'
 
 DEFAULT_INITAL_MODELS = [
     'stabilityai/stable-diffusion-xl-base-1.0'
