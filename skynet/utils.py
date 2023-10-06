@@ -113,6 +113,8 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
         pipe.scheduler.config)
 
+    pipe.enable_xformers_memory_efficient_attention()
+
     if over_mem:
         if not image:
             pipe.enable_vae_slicing()
@@ -120,7 +122,8 @@ def pipeline_for(model: str, mem_fraction: float = 1.0, image=False) -> Diffusio
 
         pipe.enable_model_cpu_offload()
 
-    pipe.enable_xformers_memory_efficient_attention()
+    else:
+        pipe = pipe.to('cuda')
 
     return pipe
 

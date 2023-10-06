@@ -151,7 +151,7 @@ class SkynetMM:
                         num_inference_steps=step,
                         generator=seed,
                         callback=callback_fn,
-                        callback_steps=1,
+                        callback_steps=2,
                         **extra_params
                     ).images[0]
 
