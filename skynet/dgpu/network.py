@@ -8,6 +8,8 @@ import time
 import logging
 
 import asks
+import anyio
+
 from PIL import Image
 
 from leap.cleos import CLEOS
@@ -23,10 +25,11 @@ async def failable(fn: partial, ret_fail=None):
         return await fn()
 
     except (
+        OSError,
+        json.JSONDecodeError,
         asks.errors.RequestTimeout,
         asks.errors.BadHttpResponse,
-        json.JSONDecodeError,
-        OSError
+        anyio.BrokenResourceError
     ):
         return ret_fail
 
