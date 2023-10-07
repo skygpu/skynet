@@ -47,7 +47,9 @@ class SkynetGPUConnector:
         self.cleos = CLEOS(
             None, None, self.node_url, remote=self.node_url)
 
-        self.ipfs_gateway_url = config['ipfs_gateway_url']
+        self.ipfs_gateway_url = None
+        if 'ipfs_gateway_url' in config:
+            self.ipfs_gateway_url = config['ipfs_gateway_url']
         self.ipfs_url = config['ipfs_url']
 
         self.ipfs_client = AsyncIPFSHTTP(self.ipfs_url)
@@ -202,11 +204,12 @@ class SkynetGPUConnector:
         img = Image.open(io.BytesIO(raw_img))
         img.save('ipfs-staging/image.png')
 
-        # check peer connections, reconnect to skynet gateway if not
-        gateway_id = Path(self.ipfs_gateway_url).name
-        peers = await self.ipfs_client.peers()
-        if gateway_id not in [p['Peer'] for p in peers]:
-            await self.ipfs_client.connect(self.ipfs_gateway_url)
+        if self.ipfs_gateway_url:
+            # check peer connections, reconnect to skynet gateway if not
+            gateway_id = Path(self.ipfs_gateway_url).name
+            peers = await self.ipfs_client.peers()
+            if gateway_id not in [p['Peer'] for p in peers]:
+                await self.ipfs_client.connect(self.ipfs_gateway_url)
 
         file_info = await self.ipfs_client.add(Path('ipfs-staging/image.png'))
         file_cid = file_info['Hash']

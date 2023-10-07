@@ -27,7 +27,10 @@ class SkynetDGPUDaemon:
             config['auto_withdraw']
             if 'auto_withdraw' in config else False
         )
-        self.non_compete = set(config['non_compete'])
+
+        self.non_compete = set()
+        if 'non_compete' in config:
+            self.non_compete = set(config['non_compete'])
 
         self.model_whitelist = set()
         if 'model_whitelist' in config:
