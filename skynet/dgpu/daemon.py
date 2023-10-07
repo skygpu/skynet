@@ -40,15 +40,9 @@ class SkynetDGPUDaemon:
         if 'model_blacklist' in config:
             self.model_blacklist = set(config['model_blacklist'])
 
-        self.current_request = None
-
-    async def should_cancel_work(self):
-        competitors = set((
-            status['worker']
-            for status in
-            (await self.conn.get_status_by_request_id(self.current_request))
-        ))
-        return self.non_compete & competitors
+    async def should_cancel_work(self, request_id: int):
+        competitors = await self.conn.get_competitors_for_req(request_id)
+        return bool(self.non_compete & competitors)
 
     async def serve_forever(self):
         try:
@@ -79,7 +73,7 @@ class SkynetDGPUDaemon:
                         statuses = await self.conn.get_status_by_request_id(rid)
 
                         if len(statuses) == 0:
-                            self.current_request = rid
+                            self.conn.monitor_request(rid)
 
                             binary = await self.conn.get_input_data(req['binary_data'])
 
@@ -107,6 +101,7 @@ class SkynetDGPUDaemon:
                                     img_sha, img_raw = await trio.to_thread.run_sync(
                                         partial(
                                             self.mm.compute_one,
+                                            rid,
                                             self.should_cancel_work,
                                             body['method'], body['params'], binary=binary
                                         )
@@ -115,11 +110,13 @@ class SkynetDGPUDaemon:
                                     ipfs_hash = await self.conn.publish_on_ipfs(img_raw)
 
                                     await self.conn.submit_work(rid, request_hash, img_sha, ipfs_hash)
-                                    break
 
                                 except BaseException as e:
                                     traceback.print_exc()
                                     await self.conn.cancel_work(rid, str(e))
+
+                                finally:
+                                    self.conn.forget_request(rid)
                                     break
 
                     else:

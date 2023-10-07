@@ -1,13 +1,15 @@
 #!/usr/bin/python
 
-from functools import partial
 import io
 import json
-from pathlib import Path
 import time
 import logging
 
+from pathlib import Path
+from functools import partial
+
 import asks
+import trio
 import anyio
 
 from PIL import Image
@@ -18,6 +20,9 @@ from skynet.constants import DEFAULT_DOMAIN
 
 from skynet.dgpu.errors import DGPUComputeError
 from skynet.ipfs import AsyncIPFSHTTP, get_ipfs_file
+
+
+REQUEST_UPDATE_TIME = 3
 
 
 async def failable(fn: partial, ret_fail=None):
@@ -53,6 +58,8 @@ class SkynetGPUConnector:
         self.ipfs_url = config['ipfs_url']
 
         self.ipfs_client = AsyncIPFSHTTP(self.ipfs_url)
+
+        self._wip_requests = {}
 
     # blockchain helpers
 
@@ -102,6 +109,36 @@ class SkynetGPUConnector:
             return rows[0]['balance']
         else:
             return None
+
+    def monitor_request(self, request_id: int):
+        logging.info(f'begin monitoring request: {request_id}')
+        self._wip_requests[request_id] = {
+            'last_update': None,
+            'competitors': set()
+        }
+
+    async def maybe_update_request(self, request_id: int):
+        now = time.time()
+        stats = self._wip_requests[request_id]
+        if (not stats['last_update'] or
+            (now - stats['last_update']) > REQUEST_UPDATE_TIME):
+            stats['competitors'] = [
+                status['worker']
+                for status in
+                (await self.get_status_by_request_id(request_id))
+                if status['worker'] != self.account
+            ]
+            stats['last_update'] = now
+
+    async def get_competitors_for_req(self, request_id: int) -> set:
+        await self.maybe_update_request(request_id)
+        competitors = set(self._wip_requests[request_id]['competitors'])
+        logging.info(f'competitors: {competitors}')
+        return competitors
+
+    def forget_request(self, request_id: int):
+        logging.info(f'end monitoring request: {request_id}')
+        del self._wip_requests[request_id]
 
     async def begin_work(self, request_id: int):
         logging.info('begin_work')

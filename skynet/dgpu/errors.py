@@ -3,3 +3,6 @@
 
 class DGPUComputeError(BaseException):
     ...
+
+class DGPUInferenceCancelled(BaseException):
+    ...

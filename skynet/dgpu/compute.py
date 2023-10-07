@@ -13,7 +13,7 @@ import trio
 import torch
 
 from skynet.constants import DEFAULT_INITAL_MODELS, MODELS
-from skynet.dgpu.errors import DGPUComputeError
+from skynet.dgpu.errors import DGPUComputeError, DGPUInferenceCancelled
 
 from skynet.utils import convert_from_bytes_and_crop, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
 
@@ -132,16 +132,19 @@ class SkynetMM:
 
     def compute_one(
         self,
+        request_id: int,
         should_cancel_work,
         method: str,
         params: dict,
         binary: bytes | None = None
     ):
-        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor):
-            should_raise = trio.from_thread.run(should_cancel_work)
+        def maybe_cancel_work(step, *args, **kwargs):
+            should_raise = trio.from_thread.run(should_cancel_work, request_id)
             if should_raise:
                 logging.warn(f'cancelling work at step {step}')
-                raise DGPUComputeError('Inference cancelled')
+                raise DGPUInferenceCancelled()
+
+        maybe_cancel_work(0)
 
         try:
             match method:
@@ -157,7 +160,7 @@ class SkynetMM:
                         guidance_scale=guidance,
                         num_inference_steps=step,
                         generator=seed,
-                        callback=callback_fn,
+                        callback=maybe_cancel_work,
                         callback_steps=2,
                         **extra_params
                     ).images[0]
