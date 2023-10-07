@@ -62,7 +62,7 @@ docker run \
     --network host \
     --name skynet-worker \
     --mount type=bind,source="$(pwd)",target=/root/target \
-    guilledk/skynet:runtime-cuda \
+    guilledk/skynet:runtime-cuda-py310 \
     skynet run dgpu
 
 # run worker with specific gpu
@@ -74,6 +74,6 @@ docker run \
     --network host \
     --name skynet-worker-1 \
     --mount type=bind,source="$(pwd)",target=/root/target \
-    guilledk/skynet:runtime-cuda \
+    guilledk/skynet:runtime-cuda-py310 \
     skynet run dgpu
 ```

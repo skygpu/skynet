@@ -114,7 +114,6 @@ def pipeline_for(
         else:
             pipe_class = StableDiffusionPipeline
 
-    breakpoint()
     pipe = pipe_class.from_pretrained(
         model, **params)
 
@@ -122,6 +121,11 @@ def pipeline_for(
         pipe.scheduler.config)
 
     pipe.enable_xformers_memory_efficient_attention()
+
+    if sys.version_info[1] < 11:
+        # torch.compile only supported on python < 3.11
+        pipe.unet = torch.compile(
+            pipe.unet, mode='reduce-overhead', fullgraph=True)
 
     if over_mem:
         if not image:
