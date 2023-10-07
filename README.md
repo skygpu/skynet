@@ -57,7 +57,6 @@ docker pull guilledk/skynet:runtime-cuda
 docker run \
     -it \
     --rm \
-    --env HF_HOME=hf_home \
     --gpus all \
     --network host \
     --name skynet-worker \
@@ -69,7 +68,6 @@ docker run \
 docker run \
     -it \
     --rm \
-    --env HF_HOME=hf_home \
     --gpus '"device=1"' \
     --network host \
     --name skynet-worker-1 \
