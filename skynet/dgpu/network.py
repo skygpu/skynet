@@ -259,8 +259,49 @@ class SkynetGPUConnector:
         if ipfs_hash == '':
             return b''
 
-        resp = await get_ipfs_file(f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png')
-        if not resp:
+        results = {}
+        ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}'
+        ipfs_link_legacy = ipfs_link + '/image.png'
+
+        async def get_and_set_results(link: str):
+            results[link] = await get_ipfs_file(link)
+
+        def get_image_from_resp(resp):
+            with Image.open(io.BytesIO(resp.raw)):
+                return resp.raw
+
+        async with trio.open_nursery() as n:
+            n.start_soon(
+                get_and_set_results, ipfs_link)
+            n.start_soon(
+                get_and_set_results, ipfs_link_legacy)
+
+        png_img = None
+        resp = results[ipfs_link_legacy]
+        if not resp or resp.status_code != 200:
+            logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link_legacy}!')
+
+        else:
+            try:
+                png_img = get_image_from_resp(resp)
+
+            except UnidentifiedImageError:
+                logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link_legacy}!')
+
+        if not png_img:
+            resp = results[ipfs_link]
+            if not resp or resp.status_code != 200:
+                logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link}!')
+
+            else:
+                try:
+                    png_img = get_image_from_resp(resp)
+
+                except UnidentifiedImageError:
+                    logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link}!')
+                    ...
+
+        if not png_img:
             raise DGPUComputeError('Couldn\'t gather input data from ipfs')
 
-        return resp.raw
+        return png_img
