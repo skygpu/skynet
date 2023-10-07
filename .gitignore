@@ -1,4 +1,4 @@
-skynet.ini
+skynet.toml
 .python-version
 hf_home
 outputs
@@ -11,4 +11,3 @@ docs
 ipfs-docker-data
 ipfs-staging
 weights
-.non-compete
