@@ -18,15 +18,10 @@ from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from diffusers import (
     DiffusionPipeline,
-    StableDiffusionXLPipeline,
-    StableDiffusionXLImg2ImgPipeline,
-    StableDiffusionPipeline,
-    StableDiffusionImg2ImgPipeline,
     EulerAncestralDiscreteScheduler
 )
 from realesrgan import RealESRGANer
 from huggingface_hub import login
-from torch.distributions import weibull
 import trio
 
 from .constants import MODELS
@@ -56,11 +51,10 @@ def convert_from_img_to_bytes(image: Image, fmt='PNG') -> bytes:
     return byte_arr.getvalue()
 
 
-def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
-    image = convert_from_bytes_to_img(raw)
+def crop_image(image: Image, max_w: int, max_h: int) -> Image:
     w, h = image.size
     if w > max_w or h > max_h:
-        image.thumbnail((512, 512))
+        image.thumbnail((max_w, max_h))
 
     return image.convert('RGB')
 
@@ -74,7 +68,6 @@ def pipeline_for(
 
     assert torch.cuda.is_available()
     torch.cuda.empty_cache()
-    torch.cuda.set_per_process_memory_fraction(mem_fraction)
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 
@@ -89,6 +82,7 @@ def pipeline_for(
 
     req_mem = model_info['mem']
     mem_gb = torch.cuda.mem_get_info()[1] / (10**9)
+    mem_gb *= mem_fraction
     over_mem = mem_gb < req_mem
     if over_mem:
         logging.warn(f'model requires {req_mem} but card has {mem_gb}, model will run slower..')
@@ -96,26 +90,19 @@ def pipeline_for(
     shortname = model_info['short']
 
     params = {
-        'torch_dtype': torch.float16,
         'safety_checker': None,
-        'cache_dir': cache_dir
+        'torch_dtype': torch.float16,
+        'cache_dir': cache_dir,
+        'variant': 'fp16'
     }
 
-    if shortname == 'stable':
-        params['revision'] = 'fp16'
+    match shortname:
+        case 'stable':
+            params['revision'] = 'fp16'
 
-    if 'xl' in shortname:
-        if image:
-            pipe_class = StableDiffusionXLImg2ImgPipeline
-        else:
-            pipe_class = StableDiffusionXLPipeline
-    else:
-        if image:
-            pipe_class = StableDiffusionImg2ImgPipeline
-        else:
-            pipe_class = StableDiffusionPipeline
+    torch.cuda.set_per_process_memory_fraction(mem_fraction)
 
-    pipe = pipe_class.from_pretrained(
+    pipe = DiffusionPipeline.from_pretrained(
         model, **params)
 
     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
@@ -151,12 +138,6 @@ def txt2img(
     steps: int = 28,
     seed: Optional[int] = None
 ):
-    assert torch.cuda.is_available()
-    torch.cuda.empty_cache()
-    torch.cuda.set_per_process_memory_fraction(1.0)
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
-
     login(token=hf_token)
     pipe = pipeline_for(model)
 
@@ -184,12 +165,6 @@ def img2img(
     steps: int = 28,
     seed: Optional[int] = None
 ):
-    assert torch.cuda.is_available()
-    torch.cuda.empty_cache()
-    torch.cuda.set_per_process_memory_fraction(1.0)
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
-
     login(token=hf_token)
     pipe = pipeline_for(model, image=True)
 
@@ -230,12 +205,6 @@ def upscale(
     output: str = 'output.png',
     model_path: str = 'weights/RealESRGAN_x4plus.pth'
 ):
-    assert torch.cuda.is_available()
-    torch.cuda.empty_cache()
-    torch.cuda.set_per_process_memory_fraction(1.0)
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
-
     input_img = Image.open(img_path).convert('RGB')
 
     upscaler = init_upscaler(model_path=model_path)
@@ -258,7 +227,7 @@ async def download_upscaler():
         f.write(response.content)
     print('done')
 
-def download_all_models(hf_token: str):
+def download_all_models(hf_token: str, hf_home: str):
     assert torch.cuda.is_available()
 
     trio.run(download_upscaler)
@@ -266,6 +235,4 @@ def download_all_models(hf_token: str):
     login(token=hf_token)
     for model in MODELS:
         print(f'DOWNLOADING {model.upper()}')
-        pipeline_for(model)
-        print(f'DOWNLOADING IMAGE {model.upper()}')
-        pipeline_for(model, image=True)
+        pipeline_for(model, cache_dir=hf_home)

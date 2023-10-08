@@ -9,10 +9,10 @@ from hashlib import sha256
 from functools import partial
 
 import trio
-import tractor
+from skynet.constants import MODELS
 
 from skynet.dgpu.errors import *
-from skynet.dgpu.compute import SkynetMM, _tractor_static_compute_one
+from skynet.dgpu.compute import SkynetMM
 from skynet.dgpu.network import SkynetGPUConnector
 
 
@@ -97,6 +97,11 @@ class SkynetDGPUDaemon:
                     body = json.loads(req['body'])
                     model = body['params']['model']
 
+                    # if model not known
+                    if model not in MODELS:
+                        logging.warning(f'Unknown model {model}')
+                        continue
+
                     # if whitelist enabled and model not in it continue
                     if (len(self.model_whitelist) > 0 and
                         not model in self.model_whitelist):
@@ -111,7 +116,7 @@ class SkynetDGPUDaemon:
                         statuses = self._snap['requests'][rid]
 
                         if len(statuses) == 0:
-                            binary = await self.conn.get_input_data(req['binary_data'])
+                            binary, input_type = await self.conn.get_input_data(req['binary_data'])
 
                             hash_str = (
                                 str(req['nonce'])
@@ -134,46 +139,31 @@ class SkynetDGPUDaemon:
 
                             else:
                                 try:
+                                    output_type = 'png'
+                                    if 'output_type' in body['params']:
+                                        output_type = body['params']['output_type']
+
+                                    output = None
+                                    output_hash = None
                                     match self.backend:
                                         case 'sync-on-thread':
                                             self.mm._should_cancel = self.should_cancel_work
-                                            img_sha, img_raw = await trio.to_thread.run_sync(
+                                            output_hash, output = await trio.to_thread.run_sync(
                                                 partial(
                                                     self.mm.compute_one,
                                                     rid,
-                                                    body['method'], body['params'], binary=binary
-                                                )
-                                            )
-
-                                        case 'tractor':
-                                            async def _should_cancel_oracle():
-                                                while True:
-                                                    await trio.sleep(1)
-                                                    if (await self.should_cancel_work(rid)):
-                                                        raise DGPUInferenceCancelled
-
-                                            async with (
-                                                trio.open_nursery() as trio_n,
-                                                tractor.open_nursery() as tractor_n
-                                            ):
-                                                trio_n.start_soon(_should_cancel_oracle)
-                                                portal = await tractor_n.run_in_actor(
-                                                    _tractor_static_compute_one,
-                                                    name='tractor-cuda-mp',
-                                                    request_id=rid,
-                                                    method=body['method'],
-                                                    params=body['params'],
+                                                    body['method'], body['params'],
+                                                    input_type=input_type,
                                                     binary=binary
                                                 )
-                                                img_sha, img_raw = await portal.result()
-                                                trio_n.cancel_scope.cancel()
+                                            )
 
                                         case _:
                                             raise DGPUComputeError(f'Unsupported backend {self.backend}')
 
-                                    ipfs_hash = await self.conn.publish_on_ipfs(img_raw)
+                                    ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
 
-                                    await self.conn.submit_work(rid, request_hash, img_sha, ipfs_hash)
+                                    await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
 
                                 except BaseException as e:
                                     traceback.print_exc()

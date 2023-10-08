@@ -9,17 +9,19 @@ from pathlib import Path
 from functools import partial
 
 import asks
+import numpy
 import trio
 import anyio
+import torch
 
 from PIL import Image, UnidentifiedImageError
 
 from leap.cleos import CLEOS
 from leap.sugar import Checksum256, Name, asset_from_str
-from skynet.constants import DEFAULT_DOMAIN
 
-from skynet.dgpu.errors import DGPUComputeError
 from skynet.ipfs import AsyncIPFSHTTP, get_ipfs_file
+from skynet.dgpu.errors import DGPUComputeError
+from skynet.constants import DEFAULT_DOMAIN
 
 
 REQUEST_UPDATE_TIME = 3
@@ -235,11 +237,19 @@ class SkynetGPUConnector:
         )
 
     # IPFS helpers
-    async def publish_on_ipfs(self, raw_img: bytes):
+    async def publish_on_ipfs(self, raw, typ: str = 'png'):
         Path('ipfs-staging').mkdir(exist_ok=True)
         logging.info('publish_on_ipfs')
-        img = Image.open(io.BytesIO(raw_img))
-        img.save('ipfs-staging/image.png')
+
+        target_file = ''
+        match typ:
+            case 'png':
+                raw: Image
+                target_file = 'ipfs-staging/image.png'
+                raw.save(target_file)
+
+            case _:
+                raise ValueError(f'Unsupported output type: {typ}')
 
         if self.ipfs_gateway_url:
             # check peer connections, reconnect to skynet gateway if not
@@ -248,16 +258,18 @@ class SkynetGPUConnector:
             if gateway_id not in [p['Peer'] for p in peers]:
                 await self.ipfs_client.connect(self.ipfs_gateway_url)
 
-        file_info = await self.ipfs_client.add(Path('ipfs-staging/image.png'))
+        file_info = await self.ipfs_client.add(Path(target_file))
         file_cid = file_info['Hash']
 
         await self.ipfs_client.pin(file_cid)
 
         return file_cid
 
-    async def get_input_data(self, ipfs_hash: str) -> bytes:
+    async def get_input_data(self, ipfs_hash: str) -> tuple[bytes, str]:
+        input_type = 'none'
+
         if ipfs_hash == '':
-            return b''
+            return b'', input_type
 
         results = {}
         ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}'
@@ -272,9 +284,10 @@ class SkynetGPUConnector:
 
                 else:
                     try:
-                        with Image.open(io.BytesIO(res.raw)):
-                            results[link] = res.raw
-                            n.cancel_scope.cancel()
+                        # attempt to decode as image
+                        results[link] = Image.open(io.BytesIO(res.raw))
+                        input_type = 'png'
+                        n.cancel_scope.cancel()
 
                     except UnidentifiedImageError:
                         logging.warning(f'couldn\'t get ipfs binary data at {link}!')
@@ -284,14 +297,14 @@ class SkynetGPUConnector:
             n.start_soon(
                 get_and_set_results, ipfs_link_legacy)
 
-        png_img = None
+        input_data = None
         if ipfs_link_legacy in results:
-            png_img = results[ipfs_link_legacy]
+            input_data = results[ipfs_link_legacy]
 
         if ipfs_link in results:
-            png_img = results[ipfs_link]
+            input_data = results[ipfs_link]
 
-        if not png_img:
+        if input_data == None:
             raise DGPUComputeError('Couldn\'t gather input data from ipfs')
 
-        return png_img
+        return input_data, input_type

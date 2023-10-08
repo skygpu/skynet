@@ -15,7 +15,6 @@ Pillow = '^10.0.1'
 docker = '^6.1.3'
 py-leap = {git = 'https://github.com/guilledk/py-leap.git', rev = 'v0.1a14'}
 toml = "^0.10.2"
-tractor = {git = "https://github.com/goodboy/tractor.git"}
 
 [tool.poetry.group.frontend]
 optional = true

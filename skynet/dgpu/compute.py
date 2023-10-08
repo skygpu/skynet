@@ -3,10 +3,11 @@
 # Skynet Memory Manager
 
 import gc
-import json
 import logging
 
 from hashlib import sha256
+import zipfile
+from PIL import Image
 from diffusers import DiffusionPipeline
 
 import trio
@@ -15,22 +16,29 @@ import torch
 from skynet.constants import DEFAULT_INITAL_MODELS, MODELS
 from skynet.dgpu.errors import DGPUComputeError, DGPUInferenceCancelled
 
-from skynet.utils import convert_from_bytes_and_crop, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
+from skynet.utils import crop_image, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
 
-from ._mp_compute import _static_compute_one, _tractor_static_compute_one
 
 def prepare_params_for_diffuse(
     params: dict,
-    binary: bytes | None = None
+    input_type: str,
+    binary = None
 ):
-    image = None
-    if binary:
-        image = convert_from_bytes_and_crop(binary, 512, 512)
-
     _params = {}
-    if image:
-        _params['image'] = image
-        _params['strength'] = float(params['strength'])
+    if binary != None:
+        match input_type:
+            case 'png':
+                image = crop_image(
+                    binary, params['width'], params['height'])
+
+                _params['image'] = image
+                _params['strength'] = float(params['strength'])
+
+            case 'none':
+                ...
+
+            case _:
+                raise DGPUComputeError(f'Unknown input_type {input_type}')
 
     else:
         _params['width'] = int(params['width'])
@@ -136,6 +144,7 @@ class SkynetMM:
         request_id: int,
         method: str,
         params: dict,
+        input_type: str = 'png',
         binary: bytes | None = None
     ):
         def maybe_cancel_work(step, *args, **kwargs):
@@ -147,16 +156,21 @@ class SkynetMM:
 
         maybe_cancel_work(0)
 
+        output_type = 'png'
+        if 'output_type' in params:
+            output_type = params['output_type']
+
+        output = None
+        output_hash = None
         try:
             match method:
                 case 'diffuse':
-                    image = None
-
-                    arguments = prepare_params_for_diffuse(params, binary)
+                    arguments = prepare_params_for_diffuse(
+                        params, input_type, binary=binary)
                     prompt, guidance, step, seed, upscaler, extra_params = arguments
                     model = self.get_model(params['model'], 'image' in extra_params)
 
-                    image = model(
+                    output = model(
                         prompt,
                         guidance_scale=guidance,
                         num_inference_steps=step,
@@ -166,17 +180,22 @@ class SkynetMM:
                         **extra_params
                     ).images[0]
 
-                    if upscaler == 'x4':
-                        input_img = image.convert('RGB')
-                        up_img, _ = self.upscaler.enhance(
-                            convert_from_image_to_cv2(input_img), outscale=4)
+                    output_binary = b''
+                    match output_type:
+                        case 'png':
+                            if upscaler == 'x4':
+                                input_img = output.convert('RGB')
+                                up_img, _ = self.upscaler.enhance(
+                                    convert_from_image_to_cv2(input_img), outscale=4)
 
-                        image = convert_from_cv2_to_image(up_img)
+                                output = convert_from_cv2_to_image(up_img)
 
-                    img_raw = convert_from_img_to_bytes(image)
-                    img_sha = sha256(img_raw).hexdigest()
+                            output_binary = convert_from_img_to_bytes(output)
 
-                    return img_sha, img_raw
+                        case _:
+                            raise DGPUComputeError(f'Unsupported output type: {output_type}')
+
+                    output_hash = sha256(output_binary).hexdigest()
 
                 case _:
                     raise DGPUComputeError('Unsupported compute method')
@@ -187,3 +206,5 @@ class SkynetMM:
 
         finally:
             torch.cuda.empty_cache()
+
+        return output_hash, output

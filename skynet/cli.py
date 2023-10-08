@@ -85,7 +85,7 @@ def download():
     hf_token = load_key(config, 'skynet.dgpu.hf_token')
     hf_home = load_key(config, 'skynet.dgpu.hf_home')
     set_hf_vars(hf_token, hf_home)
-    utils.download_all_models(hf_token)
+    utils.download_all_models(hf_token, hf_home)
 
 @skynet.command()
 @click.option(
@@ -120,20 +120,20 @@ def enqueue(
 
     cleos = CLEOS(None, None, url=node_url, remote=node_url)
 
+    binary = kwargs['binary_data']
+    if not kwargs['strength']:
+        if binary:
+            raise ValueError('strength -Z param required if binary data passed')
+
+        del kwargs['strength']
+
+    else:
+        kwargs['strength'] = float(kwargs['strength'])
+
     async def enqueue_n_jobs():
         for i in range(jobs):
             if not kwargs['seed']:
                 kwargs['seed'] = random.randint(0, 10e9)
-
-            binary = kwargs['binary_data']
-            if not kwargs['strength']:
-                if binary:
-                    raise ValueError('strength -Z param required if binary data passed')
-
-                del kwargs['strength']
-
-            else:
-                kwargs['strength'] = float(kwargs['strength'])
 
             req = json.dumps({
                 'method': 'diffuse',
