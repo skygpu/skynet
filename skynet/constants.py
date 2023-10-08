@@ -183,7 +183,8 @@ CONFIG_ATTRS = [
     'upscaler'
 ]
 
-DEFAULT_DOMAIN = 'skygpu.net'
+DEFAULT_EXPLORER_DOMAIN = 'explorer.skygpu.net'
+DEFAULT_IPFS_DOMAIN = 'ipfs.skygpu.net'
 
 DEFAULT_IPFS_REMOTE = '/ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv'
 DEFAULT_IPFS_LOCAL = 'http://127.0.0.1:5001'

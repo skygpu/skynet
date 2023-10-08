@@ -10,17 +10,17 @@ from json import JSONDecodeError
 from decimal import Decimal
 from hashlib import sha256
 from datetime import datetime
-from contextlib import ExitStack, AsyncExitStack
+from contextlib import AsyncExitStack
 from contextlib import asynccontextmanager as acm
 
 from leap.cleos import CLEOS
 from leap.sugar import Name, asset_from_str, collect_stdout
 from leap.hyperion import HyperionAPI
-from telebot.types import InputMediaPhoto
 
+from telebot.types import InputMediaPhoto
 from telebot.async_telebot import AsyncTeleBot
 
-from skynet.db import open_new_database, open_database_connection
+from skynet.db import open_database_connection
 from skynet.ipfs import get_ipfs_file, AsyncIPFSHTTP
 from skynet.constants import *
 
@@ -44,7 +44,9 @@ class SkynetTelegramFrontend:
         db_pass: str,
         ipfs_node: str,
         remote_ipfs_node: str | None,
-        key: str
+        key: str,
+        explorer_domain: str,
+        ipfs_domain: str
     ):
         self.token = token
         self.account = account
@@ -56,6 +58,8 @@ class SkynetTelegramFrontend:
         self.db_pass = db_pass
         self.remote_ipfs_node = remote_ipfs_node
         self.key = key
+        self.explorer_domain = explorer_domain
+        self.ipfs_domain = ipfs_domain
 
         self.bot = AsyncTeleBot(token, exception_handler=SKYExceptionHandler)
         self.cleos = CLEOS(None, None, url=node_url, remote=node_url)
@@ -161,7 +165,7 @@ class SkynetTelegramFrontend:
         enqueue_tx_id = res['transaction_id']
         enqueue_tx_link = hlink(
             'Your request on Skynet Explorer',
-            f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{enqueue_tx_id}'
+            f'https://{self.explorer_domain}/v2/explore/transaction/{enqueue_tx_id}'
         )
 
         await self.append_status_message(
@@ -222,7 +226,7 @@ class SkynetTelegramFrontend:
 
         tx_link = hlink(
             'Your result on Skynet Explorer',
-            f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash}'
+            f'https://{self.explorer_domain}/v2/explore/transaction/{tx_hash}'
         )
 
         await self.append_status_message(
@@ -234,11 +238,11 @@ class SkynetTelegramFrontend:
         )
 
         caption = generate_reply_caption(
-            user, params, tx_hash, worker, reward)
+            user, params, tx_hash, worker, reward, self.explorer_domain)
 
         # attempt to get the image and send it
         results = {}
-        ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}'
+        ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
         ipfs_link_legacy = ipfs_link + '/image.png'
 
         async def get_and_set_results(link: str):
@@ -277,7 +281,6 @@ class SkynetTelegramFrontend:
 
         if ipfs_link in results:
             png_img = results[ipfs_link]
-
 
         if not png_img:
             await self.update_status_message(

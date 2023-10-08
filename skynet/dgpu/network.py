@@ -9,19 +9,17 @@ from pathlib import Path
 from functools import partial
 
 import asks
-import numpy
 import trio
 import anyio
-import torch
 
 from PIL import Image, UnidentifiedImageError
 
 from leap.cleos import CLEOS
 from leap.sugar import Checksum256, Name, asset_from_str
+from skynet.constants import DEFAULT_IPFS_DOMAIN
 
 from skynet.ipfs import AsyncIPFSHTTP, get_ipfs_file
 from skynet.dgpu.errors import DGPUComputeError
-from skynet.constants import DEFAULT_DOMAIN
 
 
 REQUEST_UPDATE_TIME = 3
@@ -60,6 +58,10 @@ class SkynetGPUConnector:
         self.ipfs_url = config['ipfs_url']
 
         self.ipfs_client = AsyncIPFSHTTP(self.ipfs_url)
+
+        self.ipfs_domain = DEFAULT_IPFS_DOMAIN
+        if 'ipfs_domain' in config:
+            self.ipfs_domain = config['ipfs_domain']
 
         self._wip_requests = {}
 
@@ -272,7 +274,7 @@ class SkynetGPUConnector:
             return b'', input_type
 
         results = {}
-        ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}'
+        ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
         ipfs_link_legacy = ipfs_link + '/image.png'
 
         async with trio.open_nursery() as n:

@@ -391,6 +391,18 @@ def telegram(
 
     ipfs_url = load_key(config, 'skynet.telegram.ipfs_url')
 
+    try:
+        explorer_domain = load_key(config, 'skynet.telegram.explorer_domain')
+
+    except ConfigParsingError:
+        explorer_domain = DEFAULT_EXPLORER_DOMAIN
+
+    try:
+        ipfs_domain = load_key(config, 'skynet.telegram.ipfs_domain')
+
+    except ConfigParsingError:
+        ipfs_domain = DEFAULT_IPFS_DOMAIN
+
     async def _async_main():
         frontend = SkynetTelegramFrontend(
             tg_token,
@@ -401,7 +413,9 @@ def telegram(
             db_host, db_user, db_pass,
             ipfs_url,
             remote_ipfs_node=ipfs_gateway_url,
-            key=key
+            key=key,
+            explorer_domain=explorer_domain,
+            ipfs_domain=ipfs_domain
         )
 
         async with frontend.open():
@@ -442,6 +456,18 @@ def discord(
     ipfs_gateway_url = load_key(config, 'skynet.discord.ipfs_gateway_url')
     ipfs_url = load_key(config, 'skynet.discord.ipfs_url')
 
+    try:
+        explorer_domain = load_key(config, 'skynet.discord.explorer_domain')
+
+    except ConfigParsingError:
+        explorer_domain = DEFAULT_EXPLORER_DOMAIN
+
+    try:
+        ipfs_domain = load_key(config, 'skynet.discord.ipfs_domain')
+
+    except ConfigParsingError:
+        ipfs_domain = DEFAULT_IPFS_DOMAIN
+
     async def _async_main():
         frontend = SkynetDiscordFrontend(
             # dc_token,
@@ -452,7 +478,9 @@ def discord(
             db_host, db_user, db_pass,
             ipfs_url,
             remote_ipfs_node=ipfs_gateway_url,
-            key=key
+            key=key,
+            explorer_domain=explorer_domain,
+            ipfs_domain=ipfs_domain
         )
 
         async with frontend.open():
