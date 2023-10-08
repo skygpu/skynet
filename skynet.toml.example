@@ -13,6 +13,7 @@ hf_home = 'hf_home'
 hf_token = 'hf_XxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXx'
 auto_withdraw = true
 non_compete = []
+api_bind = '127.0.0.1:42690'
 
 [skynet.telegram]
 account = 'telegram'

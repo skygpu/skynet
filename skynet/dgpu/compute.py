@@ -176,7 +176,7 @@ class SkynetMM:
                         num_inference_steps=step,
                         generator=seed,
                         callback=maybe_cancel_work,
-                        callback_steps=2,
+                        callback_steps=1,
                         **extra_params
                     ).images[0]
 

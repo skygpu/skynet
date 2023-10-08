@@ -43,6 +43,7 @@ numba = {version = '0.57.0'}
 triton = {version = '2.0.0', source = 'torch'}
 basicsr = {version = '^1.4.2'}
 xformers = {version = "^0.0.22"}
+hypercorn = {version = "^0.14.4"}
 diffusers = {version = '^0.21.2'}
 realesrgan = {version = '^0.3.0'}
 torchvision = {version = '0.15.2+cu118', source = 'torch'}

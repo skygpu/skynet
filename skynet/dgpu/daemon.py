@@ -3,13 +3,19 @@
 import json
 import random
 import logging
+import time
 import traceback
 
 from hashlib import sha256
+from datetime import datetime
 from functools import partial
 
 import trio
-from skynet.constants import MODELS
+
+from quart import jsonify
+from quart_trio import QuartTrio as Quart
+
+from skynet.constants import MODELS, VERSION
 
 from skynet.dgpu.errors import *
 from skynet.dgpu.compute import SkynetMM
@@ -39,6 +45,8 @@ class SkynetDGPUDaemon:
             if 'auto_withdraw' in config else False
         )
 
+        self.account = config['account']
+
         self.non_compete = set()
         if 'non_compete' in config:
             self.non_compete = set(config['non_compete'])
@@ -61,11 +69,31 @@ class SkynetDGPUDaemon:
             'my_results': []
         }
 
+        self._benchmark = []
+        self._last_benchmark = None
+        self._last_generation_ts = None
+
+    def _get_benchmark_speed(self) -> float:
+        if not self._last_benchmark:
+            return 0
+
+        start = self._last_benchmark[0]
+        end = self._last_benchmark[-1]
+
+        elapsed = end - start
+        its = len(self._last_benchmark)
+        speed = its / elapsed
+
+        logging.info(f'{elapsed} s total its: {its}, at {speed} it/s ')
+
+        return speed
+
     async def should_cancel_work(self, request_id: int):
+        self._benchmark.append(time.time())
         competitors = set([
             status['worker']
             for status in self._snap['requests'][request_id]
-            if status['worker'] != self.conn.account
+            if status['worker'] != self.account
         ])
         return bool(self.non_compete & competitors)
 
@@ -74,6 +102,20 @@ class SkynetDGPUDaemon:
         while True:
             self._snap = await self.conn.get_full_queue_snapshot()
             await trio.sleep(1)
+
+    async def generate_api(self):
+        app = Quart(__name__)
+
+        @app.route('/')
+        async def health():
+            return jsonify(
+                account=self.account,
+                version=VERSION,
+                last_generation_ts=self._last_generation_ts,
+                last_generation_speed=self._get_benchmark_speed()
+            )
+
+        return app
 
     async def serve_forever(self):
         try:
@@ -112,7 +154,7 @@ class SkynetDGPUDaemon:
                         continue
 
                     my_results = [res['id'] for res in self._snap['my_results']]
-                    if rid not in my_results:
+                    if rid not in my_results and rid in self._snap['requests']:
                         statuses = self._snap['requests'][rid]
 
                         if len(statuses) == 0:
@@ -160,6 +202,9 @@ class SkynetDGPUDaemon:
 
                                         case _:
                                             raise DGPUComputeError(f'Unsupported backend {self.backend}')
+                                    self._last_generation_ts = datetime.now().isoformat()
+                                    self._last_benchmark = self._benchmark
+                                    self._benchmark = []
 
                                     ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
 
