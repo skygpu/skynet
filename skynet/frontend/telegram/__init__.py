@@ -266,10 +266,15 @@ class SkynetTelegramFrontend:
                     logging.warning(f'couldn\'t get ipfs binary data at {link}!')
 
         tasks = [
-            get_and_set_results(ipfs_link),
-            get_and_set_results(ipfs_link_legacy)
+            asyncio.create_task(get_and_set_results(ipfs_link)),
+            asyncio.create_task(get_and_set_results(ipfs_link_legacy))
         ]
-        await asyncio.gather(*tasks)
+        done, pending = await asyncio.wait(
+            tasks, return_when=asyncio.FIRST_COMPLETED)
+
+        for task in pending:
+            task.cancel()
+
         png_img = None
         if ipfs_link_legacy in results:
             png_img = results[ipfs_link_legacy]
