@@ -102,6 +102,7 @@ def download():
 @click.option('--seed', '-S', default=None)
 @click.option('--upscaler', '-U', default='x4')
 @click.option('--binary_data', '-b', default='')
+@click.option('--strength', '-Z', default=None)
 def enqueue(
     reward: str,
     jobs: int,
@@ -124,11 +125,20 @@ def enqueue(
             if not kwargs['seed']:
                 kwargs['seed'] = random.randint(0, 10e9)
 
+            binary = kwargs['binary_data']
+            if not kwargs['strength']:
+                if binary:
+                    raise ValueError('strength -Z param required if binary data passed')
+
+                del kwargs['strength']
+
+            else:
+                kwargs['strength'] = float(kwargs['strength'])
+
             req = json.dumps({
                 'method': 'diffuse',
                 'params': kwargs
             })
-            binary = kwargs['binary_data']
 
             res = await cleos.a_push_action(
                 'telos.gpu',

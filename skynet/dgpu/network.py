@@ -288,7 +288,6 @@ class SkynetGPUConnector:
         if ipfs_link_legacy in results:
             png_img = results[ipfs_link_legacy]
 
-        png_img = None
         if ipfs_link in results:
             png_img = results[ipfs_link]
 

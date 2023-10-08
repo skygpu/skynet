@@ -31,4 +31,3 @@ def load_key(config: dict, key: str) -> str:
 def set_hf_vars(hf_token: str, hf_home: str):
     os.environ['HF_TOKEN'] = hf_token
     os.environ['HF_HOME'] = hf_home
-    os.environ['HUGGINGFACE_HUB_CACHE'] = hf_home
