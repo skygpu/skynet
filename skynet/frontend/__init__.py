@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+import random
+
 from ..constants import *
 
 
@@ -15,8 +17,12 @@ class ConfigUnknownAlgorithm(BaseException):
 class ConfigUnknownUpscaler(BaseException):
     ...
 
+class ConfigUnknownAutoConfSetting(BaseException):
+    ...
+
 class ConfigSizeDivisionByEight(BaseException):
     ...
+
 
 
 def validate_user_config_request(req: str):
@@ -78,6 +84,18 @@ def validate_user_config_request(req: str):
                         raise ConfigUnknownUpscaler(
                             f'\"{val}\" is not a valid upscaler')
 
+                case 'autoconf':
+                    val = params[2]
+                    if val == 'on':
+                        val = True
+
+                    elif val == 'off':
+                        val = False
+
+                    else:
+                        raise ConfigUnknownAutoConfSetting(
+                            f'\"{val}\" not a valid setting for autoconf')
+
                 case _:
                     raise ConfigUnknownAttribute(
                         f'\"{attr}\" not a configurable parameter')
@@ -92,3 +110,22 @@ def validate_user_config_request(req: str):
         except ValueError:
             raise ValueError(f'\"{val}\" is not a number silly')
 
+
+def perform_auto_conf(config: dict) -> dict:
+    model = config['model']
+    prefered_size_w = 512
+    prefered_size_h = 512
+
+    if 'xl' in model:
+        prefered_size_w = 1024
+        prefered_size_h = 1024
+
+    else:
+        prefered_size_w = 512
+        prefered_size_h = 512
+
+    config['step'] = random.randint(20, 35)
+    config['width'] = prefered_size_w
+    config['height'] = prefered_size_h
+
+    return config

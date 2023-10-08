@@ -165,6 +165,15 @@ async def open_database_connection(
         else:
             await conn.execute(DB_INIT_SQL)
 
+        col_check = await conn.fetch(f'''
+            select column_name 
+            from information_schema.columns 
+            where table_name = 'user_config' and column_name = 'autoconf';
+        ''')
+
+        if not col_check:
+            await conn.execute('alter table skynet.user_config add column autoconf boolean;')
+
     async def _db_call(method: str, *args, **kwargs):
         method = getattr(db, method)
 
