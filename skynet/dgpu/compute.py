@@ -17,6 +17,7 @@ from skynet.dgpu.errors import DGPUComputeError, DGPUInferenceCancelled
 
 from skynet.utils import convert_from_bytes_and_crop, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
 
+from ._mp_compute import _static_compute_one, _tractor_static_compute_one
 
 def prepare_params_for_diffuse(
     params: dict,
@@ -133,16 +134,16 @@ class SkynetMM:
     def compute_one(
         self,
         request_id: int,
-        should_cancel_work,
         method: str,
         params: dict,
         binary: bytes | None = None
     ):
         def maybe_cancel_work(step, *args, **kwargs):
-            should_raise = trio.from_thread.run(should_cancel_work, request_id)
-            if should_raise:
-                logging.warn(f'cancelling work at step {step}')
-                raise DGPUInferenceCancelled()
+            if self._should_cancel:
+                should_raise = trio.from_thread.run(self._should_cancel, request_id)
+                if should_raise:
+                    logging.warn(f'cancelling work at step {step}')
+                    raise DGPUInferenceCancelled()
 
         maybe_cancel_work(0)
 

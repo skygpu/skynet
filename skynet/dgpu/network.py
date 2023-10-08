@@ -110,35 +110,35 @@ class SkynetGPUConnector:
         else:
             return None
 
-    def monitor_request(self, request_id: int):
-        logging.info(f'begin monitoring request: {request_id}')
-        self._wip_requests[request_id] = {
-            'last_update': None,
-            'competitors': set()
+    async def get_competitors_for_req(self, request_id: int) -> set:
+        competitors = [
+            status['worker']
+            for status in
+            (await self.get_status_by_request_id(request_id))
+            if status['worker'] != self.account
+        ]
+        logging.info(f'competitors: {competitors}')
+        return set(competitors)
+
+
+    async def get_full_queue_snapshot(self):
+        snap = {
+            'requests': {},
+            'my_results': []
         }
 
-    async def maybe_update_request(self, request_id: int):
-        now = time.time()
-        stats = self._wip_requests[request_id]
-        if (not stats['last_update'] or
-            (now - stats['last_update']) > REQUEST_UPDATE_TIME):
-            stats['competitors'] = [
-                status['worker']
-                for status in
-                (await self.get_status_by_request_id(request_id))
-                if status['worker'] != self.account
-            ]
-            stats['last_update'] = now
+        snap['queue'] = await self.get_work_requests_last_hour()
 
-    async def get_competitors_for_req(self, request_id: int) -> set:
-        await self.maybe_update_request(request_id)
-        competitors = set(self._wip_requests[request_id]['competitors'])
-        logging.info(f'competitors: {competitors}')
-        return competitors
+        async def _run_and_save(d, key: str, fn, *args, **kwargs):
+            d[key] = await fn(*args, **kwargs)
 
-    def forget_request(self, request_id: int):
-        logging.info(f'end monitoring request: {request_id}')
-        del self._wip_requests[request_id]
+        async with trio.open_nursery() as n:
+            n.start_soon(_run_and_save, snap, 'my_results', self.find_my_results)
+            for req in snap['queue']:
+                n.start_soon(
+                    _run_and_save, snap['requests'], req['id'], self.get_status_by_request_id, req['id'])
+
+        return snap
 
     async def begin_work(self, request_id: int):
         logging.info('begin_work')

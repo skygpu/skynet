@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import json
+import random
 import logging
 import traceback
 
@@ -8,9 +9,19 @@ from hashlib import sha256
 from functools import partial
 
 import trio
+import tractor
 
-from skynet.dgpu.compute import SkynetMM
+from skynet.dgpu.errors import *
+from skynet.dgpu.compute import SkynetMM, _tractor_static_compute_one
 from skynet.dgpu.network import SkynetGPUConnector
+
+
+def convert_reward_to_int(reward_str):
+    int_part, decimal_part = (
+        reward_str.split('.')[0],
+        reward_str.split('.')[1].split(' ')[0]
+    )
+    return int(int_part + decimal_part)
 
 
 class SkynetDGPUDaemon:
@@ -40,9 +51,29 @@ class SkynetDGPUDaemon:
         if 'model_blacklist' in config:
             self.model_blacklist = set(config['model_blacklist'])
 
+        self.backend = 'sync-on-thread'
+        if 'backend' in config:
+            self.backend = config['backend']
+
+        self._snap = {
+            'queue': [],
+            'requests': {},
+            'my_results': []
+        }
+
     async def should_cancel_work(self, request_id: int):
-        competitors = await self.conn.get_competitors_for_req(request_id)
+        competitors = set([
+            status['worker']
+            for status in self._snap['requests'][request_id]
+            if status['worker'] != self.conn.account
+        ])
         return bool(self.non_compete & competitors)
+
+
+    async def snap_updater_task(self):
+        while True:
+            self._snap = await self.conn.get_full_queue_snapshot()
+            await trio.sleep(1)
 
     async def serve_forever(self):
         try:
@@ -50,7 +81,14 @@ class SkynetDGPUDaemon:
                 if self.auto_withdraw:
                     await self.conn.maybe_withdraw_all()
 
-                queue = await self.conn.get_work_requests_last_hour()
+                queue = self._snap['queue']
+
+                random.shuffle(queue)
+                queue = sorted(
+                    queue,
+                    key=lambda req: convert_reward_to_int(req['reward']),
+                    reverse=True
+                )
 
                 for req in queue:
                     rid = req['id']
@@ -68,13 +106,11 @@ class SkynetDGPUDaemon:
                     if model in self.model_blacklist:
                         continue
 
-                    my_results = [res['id'] for res in (await self.conn.find_my_results())]
+                    my_results = [res['id'] for res in self._snap['my_results']]
                     if rid not in my_results:
-                        statuses = await self.conn.get_status_by_request_id(rid)
+                        statuses = self._snap['requests'][rid]
 
                         if len(statuses) == 0:
-                            self.conn.monitor_request(rid)
-
                             binary = await self.conn.get_input_data(req['binary_data'])
 
                             hash_str = (
@@ -98,14 +134,42 @@ class SkynetDGPUDaemon:
 
                             else:
                                 try:
-                                    img_sha, img_raw = await trio.to_thread.run_sync(
-                                        partial(
-                                            self.mm.compute_one,
-                                            rid,
-                                            self.should_cancel_work,
-                                            body['method'], body['params'], binary=binary
-                                        )
-                                    )
+                                    match self.backend:
+                                        case 'sync-on-thread':
+                                            self.mm._should_cancel = self.should_cancel_work
+                                            img_sha, img_raw = await trio.to_thread.run_sync(
+                                                partial(
+                                                    self.mm.compute_one,
+                                                    rid,
+                                                    body['method'], body['params'], binary=binary
+                                                )
+                                            )
+
+                                        case 'tractor':
+                                            async def _should_cancel_oracle():
+                                                while True:
+                                                    await trio.sleep(1)
+                                                    if (await self.should_cancel_work(rid)):
+                                                        raise DGPUInferenceCancelled
+
+                                            async with (
+                                                trio.open_nursery() as trio_n,
+                                                tractor.open_nursery() as tractor_n
+                                            ):
+                                                trio_n.start_soon(_should_cancel_oracle)
+                                                portal = await tractor_n.run_in_actor(
+                                                    _tractor_static_compute_one,
+                                                    name='tractor-cuda-mp',
+                                                    request_id=rid,
+                                                    method=body['method'],
+                                                    params=body['params'],
+                                                    binary=binary
+                                                )
+                                                img_sha, img_raw = await portal.result()
+                                                trio_n.cancel_scope.cancel()
+
+                                        case _:
+                                            raise DGPUComputeError(f'Unsupported backend {self.backend}')
 
                                     ipfs_hash = await self.conn.publish_on_ipfs(img_raw)
 
@@ -116,7 +180,6 @@ class SkynetDGPUDaemon:
                                     await self.conn.cancel_work(rid, str(e))
 
                                 finally:
-                                    self.conn.forget_request(rid)
                                     break
 
                     else:
