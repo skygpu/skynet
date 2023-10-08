@@ -242,66 +242,50 @@ class SkynetTelegramFrontend:
         ipfs_link_legacy = ipfs_link + '/image.png'
 
         async def get_and_set_results(link: str):
-            results[link] = await get_ipfs_file(link)
+            res = await get_ipfs_file(link)
+            logging.info(f'got response from {link}')
+            if not res or res.status_code != 200:
+                logging.warning(f'couldn\'t get ipfs binary data at {link}!')
 
-        def get_image_from_resp(resp):
-            png_img = resp.raw
-            with Image.open(io.BytesIO(resp.raw)) as image:
-                w, h = image.size
+            else:
+                try:
+                    with Image.open(io.BytesIO(res.raw)) as image:
+                        w, h = image.size
 
-                if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
-                    logging.warning(f'result is of size {image.size}')
-                    image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
-                    tmp_buf = io.BytesIO()
-                    image.save(tmp_buf, format='PNG')
-                    png_img = tmp_buf.getvalue()
+                        if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
+                            logging.warning(f'result is of size {image.size}')
+                            image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
 
-            return png_img
+                        tmp_buf = io.BytesIO()
+                        image.save(tmp_buf, format='PNG')
+                        png_img = tmp_buf.getvalue()
+
+                        results[link] = png_img
+
+                except UnidentifiedImageError:
+                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
 
         tasks = [
             get_and_set_results(ipfs_link),
             get_and_set_results(ipfs_link_legacy)
         ]
         await asyncio.gather(*tasks)
-
         png_img = None
+        if ipfs_link_legacy in results:
+            png_img = results[ipfs_link_legacy]
 
-        resp = results[ipfs_link_legacy]
-        if not resp or resp.status_code != 200:
-            logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link_legacy}!')
+        if ipfs_link in results:
+            png_img = results[ipfs_link]
 
-        else:
-            try:
-                png_img = get_image_from_resp(resp)
-
-            except UnidentifiedImageError:
-                logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link_legacy}!')
 
         if not png_img:
-            resp = results[ipfs_link]
-            if not resp or resp.status_code != 200:
-                logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
-                await self.update_status_message(
-                    status_msg,
-                    caption,
-                    reply_markup=build_redo_menu(),
-                    parse_mode='HTML'
-                )
-                return True
-
-            else:
-                try:
-                    png_img = get_image_from_resp(resp)
-
-                except UnidentifiedImageError:
-                    logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
-                    await self.update_status_message(
-                        status_msg,
-                        caption,
-                        reply_markup=build_redo_menu(),
-                        parse_mode='HTML'
-                    )
-                    return True
+            await self.update_status_message(
+                status_msg,
+                caption,
+                reply_markup=build_redo_menu(),
+                parse_mode='HTML'
+            )
+            return True
 
         logging.info(f'success! sending generated image')
         await self.bot.delete_message(

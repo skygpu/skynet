@@ -264,7 +264,6 @@ class SkynetGPUConnector:
         ipfs_link_legacy = ipfs_link + '/image.png'
 
         async with trio.open_nursery() as n:
-
             async def get_and_set_results(link: str):
                 res = await get_ipfs_file(link, timeout=1)
                 logging.info(f'got response from {link}')

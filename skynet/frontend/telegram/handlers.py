@@ -149,7 +149,6 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
         user_config = {**user_row}
         del user_config['id']
 
-        breakpoint()
         if user_config['autoconf']:
             user_config = perform_auto_conf(user_config)
 
