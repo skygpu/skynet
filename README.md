@@ -1,8 +1,6 @@
 # skynet
 ### decentralized compute platform
 
-To launch a worker:
-
 ### native install
 
 system dependencies:
