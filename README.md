@@ -2,7 +2,8 @@
 <div align="center">
     <img src="https://explorer.skygpu.net/v2/explore/assets/logo.png" width=512 height=512>
 </div>
-### decentralized compute platform
+
+## decentralized compute platform
 
 ### native install
 
