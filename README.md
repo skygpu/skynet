@@ -37,6 +37,31 @@ skynet run dgpu
 
 ### dockerized install
 
+## frontend
+
+system dependencies:
+- `docker`
+
+```
+# create and edit config from template
+cp skynet.toml.example skynet.toml
+
+# pull runtime container
+docker pull guilledk/skynet:runtime-frontend
+
+# run telegram bot
+docker run \
+    -it \
+    --rm \
+    --network host \
+    --name skynet-telegram \
+    --mount type=bind,source="$(pwd)",target=/root/target \
+    guilledk/skynet:runtime-frontend \
+    skynet run telegram --db-pass PASSWORD --db-user USER --db-host HOST
+```
+
+## worker
+
 system dependencies:
 - `docker` with gpu enabled
 

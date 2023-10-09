@@ -15,7 +15,7 @@ workdir /skynet
 
 env POETRY_VIRTUALENVS_PATH /skynet/.venv
 
-run poetry install
+run poetry install --with=frontend -v
 
 workdir /root/target
 
