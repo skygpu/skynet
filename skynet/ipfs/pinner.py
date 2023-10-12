@@ -85,9 +85,9 @@ class SkynetPinner:
         for _ in range(6):
             try:
                 with trio.move_on_after(5):
-                    resp = await self.ipfs_http.pin(cid)
-                    if resp.status_code != 200:
-                        logging.error(f'error pinning {cid}:\n{resp.text}')
+                    pins = await self.ipfs_http.pin(cid)
+                    if cid not in pins:
+                        logging.error(f'error pinning {cid}')
                         del self._pinned[cid]
 
                     else:
