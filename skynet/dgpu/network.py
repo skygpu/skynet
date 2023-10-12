@@ -7,6 +7,7 @@ import logging
 
 from pathlib import Path
 from functools import partial
+from typing import Any, Coroutine
 
 import asks
 import trio
@@ -25,7 +26,10 @@ from skynet.dgpu.errors import DGPUComputeError
 REQUEST_UPDATE_TIME = 3
 
 
-async def failable(fn: partial, ret_fail=None):
+async def failable(
+    fn: partial[Coroutine[Any, Any, Any]],
+    ret_fail: Any | None = None
+) -> Any:
     try:
         return await fn()
 
@@ -42,6 +46,7 @@ async def failable(fn: partial, ret_fail=None):
 class SkynetGPUConnector:
 
     def __init__(self, config: dict):
+        self.contract = config['contract']
         self.account = Name(config['account'])
         self.permission = config['permission']
         self.key = config['key']
@@ -63,27 +68,89 @@ class SkynetGPUConnector:
         if 'ipfs_domain' in config:
             self.ipfs_domain = config['ipfs_domain']
 
-        self._wip_requests = {}
+        self._update_delta = 1
+        self._cache: dict[str, tuple[float, Any]] = {}
 
-    # blockchain helpers
+    async def _cache_set(
+        self,
+        fn: partial[Coroutine[Any, Any, Any]],
+        key: str
+    ) -> Any:
+        now = time.time()
+        val = await fn()
+        self._cache[key] = (now, val)
 
-    async def get_work_requests_last_hour(self):
+        return val
+
+    def _cache_get(self, key: str, default: Any = None) -> Any:
+        if key in self._cache:
+            return self._cache[key][1]
+
+        else:
+            return default
+
+    async def data_updater_task(self):
+        while True:
+            async with trio.open_nursery() as n:
+                n.start_soon(
+                    self._cache_set, self._get_work_requests_last_hour, 'queue')
+                n.start_soon(
+                    self._cache_set, self._find_my_results, 'my_results')
+
+            await trio.sleep(self._update_delta)
+
+    def get_queue(self):
+        return self._cache_get('queue', default=[])
+
+    def get_my_results(self):
+        return self._cache_get('my_results', default=[])
+
+    def get_status_for_request(self, request_id: int) -> list[dict] | None:
+        request: dict | None = next((
+            req
+            for req in self.get_queue()
+            if req['id'] == request_id), None)
+
+        if request:
+            return request['status']
+
+        else:
+            return None
+
+    def get_competitors_for_request(self, request_id: int) -> list[str] | None:
+        status = self.get_status_for_request(request_id)
+        if not status:
+            return None
+
+        return [
+            s['worker']
+            for s in status
+            if s['worker'] != self.account
+        ]
+
+    async def _get_work_requests_last_hour(self) -> list[dict]:
         logging.info('get_work_requests_last_hour')
         return await failable(
             partial(
                 self.cleos.aget_table,
-                'telos.gpu', 'telos.gpu', 'queue',
+                self.contract, self.contract, 'queue',
                 index_position=2,
                 key_type='i64',
                 lower_bound=int(time.time()) - 3600
             ), ret_fail=[])
 
-    async def get_status_by_request_id(self, request_id: int):
-        logging.info('get_status_by_request_id')
+    async def _find_my_results(self):
+        logging.info('find_my_results')
         return await failable(
             partial(
                 self.cleos.aget_table,
-                'telos.gpu', request_id, 'status'), ret_fail=[])
+                self.contract, self.contract, 'results',
+                index_position=4,
+                key_type='name',
+                lower_bound=self.account,
+                upper_bound=self.account
+            )
+        )
 
     async def get_global_config(self):
         logging.info('get_global_config')
@@ -113,36 +180,6 @@ class SkynetGPUConnector:
             return rows[0]['balance']
         else:
             return None
-
-    async def get_competitors_for_req(self, request_id: int) -> set:
-        competitors = [
-            status['worker']
-            for status in
-            (await self.get_status_by_request_id(request_id))
-            if status['worker'] != self.account
-        ]
-        logging.info(f'competitors: {competitors}')
-        return set(competitors)
-
-
-    async def get_full_queue_snapshot(self):
-        snap = {
-            'requests': {},
-            'my_results': []
-        }
-
-        snap['queue'] = await self.get_work_requests_last_hour()
-
-        async def _run_and_save(d, key: str, fn, *args, **kwargs):
-            d[key] = await fn(*args, **kwargs)
-
-        async with trio.open_nursery() as n:
-            n.start_soon(_run_and_save, snap, 'my_results', self.find_my_results)
-            for req in snap['queue']:
-                n.start_soon(
-                    _run_and_save, snap['requests'], req['id'], self.get_status_by_request_id, req['id'])
-
-        return snap
 
     async def begin_work(self, request_id: int):
         logging.info('begin_work')
@@ -200,19 +237,6 @@ class SkynetGPUConnector:
                 )
             )
 
-    async def find_my_results(self):
-        logging.info('find_my_results')
-        return await failable(
-            partial(
-                self.cleos.aget_table,
-                'telos.gpu', 'telos.gpu', 'results',
-                index_position=4,
-                key_type='name',
-                lower_bound=self.account,
-                upper_bound=self.account
-            )
-        )
-
     async def submit_work(
         self,
         request_id: int,
@@ -268,15 +292,11 @@ class SkynetGPUConnector:
         return file_cid
 
     async def get_input_data(self, ipfs_hash: str) -> tuple[bytes, str]:
-        input_type = 'none'
-
-        if ipfs_hash == '':
-            return b'', input_type
-
         results = {}
         ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
         ipfs_link_legacy = ipfs_link + '/image.png'
 
+        input_type = 'unknown'
         async with trio.open_nursery() as n:
             async def get_and_set_results(link: str):
                 res = await get_ipfs_file(link, timeout=1)
@@ -310,3 +330,14 @@ class SkynetGPUConnector:
             raise DGPUComputeError('Couldn\'t gather input data from ipfs')
 
         return input_data, input_type
+
+    async def get_inputs(self, links: list[str]) -> list[tuple[bytes, str]]:
+        results = {}
+        async def _get_input(link: str) -> None:
+            results[link] = await self.get_input_data(link)
+
+        async with trio.open_nursery() as n:
+            for link in links:
+                n.start_soon(_get_input, link)
+
+        return [results[link] for link in links]

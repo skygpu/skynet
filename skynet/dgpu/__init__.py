@@ -11,18 +11,18 @@ from skynet.dgpu.network import SkynetGPUConnector
 
 
 async def open_dgpu_node(config: dict):
-    conn = SkynetGPUConnector(config)
-    mm = SkynetMM(config)
-    daemon = SkynetDGPUDaemon(mm, conn, config)
+    conn = SkynetGPUConnector({**config, **config['dgpu']})
+    mm = SkynetMM(config['dgpu'])
+    daemon = SkynetDGPUDaemon(mm, conn, config['dgpu'])
 
     api = None
-    if 'api_bind' in config:
+    if 'api_bind' in config['dgpu']:
         api_conf = Config()
         api_conf.bind = [config['api_bind']]
         api = await daemon.generate_api()
 
     async with trio.open_nursery() as n:
-        n.start_soon(daemon.snap_updater_task)
+        n.start_soon(conn.data_updater_task)
 
         if api:
             n.start_soon(serve, api, api_conf)

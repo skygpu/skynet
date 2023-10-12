@@ -44,6 +44,10 @@ class SkynetDGPUDaemon:
             config['auto_withdraw']
             if 'auto_withdraw' in config else False
         )
+        self.max_concurrent = (
+            config['max_concurrent']
+            if 'max_concurrent' in config else 0
+        )
 
         self.account = config['account']
 
@@ -62,12 +66,6 @@ class SkynetDGPUDaemon:
         self.backend = 'sync-on-thread'
         if 'backend' in config:
             self.backend = config['backend']
-
-        self._snap = {
-            'queue': [],
-            'requests': {},
-            'my_results': []
-        }
 
         self._benchmark = []
         self._last_benchmark = None
@@ -90,18 +88,10 @@ class SkynetDGPUDaemon:
 
     async def should_cancel_work(self, request_id: int):
         self._benchmark.append(time.time())
-        competitors = set([
-            status['worker']
-            for status in self._snap['requests'][request_id]
-            if status['worker'] != self.account
-        ])
-        return bool(self.non_compete & competitors)
-
-
-    async def snap_updater_task(self):
-        while True:
-            self._snap = await self.conn.get_full_queue_snapshot()
-            await trio.sleep(1)
+        competitors = self.conn.get_competitors_for_request(request_id)
+        if competitors == None:
+            return True
+        return bool(self.non_compete & set(competitors))
 
     async def generate_api(self):
         app = Quart(__name__)
@@ -117,108 +107,128 @@ class SkynetDGPUDaemon:
 
         return app
 
+    def find_best_requests(self) -> list[dict]:
+        queue = self.conn.get_queue()
+
+        for _ in range(3):
+            random.shuffle(queue)
+
+        queue = sorted(
+            queue,
+            key=lambda req: convert_reward_to_int(req['reward']),
+            reverse=True
+        )
+
+        requests = []
+        for req in queue:
+            rid = req['nonce']
+
+            # parse request
+            body = json.loads(req['body'])
+            model = body['params']['model']
+
+            # if model not known
+            if model not in MODELS:
+                logging.warning(f'Unknown model {model}')
+                continue
+
+            # if whitelist enabled and model not in it continue
+            if (len(self.model_whitelist) > 0 and
+                not model in self.model_whitelist):
+                continue
+
+            # if blacklist contains model skip
+            if model in self.model_blacklist:
+                continue
+
+            my_results = [res['id'] for res in self.conn.get_my_results()]
+
+            # if this worker already on it
+            if rid in my_results:
+                continue
+
+            status = self.conn.get_status_for_request(rid)
+            if status == None:
+                continue
+
+            if self.non_compete & set(self.conn.get_competitors_for_request(rid)):
+                continue
+
+            if len(status) > self.max_concurrent:
+                continue
+
+            requests.append(req)
+
+        return requests
+
     async def serve_forever(self):
         try:
             while True:
                 if self.auto_withdraw:
                     await self.conn.maybe_withdraw_all()
 
-                queue = self._snap['queue']
+                requests = self.find_best_requests()
 
-                random.shuffle(queue)
-                queue = sorted(
-                    queue,
-                    key=lambda req: convert_reward_to_int(req['reward']),
-                    reverse=True
-                )
+                if len(requests) > 0:
+                    request = requests[0]
+                    rid = request['nonce']
+                    body = json.loads(request['body'])
 
-                for req in queue:
-                    rid = req['id']
+                    inputs = await self.conn.get_inputs(request['binary_inputs'])
 
-                    # parse request
-                    body = json.loads(req['body'])
-                    model = body['params']['model']
+                    hash_str = (
+                        str(request['nonce'])
+                        +
+                        request['body']
+                        +
+                        ''.join([_in for _in in request['binary_inputs']])
+                    )
+                    logging.info(f'hashing: {hash_str}')
+                    request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
 
-                    # if model not known
-                    if model not in MODELS:
-                        logging.warning(f'Unknown model {model}')
-                        continue
+                    # TODO: validate request
 
-                    # if whitelist enabled and model not in it continue
-                    if (len(self.model_whitelist) > 0 and
-                        not model in self.model_whitelist):
-                        continue
+                    # perform work
+                    logging.info(f'working on {body}')
 
-                    # if blacklist contains model skip
-                    if model in self.model_blacklist:
-                        continue
-
-                    my_results = [res['id'] for res in self._snap['my_results']]
-                    if rid not in my_results and rid in self._snap['requests']:
-                        statuses = self._snap['requests'][rid]
-
-                        if len(statuses) == 0:
-                            binary, input_type = await self.conn.get_input_data(req['binary_data'])
-
-                            hash_str = (
-                                str(req['nonce'])
-                                +
-                                req['body']
-                                +
-                                req['binary_data']
-                            )
-                            logging.info(f'hashing: {hash_str}')
-                            request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
-
-                            # TODO: validate request
-
-                            # perform work
-                            logging.info(f'working on {body}')
-
-                            resp = await self.conn.begin_work(rid)
-                            if 'code' in resp:
-                                logging.info(f'probably being worked on already... skip.')
-
-                            else:
-                                try:
-                                    output_type = 'png'
-                                    if 'output_type' in body['params']:
-                                        output_type = body['params']['output_type']
-
-                                    output = None
-                                    output_hash = None
-                                    match self.backend:
-                                        case 'sync-on-thread':
-                                            self.mm._should_cancel = self.should_cancel_work
-                                            output_hash, output = await trio.to_thread.run_sync(
-                                                partial(
-                                                    self.mm.compute_one,
-                                                    rid,
-                                                    body['method'], body['params'],
-                                                    input_type=input_type,
-                                                    binary=binary
-                                                )
-                                            )
-
-                                        case _:
-                                            raise DGPUComputeError(f'Unsupported backend {self.backend}')
-                                    self._last_generation_ts = datetime.now().isoformat()
-                                    self._last_benchmark = self._benchmark
-                                    self._benchmark = []
-
-                                    ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
-
-                                    await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
-
-                                except BaseException as e:
-                                    traceback.print_exc()
-                                    await self.conn.cancel_work(rid, str(e))
-
-                                finally:
-                                    break
+                    resp = await self.conn.begin_work(rid)
+                    if 'code' in resp:
+                        logging.info(f'probably being worked on already... skip.')
 
                     else:
-                        logging.info(f'request {rid} already beign worked on, skip...')
+                        try:
+                            output_type = 'png'
+                            if 'output_type' in body['params']:
+                                output_type = body['params']['output_type']
+
+                            output = None
+                            output_hash = None
+                            match self.backend:
+                                case 'sync-on-thread':
+                                    self.mm._should_cancel = self.should_cancel_work
+                                    output_hash, output = await trio.to_thread.run_sync(
+                                        partial(
+                                            self.mm.compute_one,
+                                            rid,
+                                            body['method'], body['params'],
+                                            inputs=inputs
+                                        )
+                                    )
+
+                                case _:
+                                    raise DGPUComputeError(f'Unsupported backend {self.backend}')
+
+                            self._last_generation_ts = datetime.now().isoformat()
+                            self._last_benchmark = self._benchmark
+                            self._benchmark = []
+
+                            ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
+
+                            await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
+
+                        except BaseException as e:
+                            traceback.print_exc()
+                            await self.conn.cancel_work(rid, str(e))
 
                 await trio.sleep(1)
 

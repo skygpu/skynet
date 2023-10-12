@@ -6,6 +6,7 @@ import gc
 import logging
 
 from hashlib import sha256
+from typing import Any
 import zipfile
 from PIL import Image
 from diffusers import DiffusionPipeline
@@ -21,11 +22,16 @@ from skynet.utils import crop_image, convert_from_cv2_to_image, convert_from_ima
 
 def prepare_params_for_diffuse(
     params: dict,
-    input_type: str,
-    binary = None
+    inputs: list[tuple[Any, str]],
 ):
     _params = {}
-    if binary != None:
+
+    if len(inputs) > 1:
+        raise DGPUComputeError('sorry binary_inputs > 1 not implemented yet')
+
+    if len(inputs) == 0:
+        binary, input_type = inputs[0]
+
         match input_type:
             case 'png':
                 image = crop_image(
@@ -33,9 +39,6 @@ def prepare_params_for_diffuse(
 
                 _params['image'] = image
                 _params['strength'] = float(params['strength'])
-
-            case 'none':
-                ...
 
             case _:
                 raise DGPUComputeError(f'Unknown input_type {input_type}')
@@ -144,8 +147,7 @@ class SkynetMM:
         request_id: int,
         method: str,
         params: dict,
-        input_type: str = 'png',
-        binary: bytes | None = None
+        inputs: list[tuple[Any, str]]
     ):
         def maybe_cancel_work(step, *args, **kwargs):
             if self._should_cancel:
@@ -165,8 +167,7 @@ class SkynetMM:
         try:
             match method:
                 case 'diffuse':
-                    arguments = prepare_params_for_diffuse(
-                        params, input_type, binary=binary)
+                    arguments = prepare_params_for_diffuse(params, inputs)
                     prompt, guidance, step, seed, upscaler, extra_params = arguments
                     model = self.get_model(params['model'], 'image' in extra_params)
 
