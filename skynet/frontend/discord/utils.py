@@ -81,11 +81,12 @@ def generate_reply_caption(
     params: dict,
     tx_hash: str,
     worker: str,
-    reward: str
+    reward: str,
+    explorer_domain: str
 ):
     explorer_link = discord.Embed(
         title='[SKYNET Transaction Explorer]',
-        url=f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash}',
+        url=f'https://{explorer_domain}/v2/explore/transaction/{tx_hash}',
         color=discord.Color.blue())
 
     meta_info = prepare_metainfo_caption(user, worker, reward, params, explorer_link)

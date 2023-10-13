@@ -1,0 +1,67 @@
+[tool.poetry]
+name = 'skynet'
+version = '0.1a12'
+description = 'Decentralized compute platform'
+authors = ['Guillermo Rodriguez <guillermo@telos.net>']
+license = 'AGPL'
+readme = 'README.md'
+
+[tool.poetry.dependencies]
+python = '>=3.10,<3.12'
+pytz = '^2023.3.post1'
+trio = '^0.22.2'
+asks = '^3.0.0'
+Pillow = '^10.0.1'
+docker = '^6.1.3'
+py-leap = {git = 'https://github.com/guilledk/py-leap.git', rev = 'v0.1a14'}
+toml = '^0.10.2'
+
+[tool.poetry.group.frontend]
+optional = true
+
+[tool.poetry.group.frontend.dependencies]
+triopg = {version = '^0.6.0'}
+aiohttp = {version = '^3.8.5'}
+psycopg2-binary = {version = '^2.9.7'}
+pyTelegramBotAPI = {version = '^4.14.0'}
+'discord.py' = {version = '^2.3.2'}
+
+[tool.poetry.group.dev]
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+pdbpp = {version = '^0.10.3'}
+pytest = {version = '^7.4.2'}
+
+[tool.poetry.group.cuda]
+optional = true
+
+[tool.poetry.group.cuda.dependencies]
+torch = {version = '2.0.1+cu118', source = 'torch'}
+scipy = {version = '^1.11.2'}
+numba = {version = '0.57.0'}
+quart = {version = '^0.19.3'}
+triton = {version = '2.0.0', source = 'torch'}
+basicsr = {version = '^1.4.2'}
+xformers = {version = '^0.0.22'}
+hypercorn = {version = '^0.14.4'}
+diffusers = {version = '^0.21.2'}
+realesrgan = {version = '^0.3.0'}
+quart-trio = {version = '^0.11.0'}
+torchvision = {version = '0.15.2+cu118', source = 'torch'}
+accelerate = {version = '^0.23.0'}
+transformers = {version = '^4.33.2'}
+huggingface-hub = {version = '^0.17.3'}
+invisible-watermark = {version = '^0.2.0'}
+
+[[tool.poetry.source]]
+name = 'torch'
+url = 'https://download.pytorch.org/whl/cu118'
+priority = 'explicit'
+
+[build-system]
+requires = ['poetry-core', 'cython']
+build-backend = 'poetry.core.masonry.api'
+
+[tool.poetry.scripts]
+skynet = 'skynet.cli:skynet'

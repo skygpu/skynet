@@ -7,3 +7,4 @@ outputs
 *.egg-info
 **/*.key
 **/*.cert
+.venv

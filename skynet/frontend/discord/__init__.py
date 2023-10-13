@@ -45,7 +45,9 @@ class SkynetDiscordFrontend:
         db_pass: str,
         ipfs_url: str,
         remote_ipfs_node: str,
-        key: str
+        key: str,
+        explorer_domain: str,
+        ipfs_domain: str
     ):
         # self.token = token
         self.account = account
@@ -58,6 +60,8 @@ class SkynetDiscordFrontend:
         self.ipfs_url = ipfs_url
         self.remote_ipfs_node = remote_ipfs_node
         self.key = key
+        self.explorer_domain = explorer_domain
+        self.ipfs_domain = ipfs_domain
 
         self.bot = DiscordBot(self)
         self.cleos = CLEOS(None, None, url=node_url, remote=node_url)
@@ -169,7 +173,7 @@ class SkynetDiscordFrontend:
             return False
 
         enqueue_tx_id = res['transaction_id']
-        enqueue_tx_link = f'[**Your request on Skynet Explorer**](https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{enqueue_tx_id})'
+        enqueue_tx_link = f'[**Your request on Skynet Explorer**](https://{self.explorer_domain}/v2/explore/transaction/{enqueue_tx_id})'
 
         msg_text += f'**broadcasted!** \n{enqueue_tx_link}\n[{timestamp_pretty()}] *workers are processing request...* '
         embed = discord.Embed(
@@ -241,8 +245,48 @@ class SkynetDiscordFrontend:
         await message.edit(embed=embed)
 
         # attempt to get the image and send it
-        ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png'
-        resp = await get_ipfs_file(ipfs_link)
+        results = {}
+        ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
+        ipfs_link_legacy = ipfs_link + '/image.png'
+
+        async def get_and_set_results(link: str):
+            res = await get_ipfs_file(link)
+            logging.info(f'got response from {link}')
+            if not res or res.status_code != 200:
+                logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+
+            else:
+                try:
+                    with Image.open(io.BytesIO(res.raw)) as image:
+                        tmp_buf = io.BytesIO()
+                        image.save(tmp_buf, format='PNG')
+                        png_img = tmp_buf.getvalue()
+                        results[link] = png_img
+
+                except UnidentifiedImageError:
+                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+
+        tasks = [
+            get_and_set_results(ipfs_link),
+            get_and_set_results(ipfs_link_legacy)
+        ]
+        await asyncio.gather(*tasks)
+
+        png_img = None
+        if ipfs_link_legacy in results:
+            png_img = results[ipfs_link_legacy]
+
+        if ipfs_link in results:
+            png_img = results[ipfs_link]
+
+        if not png_img:
+            await self.update_status_message(
+                status_msg,
+                caption,
+                reply_markup=build_redo_menu(),
+                parse_mode='HTML'
+            )
+            return True
 
         # reword this function, may not need caption
         caption, embed = generate_reply_caption(

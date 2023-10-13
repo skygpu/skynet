@@ -5,22 +5,22 @@ import random
 import logging
 import asyncio
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from json import JSONDecodeError
 from decimal import Decimal
 from hashlib import sha256
 from datetime import datetime
-from contextlib import ExitStack, AsyncExitStack
+from contextlib import AsyncExitStack
 from contextlib import asynccontextmanager as acm
 
 from leap.cleos import CLEOS
 from leap.sugar import Name, asset_from_str, collect_stdout
 from leap.hyperion import HyperionAPI
-from telebot.types import InputMediaPhoto
 
+from telebot.types import InputMediaPhoto
 from telebot.async_telebot import AsyncTeleBot
 
-from skynet.db import open_new_database, open_database_connection
+from skynet.db import open_database_connection
 from skynet.ipfs import get_ipfs_file, AsyncIPFSHTTP
 from skynet.constants import *
 
@@ -44,7 +44,9 @@ class SkynetTelegramFrontend:
         db_pass: str,
         ipfs_node: str,
         remote_ipfs_node: str | None,
-        key: str
+        key: str,
+        explorer_domain: str,
+        ipfs_domain: str
     ):
         self.token = token
         self.account = account
@@ -56,6 +58,8 @@ class SkynetTelegramFrontend:
         self.db_pass = db_pass
         self.remote_ipfs_node = remote_ipfs_node
         self.key = key
+        self.explorer_domain = explorer_domain
+        self.ipfs_domain = ipfs_domain
 
         self.bot = AsyncTeleBot(token, exception_handler=SKYExceptionHandler)
         self.cleos = CLEOS(None, None, url=node_url, remote=node_url)
@@ -161,7 +165,7 @@ class SkynetTelegramFrontend:
         enqueue_tx_id = res['transaction_id']
         enqueue_tx_link = hlink(
             'Your request on Skynet Explorer',
-            f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{enqueue_tx_id}'
+            f'https://{self.explorer_domain}/v2/explore/transaction/{enqueue_tx_id}'
         )
 
         await self.append_status_message(
@@ -222,7 +226,7 @@ class SkynetTelegramFrontend:
 
         tx_link = hlink(
             'Your result on Skynet Explorer',
-            f'https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash}'
+            f'https://{self.explorer_domain}/v2/explore/transaction/{tx_hash}'
         )
 
         await self.append_status_message(
@@ -234,14 +238,51 @@ class SkynetTelegramFrontend:
         )
 
         caption = generate_reply_caption(
-            user, params, tx_hash, worker, reward)
+            user, params, tx_hash, worker, reward, self.explorer_domain)
 
         # attempt to get the image and send it
-        ipfs_link = f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png'
-        resp = await get_ipfs_file(ipfs_link)
+        results = {}
+        ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
+        ipfs_link_legacy = ipfs_link + '/image.png'
 
-        if not resp or resp.status_code != 200:
-            logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
+        async def get_and_set_results(link: str):
+            res = await get_ipfs_file(link)
+            logging.info(f'got response from {link}')
+            if not res or res.status_code != 200:
+                logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+
+            else:
+                try:
+                    with Image.open(io.BytesIO(res.raw)) as image:
+                        w, h = image.size
+
+                        if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
+                            logging.warning(f'result is of size {image.size}')
+                            image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
+
+                        tmp_buf = io.BytesIO()
+                        image.save(tmp_buf, format='PNG')
+                        png_img = tmp_buf.getvalue()
+
+                        results[link] = png_img
+
+                except UnidentifiedImageError:
+                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+
+        tasks = [
+            get_and_set_results(ipfs_link),
+            get_and_set_results(ipfs_link_legacy)
+        ]
+        await asyncio.gather(*tasks)
+
+        png_img = None
+        if ipfs_link_legacy in results:
+            png_img = results[ipfs_link_legacy]
+
+        if ipfs_link in results:
+            png_img = results[ipfs_link]
+
+        if not png_img:
             await self.update_status_message(
                 status_msg,
                 caption,
@@ -249,17 +290,6 @@ class SkynetTelegramFrontend:
                 parse_mode='HTML'
             )
             return True
-
-        png_img = resp.raw
-        with Image.open(io.BytesIO(resp.raw)) as image:
-            w, h = image.size
-
-            if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
-                logging.warning(f'result is of size {image.size}')
-                image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
-                tmp_buf = io.BytesIO()
-                image.save(tmp_buf, format='PNG')
-                png_img = tmp_buf.getvalue()
 
         logging.info(f'success! sending generated image')
         await self.bot.delete_message(

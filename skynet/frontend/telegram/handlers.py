@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from PIL import Image
 from telebot.types import CallbackQuery, Message
 
-from skynet.frontend import validate_user_config_request
+from skynet.frontend import validate_user_config_request, perform_auto_conf
 from skynet.constants import *
 
 
@@ -149,6 +149,9 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
         user_config = {**user_row}
         del user_config['id']
 
+        if user_config['autoconf']:
+            user_config = perform_auto_conf(user_config)
+
         params = {
             'prompt': prompt,
             **user_config
@@ -209,12 +212,18 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
         file_path = (await bot.get_file(file_id)).file_path
         image_raw = await bot.download_file(file_path)
 
+        user_config = {**user_row}
+        del user_config['id']
+        if user_config['autoconf']:
+            user_config = perform_auto_conf(user_config)
+
         with Image.open(io.BytesIO(image_raw)) as image:
             w, h = image.size
 
-            if w > 512 or h > 512:
+            if w > user_config['width'] or h > user_config['height']:
                 logging.warning(f'user sent img of size {image.size}')
-                image.thumbnail((512, 512))
+                image.thumbnail(
+                    (user_config['width'], user_config['height']))
                 logging.warning(f'resized it to {image.size}')
 
             image_loc = 'ipfs-staging/image.png'
@@ -227,9 +236,6 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
             logging.info(f'published input image {ipfs_hash} on ipfs')
 
         logging.info(f'mid: {message.id}')
-
-        user_config = {**user_row}
-        del user_config['id']
 
         params = {
             'prompt': prompt,
@@ -303,6 +309,8 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
             'new_user_request', user.id, message.id, status_msg.id, status=init_msg)
         user_config = {**user_row}
         del user_config['id']
+        if user_config['autoconf']:
+            user_config = perform_auto_conf(user_config)
 
         params = {
             'prompt': prompt,

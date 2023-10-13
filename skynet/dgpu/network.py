@@ -1,23 +1,28 @@
 #!/usr/bin/python
 
-from functools import partial
 import io
 import json
-from pathlib import Path
 import time
 import logging
 
-import asks
-from PIL import Image
+from pathlib import Path
+from functools import partial
 
-from contextlib import asynccontextmanager as acm
+import asks
+import trio
+import anyio
+
+from PIL import Image, UnidentifiedImageError
 
 from leap.cleos import CLEOS
 from leap.sugar import Checksum256, Name, asset_from_str
-from skynet.constants import DEFAULT_DOMAIN
+from skynet.constants import DEFAULT_IPFS_DOMAIN
 
-from skynet.dgpu.errors import DGPUComputeError
 from skynet.ipfs import AsyncIPFSHTTP, get_ipfs_file
+from skynet.dgpu.errors import DGPUComputeError
+
+
+REQUEST_UPDATE_TIME = 3
 
 
 async def failable(fn: partial, ret_fail=None):
@@ -25,8 +30,11 @@ async def failable(fn: partial, ret_fail=None):
         return await fn()
 
     except (
+        OSError,
+        json.JSONDecodeError,
         asks.errors.RequestTimeout,
-        json.JSONDecodeError
+        asks.errors.BadHttpResponse,
+        anyio.BrokenResourceError
     ):
         return ret_fail
 
@@ -44,10 +52,18 @@ class SkynetGPUConnector:
         self.cleos = CLEOS(
             None, None, self.node_url, remote=self.node_url)
 
-        self.ipfs_gateway_url = config['ipfs_gateway_url']
+        self.ipfs_gateway_url = None
+        if 'ipfs_gateway_url' in config:
+            self.ipfs_gateway_url = config['ipfs_gateway_url']
         self.ipfs_url = config['ipfs_url']
 
         self.ipfs_client = AsyncIPFSHTTP(self.ipfs_url)
+
+        self.ipfs_domain = DEFAULT_IPFS_DOMAIN
+        if 'ipfs_domain' in config:
+            self.ipfs_domain = config['ipfs_domain']
+
+        self._wip_requests = {}
 
     # blockchain helpers
 
@@ -97,6 +113,36 @@ class SkynetGPUConnector:
             return rows[0]['balance']
         else:
             return None
+
+    async def get_competitors_for_req(self, request_id: int) -> set:
+        competitors = [
+            status['worker']
+            for status in
+            (await self.get_status_by_request_id(request_id))
+            if status['worker'] != self.account
+        ]
+        logging.info(f'competitors: {competitors}')
+        return set(competitors)
+
+
+    async def get_full_queue_snapshot(self):
+        snap = {
+            'requests': {},
+            'my_results': []
+        }
+
+        snap['queue'] = await self.get_work_requests_last_hour()
+
+        async def _run_and_save(d, key: str, fn, *args, **kwargs):
+            d[key] = await fn(*args, **kwargs)
+
+        async with trio.open_nursery() as n:
+            n.start_soon(_run_and_save, snap, 'my_results', self.find_my_results)
+            for req in snap['queue']:
+                n.start_soon(
+                    _run_and_save, snap['requests'], req['id'], self.get_status_by_request_id, req['id'])
+
+        return snap
 
     async def begin_work(self, request_id: int):
         logging.info('begin_work')
@@ -193,31 +239,74 @@ class SkynetGPUConnector:
         )
 
     # IPFS helpers
-
-    async def publish_on_ipfs(self, raw_img: bytes):
+    async def publish_on_ipfs(self, raw, typ: str = 'png'):
+        Path('ipfs-staging').mkdir(exist_ok=True)
         logging.info('publish_on_ipfs')
-        img = Image.open(io.BytesIO(raw_img))
-        img.save('ipfs-docker-staging/image.png')
 
-        # check peer connections, reconnect to skynet gateway if not
-        gateway_id = Path(self.ipfs_gateway_url).name
-        peers = await self.ipfs_client.peers()
-        if gateway_id not in [p['Peer'] for p in peers]:
-            await self.ipfs_client.connect(self.ipfs_gateway_url)
+        target_file = ''
+        match typ:
+            case 'png':
+                raw: Image
+                target_file = 'ipfs-staging/image.png'
+                raw.save(target_file)
 
-        file_info = await self.ipfs_client.add(Path('ipfs-docker-staging/image.png'))
+            case _:
+                raise ValueError(f'Unsupported output type: {typ}')
+
+        if self.ipfs_gateway_url:
+            # check peer connections, reconnect to skynet gateway if not
+            gateway_id = Path(self.ipfs_gateway_url).name
+            peers = await self.ipfs_client.peers()
+            if gateway_id not in [p['Peer'] for p in peers]:
+                await self.ipfs_client.connect(self.ipfs_gateway_url)
+
+        file_info = await self.ipfs_client.add(Path(target_file))
         file_cid = file_info['Hash']
 
         await self.ipfs_client.pin(file_cid)
 
         return file_cid
 
-    async def get_input_data(self, ipfs_hash: str) -> bytes:
-        if ipfs_hash == '':
-            return b''
+    async def get_input_data(self, ipfs_hash: str) -> tuple[bytes, str]:
+        input_type = 'none'
 
-        resp = await get_ipfs_file(f'https://ipfs.{DEFAULT_DOMAIN}/ipfs/{ipfs_hash}/image.png')
-        if not resp:
+        if ipfs_hash == '':
+            return b'', input_type
+
+        results = {}
+        ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
+        ipfs_link_legacy = ipfs_link + '/image.png'
+
+        async with trio.open_nursery() as n:
+            async def get_and_set_results(link: str):
+                res = await get_ipfs_file(link, timeout=1)
+                logging.info(f'got response from {link}')
+                if not res or res.status_code != 200:
+                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+
+                else:
+                    try:
+                        # attempt to decode as image
+                        results[link] = Image.open(io.BytesIO(res.raw))
+                        input_type = 'png'
+                        n.cancel_scope.cancel()
+
+                    except UnidentifiedImageError:
+                        logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+
+            n.start_soon(
+                get_and_set_results, ipfs_link)
+            n.start_soon(
+                get_and_set_results, ipfs_link_legacy)
+
+        input_data = None
+        if ipfs_link_legacy in results:
+            input_data = results[ipfs_link_legacy]
+
+        if ipfs_link in results:
+            input_data = results[ipfs_link]
+
+        if input_data == None:
             raise DGPUComputeError('Couldn\'t gather input data from ipfs')
 
-        return resp.raw
+        return input_data, input_type

@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS skynet.user_config(
     guidance DECIMAL NOT NULL,
     strength DECIMAL NOT NULL,
     upscaler VARCHAR(128),
+    autoconf BOOLEAN DEFAULT TRUE,
     CONSTRAINT fk_config
       FOREIGN KEY(id)
         REFERENCES skynet.user(id)
@@ -164,6 +165,15 @@ async def open_database_connection(
             logging.info('schema already in db, skipping init')
         else:
             await conn.execute(DB_INIT_SQL)
+
+        col_check = await conn.fetch(f'''
+            select column_name 
+            from information_schema.columns 
+            where table_name = 'user_config' and column_name = 'autoconf';
+        ''')
+
+        if not col_check:
+            await conn.execute('alter table skynet.user_config add column autoconf boolean default true;')
 
     async def _db_call(method: str, *args, **kwargs):
         method = getattr(db, method)

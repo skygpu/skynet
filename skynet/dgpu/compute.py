@@ -3,30 +3,42 @@
 # Skynet Memory Manager
 
 import gc
-from hashlib import sha256
-import json
 import logging
+
+from hashlib import sha256
+import zipfile
+from PIL import Image
 from diffusers import DiffusionPipeline
 
+import trio
 import torch
-from skynet.constants import DEFAULT_INITAL_MODELS, MODELS
-from skynet.dgpu.errors import DGPUComputeError
 
-from skynet.utils import convert_from_bytes_and_crop, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
+from skynet.constants import DEFAULT_INITAL_MODELS, MODELS
+from skynet.dgpu.errors import DGPUComputeError, DGPUInferenceCancelled
+
+from skynet.utils import crop_image, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
 
 
 def prepare_params_for_diffuse(
     params: dict,
-    binary: bytes | None = None
+    input_type: str,
+    binary = None
 ):
-    image = None
-    if binary:
-        image = convert_from_bytes_and_crop(binary, 512, 512)
-
     _params = {}
-    if image:
-        _params['image'] = image
-        _params['strength'] = float(params['strength'])
+    if binary != None:
+        match input_type:
+            case 'png':
+                image = crop_image(
+                    binary, params['width'], params['height'])
+
+                _params['image'] = image
+                _params['strength'] = float(params['strength'])
+
+            case 'none':
+                ...
+
+            case _:
+                raise DGPUComputeError(f'Unknown input_type {input_type}')
 
     else:
         _params['width'] = int(params['width'])
@@ -50,6 +62,10 @@ class SkynetMM:
             config['initial_models']
             if 'initial_models' in config else DEFAULT_INITAL_MODELS
         )
+
+        self.cache_dir = None
+        if 'hf_home' in config:
+            self.cache_dir = config['hf_home']
 
         self._models = {}
         for model in self.initial_models:
@@ -75,7 +91,9 @@ class SkynetMM:
     ):
         logging.info(f'loading model {model_name}...')
         if force or len(self._models.keys()) == 0:
-            pipe = pipeline_for(model_name, image=image)
+            pipe = pipeline_for(
+                model_name, image=image, cache_dir=self.cache_dir)
+
             self._models[model_name] = {
                 'pipe': pipe,
                 'generated': 0,
@@ -97,7 +115,8 @@ class SkynetMM:
             gc.collect()
             torch.cuda.empty_cache()
 
-            pipe = pipeline_for(model_name, image=image)
+            pipe = pipeline_for(
+                model_name, image=image, cache_dir=self.cache_dir)
 
             self._models[model_name] = {
                 'pipe': pipe,
@@ -122,38 +141,61 @@ class SkynetMM:
 
     def compute_one(
         self,
+        request_id: int,
         method: str,
         params: dict,
+        input_type: str = 'png',
         binary: bytes | None = None
     ):
+        def maybe_cancel_work(step, *args, **kwargs):
+            if self._should_cancel:
+                should_raise = trio.from_thread.run(self._should_cancel, request_id)
+                if should_raise:
+                    logging.warn(f'cancelling work at step {step}')
+                    raise DGPUInferenceCancelled()
+
+        maybe_cancel_work(0)
+
+        output_type = 'png'
+        if 'output_type' in params:
+            output_type = params['output_type']
+
+        output = None
+        output_hash = None
         try:
             match method:
                 case 'diffuse':
-                    image = None
-
-                    arguments = prepare_params_for_diffuse(params, binary)
+                    arguments = prepare_params_for_diffuse(
+                        params, input_type, binary=binary)
                     prompt, guidance, step, seed, upscaler, extra_params = arguments
                     model = self.get_model(params['model'], 'image' in extra_params)
 
-                    image = model(
+                    output = model(
                         prompt,
                         guidance_scale=guidance,
                         num_inference_steps=step,
                         generator=seed,
+                        callback=maybe_cancel_work,
+                        callback_steps=1,
                         **extra_params
                     ).images[0]
 
-                    if upscaler == 'x4':
-                        input_img = image.convert('RGB')
-                        up_img, _ = self.upscaler.enhance(
-                            convert_from_image_to_cv2(input_img), outscale=4)
+                    output_binary = b''
+                    match output_type:
+                        case 'png':
+                            if upscaler == 'x4':
+                                input_img = output.convert('RGB')
+                                up_img, _ = self.upscaler.enhance(
+                                    convert_from_image_to_cv2(input_img), outscale=4)
 
-                        image = convert_from_cv2_to_image(up_img)
+                                output = convert_from_cv2_to_image(up_img)
 
-                    img_raw = convert_from_img_to_bytes(image)
-                    img_sha = sha256(img_raw).hexdigest()
+                            output_binary = convert_from_img_to_bytes(output)
 
-                    return img_sha, img_raw
+                        case _:
+                            raise DGPUComputeError(f'Unsupported output type: {output_type}')
+
+                    output_hash = sha256(output_binary).hexdigest()
 
                 case _:
                     raise DGPUComputeError('Unsupported compute method')
@@ -164,3 +206,5 @@ class SkynetMM:
 
         finally:
             torch.cuda.empty_cache()
+
+        return output_hash, output

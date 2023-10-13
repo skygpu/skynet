@@ -1,22 +1,24 @@
 #!/usr/bin/python
 
-VERSION = '0.1a11'
+VERSION = '0.1a12'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
 MODELS = {
-    'prompthero/openjourney':                   { 'short': 'midj'},
-    'runwayml/stable-diffusion-v1-5':           { 'short': 'stable'},
-    'stabilityai/stable-diffusion-2-1-base':    { 'short': 'stable2'},
-    'snowkidy/stable-diffusion-xl-base-0.9':    { 'short': 'stablexl0.9'},
-    'stabilityai/stable-diffusion-xl-base-1.0': { 'short': 'stablexl'},
-    'Linaqruf/anything-v3.0':                   { 'short': 'hdanime'},
-    'hakurei/waifu-diffusion':                  { 'short': 'waifu'},
-    'nitrosocke/Ghibli-Diffusion':              { 'short': 'ghibli'},
-    'dallinmackay/Van-Gogh-diffusion':          { 'short': 'van-gogh'},
-    'lambdalabs/sd-pokemon-diffusers':          { 'short': 'pokemon'},
-    'Envvi/Inkpunk-Diffusion':                  { 'short': 'ink'},
-    'nousr/robo-diffusion':                     { 'short': 'robot'}
+    'prompthero/openjourney':                   {'short': 'midj',        'mem': 6},
+    'runwayml/stable-diffusion-v1-5':           {'short': 'stable',      'mem': 6},
+    'stabilityai/stable-diffusion-2-1-base':    {'short': 'stable2',     'mem': 6},
+    'snowkidy/stable-diffusion-xl-base-0.9':    {'short': 'stablexl0.9', 'mem': 8.3},
+    'Linaqruf/anything-v3.0':                   {'short': 'hdanime',     'mem': 6},
+    'hakurei/waifu-diffusion':                  {'short': 'waifu',       'mem': 6},
+    'nitrosocke/Ghibli-Diffusion':              {'short': 'ghibli',      'mem': 6},
+    'dallinmackay/Van-Gogh-diffusion':          {'short': 'van-gogh',    'mem': 6},
+    'lambdalabs/sd-pokemon-diffusers':          {'short': 'pokemon',     'mem': 6},
+    'Envvi/Inkpunk-Diffusion':                  {'short': 'ink',         'mem': 6},
+    'nousr/robo-diffusion':                     {'short': 'robot',       'mem': 6},
+
+    # default is always last
+    'stabilityai/stable-diffusion-xl-base-1.0': {'short': 'stablexl',    'mem': 8.3},
 }
 
 SHORT_NAMES = [
@@ -158,15 +160,14 @@ DEFAULT_GUIDANCE = 7.5
 DEFAULT_STRENGTH = 0.5
 DEFAULT_STEP = 28
 DEFAULT_CREDITS = 10
-DEFAULT_MODEL = list(MODELS.keys())[4]
+DEFAULT_MODEL = list(MODELS.keys())[-1]
 DEFAULT_ROLE = 'pleb'
 DEFAULT_UPSCALER = None
 
-DEFAULT_CONFIG_PATH = 'skynet.ini'
+DEFAULT_CONFIG_PATH = 'skynet.toml'
 
 DEFAULT_INITAL_MODELS = [
-    'prompthero/openjourney',
-    'runwayml/stable-diffusion-v1-5'
+    'stabilityai/stable-diffusion-xl-base-1.0'
 ]
 
 DATE_FORMAT = '%B the %dth %Y, %H:%M:%S'
@@ -182,10 +183,13 @@ CONFIG_ATTRS = [
     'upscaler'
 ]
 
-DEFAULT_DOMAIN = 'skygpu.net'
+DEFAULT_EXPLORER_DOMAIN = 'explorer.skygpu.net'
+DEFAULT_IPFS_DOMAIN = 'ipfs.skygpu.net'
 
 DEFAULT_IPFS_REMOTE = '/ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv'
 DEFAULT_IPFS_LOCAL = 'http://127.0.0.1:5001'
 
 TG_MAX_WIDTH = 1280
 TG_MAX_HEIGHT = 1280
+
+DEFAULT_SINGLE_CARD_MAP = 'cuda:0'

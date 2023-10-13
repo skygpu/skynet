@@ -1,4 +1,4 @@
-skynet.ini
+skynet.toml
 .python-version
 hf_home
 outputs
@@ -9,5 +9,5 @@ secrets
 **/*.cert
 docs
 ipfs-docker-data
-ipfs-docker-staging
+ipfs-staging
 weights
