@@ -18,6 +18,7 @@ from leap.hyperion import HyperionAPI
 
 import discord
 import io
+from PIL import Image, UnidentifiedImageError
 
 from skynet.db import open_database_connection
 from skynet.ipfs import get_ipfs_file, AsyncIPFSHTTP
