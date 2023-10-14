@@ -72,7 +72,7 @@ def generate_reply_caption(
 ):
     explorer_link = hlink(
         'SKYNET Transaction Explorer',
-        f'https://explorer.{explorer_domain}/v2/explore/transaction/{tx_hash}'
+        f'https://{explorer_domain}/v2/explore/transaction/{tx_hash}'
     )
 
     meta_info = prepare_metainfo_caption(tguser, worker, reward, params)
