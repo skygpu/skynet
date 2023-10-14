@@ -66,7 +66,7 @@ class SkynetDiscordFrontend:
         self.bot = DiscordBot(self)
         self.cleos = CLEOS(None, None, url=node_url, remote=node_url)
         self.hyperion = HyperionAPI(hyperion_url)
-        self.ipfs_node = AsyncIPFSHTTP(ipfs_node)
+        self.ipfs_node = AsyncIPFSHTTP(ipfs_url)
 
         self._exit_stack = ExitStack()
         self._async_exit_stack = AsyncExitStack()
