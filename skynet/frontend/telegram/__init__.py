@@ -305,6 +305,7 @@ class SkynetTelegramFrontend:
                         parse_mode='HTML'
                     )
                 ],
+                message_thread_id=status_msg.message_thread_id
             )
 
         else:  # txt2img
@@ -313,7 +314,8 @@ class SkynetTelegramFrontend:
                 caption=caption,
                 photo=png_img,
                 reply_markup=build_redo_menu(),
-                parse_mode='HTML'
+                parse_mode='HTML',
+                message_thread_id=status_msg.message_thread_id
             )
 
         return True

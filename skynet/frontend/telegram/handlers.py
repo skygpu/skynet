@@ -129,7 +129,11 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
 
         # init new msg
         init_msg = 'started processing txt2img request...'
-        status_msg = await bot.reply_to(message, init_msg)
+        status_msg = await bot.reply_to(
+            message,
+            init_msg,
+            message_thread_id=message.message_thread_id
+        )
         await db_call(
             'new_user_request', user.id, message.id, status_msg.id, status=init_msg)
 
@@ -191,7 +195,11 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
 
         # init new msg
         init_msg = 'started processing txt2img request...'
-        status_msg = await bot.reply_to(message, init_msg)
+        status_msg = await bot.reply_to(
+            message,
+            init_msg,
+            message_thread_id=message.message_thread_id
+        )
         await db_call(
             'new_user_request', user.id, message.id, status_msg.id, status=init_msg)
 
@@ -282,10 +290,12 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
 
         init_msg = 'started processing redo request...'
         if is_query:
-            status_msg = await bot.send_message(chat.id, init_msg)
+            status_msg = await bot.send_message(
+                chat.id, init_msg, message_thread_id=message.message_thread_id)
 
         else:
-            status_msg = await bot.reply_to(message, init_msg)
+            status_msg = await bot.reply_to(
+                message, init_msg, message_thread_id=message.message_thread_id)
 
         method = await db_call('get_last_method_of', user.id)
         prompt = await db_call('get_last_prompt_of', user.id)
