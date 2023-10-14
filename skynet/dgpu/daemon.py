@@ -1,7 +1,6 @@
 #!/usr/bin/python
 
 import json
-import random
 import logging
 import time
 import traceback
@@ -110,14 +109,14 @@ class SkynetDGPUDaemon:
     def find_best_requests(self) -> list[dict]:
         queue = self.conn.get_queue()
 
-        for _ in range(3):
-            random.shuffle(queue)
+        # for _ in range(3):
+        #     random.shuffle(queue)
 
-        queue = sorted(
-            queue,
-            key=lambda req: convert_reward_to_int(req['reward']),
-            reverse=True
-        )
+        # queue = sorted(
+        #     queue,
+        #     key=lambda req: convert_reward_to_int(req['reward']),
+        #     reverse=True
+        # )
 
         requests = []
         for req in queue:
@@ -161,7 +160,57 @@ class SkynetDGPUDaemon:
 
         return requests
 
+    async def sync_worker_on_chain_data(self, is_online: bool) -> bool:
+        # check worker is registered
+        me = self.conn.get_on_chain_worker_info(self.account)
+        if not me:
+            ec, out = await self.conn.register_worker()
+            if ec != 0:
+                raise DGPUDaemonError(f'Couldn\'t register worker! {out}')
+
+            me = self.conn.get_on_chain_worker_info(self.account)
+
+        # find if reported on chain gpus match local
+        found_difference = False
+        for i in range(self.mm.num_gpus):
+            chain_gpu = me['cards'][i]
+
+            gpu = self.mm.gpus[i]
+            gpu_v = f'{gpu.major}.{gpu.minor}'
+
+            found_difference = gpu.name != chain_gpu['card_name']
+            found_difference = gpu_v != chain_gpu['version']
+            found_difference = gpu.total_memory != chain_gpu['total_memory']
+            found_difference = gpu.multi_processor_count != chain_gpu['mp_count']
+            if found_difference:
+                break
+
+        # difference found, flush and re-report
+        if found_difference:
+            await self.conn.flush_cards()
+            for i, gpu in enumerate(self.mm.gpus):
+                ec, _ = await self.conn.add_card(
+                    gpu.name, f'{gpu.major}.{gpu.minor}',
+                    gpu.total_memory, gpu.multi_processor_count,
+                    '',
+                    is_online
+                )
+                if ec != 0:
+                    raise DGPUDaemonError(f'error while reporting card {i}')
+
+        return found_difference
+
+    async def all_gpu_set_online_flag(self, is_online: bool):
+        for i, chain_gpu in enumerate(me['cards']):
+            if chain_gpu['is_online'] != is_online:
+                await self.conn.toggle_card(i)
+
     async def serve_forever(self):
+
+        diff = await self.sync_worker_on_chain_data(True)
+        if not diff:
+            await self.all_gpu_set_online_flag(True)
+
         try:
             while True:
                 if self.auto_withdraw:
@@ -234,3 +283,6 @@ class SkynetDGPUDaemon:
 
         except KeyboardInterrupt:
             ...
+
+        await self.sync_worker_on_chain_data(False)
+        await self.all_gpu_set_online_flag(False)

@@ -68,6 +68,10 @@ class SkynetGPUConnector:
         if 'ipfs_domain' in config:
             self.ipfs_domain = config['ipfs_domain']
 
+        self.worker_url = ''
+        if 'worker_url' in config:
+            self.worker_url = config['worker_url']
+
         self._update_delta = 1
         self._cache: dict[str, tuple[float, Any]] = {}
 
@@ -90,12 +94,16 @@ class SkynetGPUConnector:
             return default
 
     async def data_updater_task(self):
+        tasks = (
+            (self._get_work_requests_last_hour, 'queue'),
+            (self._find_my_results, 'my_results'),
+            (self._get_workers, 'workers')
+        )
+
         while True:
             async with trio.open_nursery() as n:
-                n.start_soon(
-                    self._cache_set, self._get_work_requests_last_hour, 'queue')
-                n.start_soon(
-                    self._cache_set, self._find_my_results, 'my_results')
+                for task in tasks:
+                    n.start_soon(self._cache_set, *task)
 
             await trio.sleep(self._update_delta)
 
@@ -104,6 +112,9 @@ class SkynetGPUConnector:
 
     def get_my_results(self):
         return self._cache_get('my_results', default=[])
+
+    def get_workers(self):
+        return self._cache_get('workers', default=[])
 
     def get_status_for_request(self, request_id: int) -> list[dict] | None:
         request: dict | None = next((
@@ -135,8 +146,8 @@ class SkynetGPUConnector:
                 self.cleos.aget_table,
                 self.contract, self.contract, 'queue',
                 index_position=2,
-                key_type='i64',
-                lower_bound=int(time.time()) - 3600
+                order='asc',
+                limit=1000
             ), ret_fail=[])
 
     async def _find_my_results(self):
@@ -149,6 +160,15 @@ class SkynetGPUConnector:
                 key_type='name',
                 lower_bound=self.account,
                 upper_bound=self.account
+            )
+        )
+
+    async def _get_workers(self) -> list[dict]:
+        logging.info('get_workers')
+        return await failable(
+            partial(
+                self.cleos.aget_table,
+                self.contract, self.contract, 'workers'
             )
         )
 
@@ -169,7 +189,7 @@ class SkynetGPUConnector:
         rows = await failable(
             partial(
                 self.cleos.aget_table,
-                'telos.gpu', 'telos.gpu', 'users',
+                self.contract, self.contract, 'users',
                 index_position=1,
                 key_type='name',
                 lower_bound=self.account,
@@ -181,12 +201,81 @@ class SkynetGPUConnector:
         else:
             return None
 
+    def get_on_chain_worker_info(self, worker: str):
+        return next((
+            w for w in self.get_workers()
+            if w['account'] == w
+        ), None)
+
+    async def register_worker(self):
+        logging.info(f'registering worker')
+        return await failable(
+            partial(
+                self.cleos.a_push_action,
+                self.contract,
+                'regworker',
+                {
+                    'account': self.account,
+                    'url': self.worker_url
+                }
+            )
+        )
+
+    async def add_card(
+        self,
+        card_name: str,
+        version: str,
+        total_memory: int,
+        mp_count: int,
+        extra: str,
+        is_online: bool
+    ):
+        logging.info(f'adding card: {card_name} {version}')
+        return await failable(
+            partial(
+                self.cleos.a_push_action,
+                self.contract,
+                'addcard',
+                {
+                    'worker': self.account,
+                    'card_name': card_name,
+                    'version': version,
+                    'total_memory': total_memory,
+                    'mp_count': mp_count,
+                    'extra': extra,
+                    'is_online': is_online
+                }
+            )
+        )
+
+    async def toggle_card(self, index: int):
+        logging.info(f'toggle card {index}')
+        return await failable(
+            partial(
+                self.cleos.a_push_action,
+                self.contract,
+                'togglecard',
+                {'worker': self.account, 'index': index}
+            )
+        )
+
+    async def flush_cards(self):
+        logging.info('flushing cards...')
+        return await failable(
+            partial(
+                self.cleos.a_push_action,
+                self.contract,
+                'flushcards',
+                {'worker': self.account}
+            )
+        )
+
     async def begin_work(self, request_id: int):
         logging.info('begin_work')
         return await failable(
             partial(
                 self.cleos.a_push_action,
-                'telos.gpu',
+                self.contract,
                 'workbegin',
                 {
                     'worker': self.account,
@@ -203,7 +292,7 @@ class SkynetGPUConnector:
         return await failable(
             partial(
                 self.cleos.a_push_action,
-                'telos.gpu',
+                self.contract,
                 'workcancel',
                 {
                     'worker': self.account,
@@ -226,7 +315,7 @@ class SkynetGPUConnector:
             await failable(
                 partial(
                     self.cleos.a_push_action,
-                    'telos.gpu',
+                    self.contract,
                     'withdraw',
                     {
                         'user': self.account,
@@ -248,7 +337,7 @@ class SkynetGPUConnector:
         return await failable(
             partial(
                 self.cleos.a_push_action,
-                'telos.gpu',
+                self.contract,
                 'submit',
                 {
                     'worker': self.account,

@@ -7,7 +7,7 @@ import logging
 
 from hashlib import sha256
 from typing import Any
-import zipfile
+
 from PIL import Image
 from diffusers import DiffusionPipeline
 
@@ -69,6 +69,12 @@ class SkynetMM:
         self.cache_dir = None
         if 'hf_home' in config:
             self.cache_dir = config['hf_home']
+
+        self.num_gpus = torch.cuda.device_count()
+        self.gpus = [
+            torch.cuda.get_device_properties(i)
+            for i in range(self.num_gpus)
+        ]
 
         self._models = {}
         for model in self.initial_models:
