@@ -100,10 +100,10 @@ def generate_reply_caption(
         f'PARAMETER INFO:\n{meta_info}'
     ])
 
-    final_msg += '\n'.join([
-        # f'***{explorer_link}***',
-        f'{meta_info}'
-    ])
+    # final_msg += '\n'.join([
+    #     # f'***{explorer_link}***',
+    #     f'{meta_info}'
+    # ])
 
     logging.info(final_msg)
 
