@@ -265,7 +265,8 @@ class SkynetDiscordFrontend:
                         results[link] = png_img
 
                 except UnidentifiedImageError:
-                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+                    logging.warning(
+                        f'couldn\'t get ipfs binary data at {link}!')
 
         tasks = [
             get_and_set_results(ipfs_link),
@@ -281,32 +282,25 @@ class SkynetDiscordFrontend:
             png_img = results[ipfs_link]
 
         if not png_img:
-            await self.update_status_message(
-                status_msg,
-                caption,
-                reply_markup=build_redo_menu(),
-                parse_mode='HTML'
-            )
+            logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
+            embed.add_field(
+                name='Error', value=f'couldn\'t get ipfs hosted image [**here**]({ipfs_link})!')
+            await message.edit(embed=embed, view=SkynetView(self))
             return True
 
         # reword this function, may not need caption
         caption, embed = generate_reply_caption(
-            user, params, tx_hash, worker, reward)
+            user, params, tx_hash, worker, reward, self.explorer_domain)
 
-        if not resp or resp.status_code != 200:
-            logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
-            embed.add_field(name='Error', value=f'couldn\'t get ipfs hosted image [**here**]({ipfs_link})!')
-            await message.edit(embed=embed, view=SkynetView(self))
-        else:
-            logging.info(f'success! sending generated image')
-            await message.delete()
-            if file_id:  # img2img
-                embed.set_thumbnail(
-                    url='https://ipfs.skygpu.net/ipfs/' + binary_data + '/image.png')
-                embed.set_image(url=ipfs_link)
-                await send(embed=embed, view=SkynetView(self))
-            else:  # txt2img
-                embed.set_image(url=ipfs_link)
-                await send(embed=embed, view=SkynetView(self))
+        logging.info(f'success! sending generated image')
+        await message.delete()
+        if file_id:  # img2img
+            embed.set_thumbnail(
+                url='https://ipfs.skygpu.net/ipfs/' + binary_data + '/image.png')
+            embed.set_image(url=ipfs_link)
+            await send(embed=embed, view=SkynetView(self))
+        else:  # txt2img
+            embed.set_image(url=ipfs_link)
+            await send(embed=embed, view=SkynetView(self))
 
         return True
