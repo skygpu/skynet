@@ -8,7 +8,10 @@ from functools import partial
 
 import click
 
-from leap.sugar import Name, asset_from_str
+from leap.sugar import Name, ListArgument, asset_from_str, symbol_from_str
+import msgspec
+
+from skynet.protocol import ComputeRequest, ParamsStruct, RequestRow
 
 from .config import *
 from .constants import *
@@ -93,37 +96,49 @@ def download():
 @click.option('--jobs', '-j', default=1)
 @click.option('--model', '-m', default='stabilityai/stable-diffusion-xl-base-1.0')
 @click.option(
-    '--prompt', '-p', default='a red old tractor in a sunny wheat field')
-@click.option('--output', '-o', default='output.png')
-@click.option('--width', '-w', default=1024)
-@click.option('--height', '-h', default=1024)
+    '--prompt', '-p',
+    default='cyberpunk skynet terminator skull a post impressionist oil painting with muted colors authored by Paul Cézanne, Paul Gauguin, Vincent van Gogh, Georges Seurat')
 @click.option('--guidance', '-g', default=10)
 @click.option('--step', '-s', default=26)
+@click.option('--width', '-w', default=1024)
+@click.option('--height', '-h', default=1024)
 @click.option('--seed', '-S', default=None)
-@click.option('--upscaler', '-U', default='x4')
-@click.option('--binary_data', '-b', default='')
+@click.option('--input', '-i', multiple=True)
 @click.option('--strength', '-Z', default=None)
 def enqueue(
     reward: str,
     jobs: int,
+    model: str,
+    prompt: str,
+    guidance: float,
+    step: int,
     **kwargs
 ):
     import trio
     from leap.cleos import CLEOS
 
     config = load_skynet_toml()
+    logging.basicConfig(level='INFO')
 
     key = load_key(config, 'skynet.user.key')
     account = load_key(config, 'skynet.user.account')
     permission = load_key(config, 'skynet.user.permission')
-    node_url = load_key(config, 'skynet.user.node_url')
+    node_url = load_key(config, 'skynet.node_url')
+
+    contract = load_key(config, 'skynet.contract')
 
     cleos = CLEOS(None, None, url=node_url, remote=node_url)
 
-    binary = kwargs['binary_data']
+    inputs = kwargs['input']
+    if len(inputs) > 0:
+        del kwargs['width']
+        del kwargs['height']
+
+    del kwargs['input']
+
     if not kwargs['strength']:
-        if binary:
-            raise ValueError('strength -Z param required if binary data passed')
+        if len(inputs) > 0:
+            raise ValueError('strength -Z param required if input data passed')
 
         del kwargs['strength']
 
@@ -131,28 +146,55 @@ def enqueue(
         kwargs['strength'] = float(kwargs['strength'])
 
     async def enqueue_n_jobs():
-        for i in range(jobs):
-            if not kwargs['seed']:
-                kwargs['seed'] = random.randint(0, 10e9)
+        actions = []
+        for _ in range(jobs):
+            if kwargs['seed']:
+                seed = kwargs['seed']
+            else:
+                seed = random.randint(0, 10e9)
 
-            req = json.dumps({
-                'method': 'diffuse',
-                'params': kwargs
+            _kwargs = kwargs.copy()
+            _kwargs['generator'] = seed
+            del _kwargs['seed']
+
+            request = ComputeRequest(
+                method='diffuse',
+                params=ParamsStruct(
+                    model=ModelParams(
+                        name=model,
+                        pipe_fqn='diffusers.DiffusionPipeline',
+                        setup={'variant': 'fp16'}
+                    ),
+                    runtime_args=[prompt],
+                    runtime_kwargs={
+                        'guidance_scale': guidance,
+                        'num_inference_steps': step,
+                        **_kwargs
+                    }
+                )
+            )
+
+            req = msgspec.json.encode(request)
+
+            actions.append({
+                'account': contract,
+                'name': 'enqueue',
+                'data': [
+                    Name(account),
+                    ListArgument(req, 'uint8'),
+                    ListArgument(inputs, 'string'),
+                    asset_from_str(reward),
+                    1
+                ],
+                'authorization': [{
+                    'actor': account,
+                    'permission': permission
+                }]
             })
 
-            res = await cleos.a_push_action(
-                'telos.gpu',
-                'enqueue',
-                {
-                    'user': Name(account),
-                    'request_body': req,
-                    'binary_data': binary,
-                    'reward': asset_from_str(reward),
-                    'min_verification': 1
-                },
-                account, key, permission,
-            )
-            print(res)
+        # breakpoint()
+        res = await cleos.a_push_actions(actions, key)
+        print(res)
 
     trio.run(enqueue_n_jobs)
 
@@ -169,14 +211,15 @@ def clean(
     key = load_key(config, 'skynet.user.key')
     account = load_key(config, 'skynet.user.account')
     permission = load_key(config, 'skynet.user.permission')
-    node_url = load_key(config, 'skynet.user.node_url')
+    node_url = load_key(config, 'skynet.node_url')
+    contract = load_key(config, 'skynet.contract')
 
     logging.basicConfig(level=loglevel)
     cleos = CLEOS(None, None, url=node_url, remote=node_url)
     trio.run(
         partial(
             cleos.a_push_action,
-            'telos.gpu',
+            contract,
             'clean',
             {},
             account, key, permission=permission
@@ -187,34 +230,27 @@ def clean(
 def queue():
     import requests
     config = load_skynet_toml()
-    node_url = load_key(config, 'skynet.user.node_url')
+    node_url = load_key(config, 'skynet.node_url')
+    contract = load_key(config, 'skynet.contract')
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
         json={
-            'code': 'telos.gpu',
+            'code': contract,
             'table': 'queue',
-            'scope': 'telos.gpu',
+            'scope': contract,
             'json': True
         }
-    )
-    print(json.dumps(resp.json(), indent=4))
+    ).json()
 
-@skynet.command()
-@click.argument('request-id')
-def status(request_id: int):
-    import requests
-    config = load_skynet_toml()
-    node_url = load_key(config, 'skynet.user.node_url')
-    resp = requests.post(
-        f'{node_url}/v1/chain/get_table_rows',
-        json={
-            'code': 'telos.gpu',
-            'table': 'status',
-            'scope': request_id,
-            'json': True
-        }
-    )
-    print(json.dumps(resp.json(), indent=4))
+    # process hex body
+    results = []
+    for row in resp['rows']:
+        req = row.copy()
+        req['body'] = json.loads(bytes.fromhex(req['body']).decode())
+        results.append(req)
+
+    print(json.dumps(results, indent=4))
+
 
 @skynet.command()
 @click.argument('request-id')
@@ -226,13 +262,14 @@ def dequeue(request_id: int):
     key = load_key(config, 'skynet.user.key')
     account = load_key(config, 'skynet.user.account')
     permission = load_key(config, 'skynet.user.permission')
-    node_url = load_key(config, 'skynet.user.node_url')
+    node_url = load_key(config, 'skynet.node_url')
+    contract = load_key(config, 'skynet.contract')
 
     cleos = CLEOS(None, None, url=node_url, remote=node_url)
     res = trio.run(
         partial(
             cleos.a_push_action,
-            'telos.gpu',
+            contract,
             'dequeue',
             {
                 'user': Name(account),
@@ -245,33 +282,39 @@ def dequeue(request_id: int):
 
 
 @skynet.command()
-@click.option(
-    '--token-contract', '-c', default='eosio.token')
-@click.option(
-    '--token-symbol', '-S', default='4,GPU')
+@click.argument(
+    'token-contract', required=True)
+@click.argument(
+    'token-symbol', required=True)
+@click.argument(
+    'nonce', required=True)
 def config(
     token_contract: str,
-    token_symbol: str
+    token_symbol: str,
+    nonce: int
 ):
     import trio
     from leap.cleos import CLEOS
 
+    logging.basicConfig(level='INFO')
     config = load_skynet_toml()
 
     key = load_key(config, 'skynet.user.key')
     account = load_key(config, 'skynet.user.account')
     permission = load_key(config, 'skynet.user.permission')
-    node_url = load_key(config, 'skynet.user.node_url')
+    node_url = load_key(config, 'skynet.node_url')
+    contract = load_key(config, 'skynet.contract')
 
     cleos = CLEOS(None, None, url=node_url, remote=node_url)
     res = trio.run(
         partial(
             cleos.a_push_action,
-            'telos.gpu',
+            contract,
             'config',
             {
-                'token_contract': token_contract,
-                'token_symbol': token_symbol,
+                'token_contract': Name(token_contract),
+                'token_symbol': symbol_from_str(token_symbol),
+                'nonce': int(nonce)
             },
             account, key, permission=permission
         )
@@ -290,17 +333,18 @@ def deposit(quantity: str):
     key = load_key(config, 'skynet.user.key')
     account = load_key(config, 'skynet.user.account')
     permission = load_key(config, 'skynet.user.permission')
-    node_url = load_key(config, 'skynet.user.node_url')
+    node_url = load_key(config, 'skynet.node_url')
+    contract = load_key(config, 'skynet.contract')
     cleos = CLEOS(None, None, url=node_url, remote=node_url)
 
     res = trio.run(
         partial(
             cleos.a_push_action,
-            'telos.gpu',
+            'eosio.token',
             'transfer',
             {
                 'sender': Name(account),
-                'recipient': Name('telos.gpu'),
+                'recipient': Name(contract),
                 'amount': asset_from_str(quantity),
                 'memo': f'{account} transferred {quantity} to telos.gpu'
             },
@@ -352,7 +396,7 @@ def dgpu(
     assert 'skynet' in config
     assert 'dgpu' in config['skynet']
 
-    trio.run(open_dgpu_node, config['skynet']['dgpu'])
+    trio.run(open_dgpu_node, config['skynet'])
 
 
 @run.command()
@@ -375,30 +419,30 @@ def telegram(
     logging.basicConfig(level=loglevel)
 
     config = load_skynet_toml()
-    tg_token = load_key(config, 'skynet.telegram.tg_token')
+    tg_token = load_key(config, 'skynet.telegram.token')
 
     key = load_key(config, 'skynet.telegram.key')
     account = load_key(config, 'skynet.telegram.account')
     permission = load_key(config, 'skynet.telegram.permission')
-    node_url = load_key(config, 'skynet.telegram.node_url')
-    hyperion_url = load_key(config, 'skynet.telegram.hyperion_url')
+    node_url = load_key(config, 'skynet.node_url')
+    hyperion_url = load_key(config, 'skynet.hyperion_url')
 
     try:
-        ipfs_gateway_url = load_key(config, 'skynet.telegram.ipfs_gateway_url')
+        ipfs_gateway_url = load_key(config, 'skynet.ipfs_gateway_url')
 
     except ConfigParsingError:
         ipfs_gateway_url = None
 
-    ipfs_url = load_key(config, 'skynet.telegram.ipfs_url')
+    ipfs_url = load_key(config, 'skynet.ipfs_url')
 
     try:
-        explorer_domain = load_key(config, 'skynet.telegram.explorer_domain')
+        explorer_domain = load_key(config, 'skynet.explorer_domain')
 
     except ConfigParsingError:
         explorer_domain = DEFAULT_EXPLORER_DOMAIN
 
     try:
-        ipfs_domain = load_key(config, 'skynet.telegram.ipfs_domain')
+        ipfs_domain = load_key(config, 'skynet.ipfs_domain')
 
     except ConfigParsingError:
         ipfs_domain = DEFAULT_IPFS_DOMAIN
@@ -445,25 +489,25 @@ def discord(
     logging.basicConfig(level=loglevel)
 
     config = load_skynet_toml()
-    dc_token = load_key(config, 'skynet.discord.dc_token')
+    dc_token = load_key(config, 'skynet.discord.token')
 
     key = load_key(config, 'skynet.discord.key')
     account = load_key(config, 'skynet.discord.account')
     permission = load_key(config, 'skynet.discord.permission')
-    node_url = load_key(config, 'skynet.discord.node_url')
-    hyperion_url = load_key(config, 'skynet.discord.hyperion_url')
+    node_url = load_key(config, 'skynet.node_url')
+    hyperion_url = load_key(config, 'skynet.hyperion_url')
 
-    ipfs_gateway_url = load_key(config, 'skynet.discord.ipfs_gateway_url')
-    ipfs_url = load_key(config, 'skynet.discord.ipfs_url')
+    ipfs_gateway_url = load_key(config, 'skynet.ipfs_gateway_url')
+    ipfs_url = load_key(config, 'skynet.ipfs_url')
 
     try:
-        explorer_domain = load_key(config, 'skynet.discord.explorer_domain')
+        explorer_domain = load_key(config, 'skynet.explorer_domain')
 
     except ConfigParsingError:
         explorer_domain = DEFAULT_EXPLORER_DOMAIN
 
     try:
-        ipfs_domain = load_key(config, 'skynet.discord.ipfs_domain')
+        ipfs_domain = load_key(config, 'skynet.ipfs_domain')
 
     except ConfigParsingError:
         ipfs_domain = DEFAULT_IPFS_DOMAIN
@@ -509,8 +553,8 @@ def pinner(loglevel):
     from .ipfs.pinner import SkynetPinner
 
     config = load_skynet_toml()
-    hyperion_url = load_key(config, 'skynet.pinner.hyperion_url')
-    ipfs_url = load_key(config, 'skynet.pinner.ipfs_url')
+    hyperion_url = load_key(config, 'skynet.hyperion_url')
+    ipfs_url = load_key(config, 'skynet.ipfs_url')
 
     logging.basicConfig(level=loglevel)
     ipfs_node = AsyncIPFSHTTP(ipfs_url)
