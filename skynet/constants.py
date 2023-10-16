@@ -1,5 +1,8 @@
 #!/usr/bin/python
 
+from skynet.protocol import ModelParams
+
+
 VERSION = '0.1a12'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
@@ -167,7 +170,11 @@ DEFAULT_UPSCALER = None
 DEFAULT_CONFIG_PATH = 'skynet.toml'
 
 DEFAULT_INITAL_MODELS = [
-    'stabilityai/stable-diffusion-xl-base-1.0'
+    ModelParams(
+        name='stabilityai/stable-diffusion-xl-base-1.0',
+        pipe_fqn='diffusers.DiffusionPipeline',
+        setup={'variant': 'fp16'}
+    )
 ]
 
 DATE_FORMAT = '%B the %dth %Y, %H:%M:%S'

@@ -1,8 +1,9 @@
 #!/usr/bin/python
 
 import json
-import logging
 import time
+import random
+import logging
 import traceback
 
 from hashlib import sha256
@@ -19,6 +20,7 @@ from skynet.constants import MODELS, VERSION
 from skynet.dgpu.errors import *
 from skynet.dgpu.compute import SkynetMM
 from skynet.dgpu.network import SkynetGPUConnector
+from skynet.protocol import ComputeRequest, ModelParams, ParamsStruct, RequestRow
 
 
 def convert_reward_to_int(reward_str):
@@ -87,9 +89,12 @@ class SkynetDGPUDaemon:
 
     async def should_cancel_work(self, request_id: int):
         self._benchmark.append(time.time())
-        competitors = self.conn.get_competitors_for_request(request_id)
-        if competitors == None:
-            return True
+        status = self.conn.get_status_for_request(request_id)
+        competitors = [
+            s.worker
+            for s in status
+            if s.worker != self.account
+        ]
         return bool(self.non_compete & set(competitors))
 
     async def generate_api(self):
@@ -106,25 +111,37 @@ class SkynetDGPUDaemon:
 
         return app
 
-    def find_best_requests(self) -> list[dict]:
+    def find_best_requests(self) -> list[tuple[RequestRow, ComputeRequest]]:
         queue = self.conn.get_queue()
 
-        # for _ in range(3):
-        #     random.shuffle(queue)
+        for _ in range(3):
+            random.shuffle(queue)
 
-        # queue = sorted(
-        #     queue,
-        #     key=lambda req: convert_reward_to_int(req['reward']),
-        #     reverse=True
-        # )
+        queue = sorted(
+            queue,
+            key=lambda req: convert_reward_to_int(req.reward),
+            reverse=True
+        )
 
         requests = []
         for req in queue:
-            rid = req['nonce']
+            rid = req.nonce
 
             # parse request
-            body = json.loads(req['body'])
-            model = body['params']['model']
+            try:
+                req_json = json.loads(req.body)
+                compute_request = ComputeRequest(**req_json)
+                compute_request.params = ParamsStruct(**req_json['params'])
+                compute_request.params.model = ModelParams(**req_json['params']['model'])
+                model = compute_request.params.model.name
+
+            except TypeError as e:
+                logging.warning(f'Couldn\'t parse request: {e}')
+                continue
+
+            except json.JSONDecodeError as e:
+                logging.warning(f'Couldn\'t parse request: {e}')
+                continue
 
             # if model not known
             if model not in MODELS:
@@ -140,7 +157,7 @@ class SkynetDGPUDaemon:
             if model in self.model_blacklist:
                 continue
 
-            my_results = [res['id'] for res in self.conn.get_my_results()]
+            my_results = [res.id for res in self.conn.get_my_results()]
 
             # if this worker already on it
             if rid in my_results:
@@ -150,13 +167,17 @@ class SkynetDGPUDaemon:
             if status == None:
                 continue
 
-            if self.non_compete & set(self.conn.get_competitors_for_request(rid)):
+            if self.non_compete & set([
+                s.worker
+                for s in status
+                if s.worker != self.account
+            ]):
                 continue
 
             if len(status) > self.max_concurrent:
                 continue
 
-            requests.append(req)
+            requests.append((req, compute_request))
 
         return requests
 
@@ -164,24 +185,26 @@ class SkynetDGPUDaemon:
         # check worker is registered
         me = self.conn.get_on_chain_worker_info(self.account)
         if not me:
-            ec, out = await self.conn.register_worker()
-            if ec != 0:
+            res = await self.conn.register_worker()
+            if 'error' in res:
                 raise DGPUDaemonError(f'Couldn\'t register worker! {out}')
 
             me = self.conn.get_on_chain_worker_info(self.account)
+            if not me:
+                raise DGPUDaemonError('Unknown error while registering')
 
         # find if reported on chain gpus match local
         found_difference = False
         for i in range(self.mm.num_gpus):
-            chain_gpu = me['cards'][i]
+            chain_gpu = me.cards[i]
 
             gpu = self.mm.gpus[i]
             gpu_v = f'{gpu.major}.{gpu.minor}'
 
-            found_difference = gpu.name != chain_gpu['card_name']
-            found_difference = gpu_v != chain_gpu['version']
-            found_difference = gpu.total_memory != chain_gpu['total_memory']
-            found_difference = gpu.multi_processor_count != chain_gpu['mp_count']
+            found_difference = gpu.name != chain_gpu.card_name
+            found_difference = gpu_v != chain_gpu.version
+            found_difference = gpu.total_memory != chain_gpu.total_memory
+            found_difference = gpu.multi_processor_count != chain_gpu.mp_count
             if found_difference:
                 break
 
@@ -189,20 +212,24 @@ class SkynetDGPUDaemon:
         if found_difference:
             await self.conn.flush_cards()
             for i, gpu in enumerate(self.mm.gpus):
-                ec, _ = await self.conn.add_card(
+                res = await self.conn.add_card(
                     gpu.name, f'{gpu.major}.{gpu.minor}',
                     gpu.total_memory, gpu.multi_processor_count,
                     '',
                     is_online
                 )
-                if ec != 0:
+                if 'error' in res:
                     raise DGPUDaemonError(f'error while reporting card {i}')
 
         return found_difference
 
     async def all_gpu_set_online_flag(self, is_online: bool):
-        for i, chain_gpu in enumerate(me['cards']):
-            if chain_gpu['is_online'] != is_online:
+        me = self.conn.get_on_chain_worker_info(self.account)
+        if not me:
+            raise DGPUDaemonError('Couldn\'t find worker info!')
+
+        for i, chain_gpu in enumerate(me.cards):
+            if chain_gpu.is_online != is_online:
                 await self.conn.toggle_card(i)
 
     async def serve_forever(self):
@@ -219,23 +246,24 @@ class SkynetDGPUDaemon:
                 requests = self.find_best_requests()
 
                 if len(requests) > 0:
-                    request = requests[0]
-                    rid = request['nonce']
-                    body = json.loads(request['body'])
+                    request, compute_request = requests[0]
+                    rid = request.nonce
+                    body = json.loads(request.body)
+                    logging.info(f'trying to process req: {rid}')
 
-                    inputs = await self.conn.get_inputs(request['binary_inputs'])
-
-                    hash_str = (
-                        str(request['nonce'])
+                    hash_buf = (
+                        str(request.nonce).encode()
                         +
-                        request['body']
+                        request.body.encode()
                         +
-                        ''.join([_in for _in in request['binary_inputs']])
+                        b''.join([_in.encode() for _in in request.inputs])
                     )
-                    logging.info(f'hashing: {hash_str}')
-                    request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
+                    logging.info(f'hashing str of length {len(hash_buf)}')
+                    request_hash = sha256(hash_buf).hexdigest()
 
-                    # TODO: validate request
+                    inputs = []
+                    if len(request.inputs) > 0:
+                        inputs = await self.conn.get_inputs(request.inputs)
 
                     # perform work
                     logging.info(f'working on {body}')
@@ -247,19 +275,17 @@ class SkynetDGPUDaemon:
                     else:
                         try:
                             output_type = 'png'
-                            if 'output_type' in body['params']:
-                                output_type = body['params']['output_type']
+                            if 'output_type' in compute_request.params.runtime_kwargs:
+                                output_type = compute_request.params.runtime_kwargs['output_type']
 
-                            output = None
-                            output_hash = None
+                            outputs = []
                             match self.backend:
                                 case 'sync-on-thread':
                                     self.mm._should_cancel = self.should_cancel_work
-                                    output_hash, output = await trio.to_thread.run_sync(
+                                    outputs = await trio.to_thread.run_sync(
                                         partial(
                                             self.mm.compute_one,
-                                            rid,
-                                            body['method'], body['params'],
+                                            rid, compute_request,
                                             inputs=inputs
                                         )
                                     )
@@ -271,9 +297,9 @@ class SkynetDGPUDaemon:
                             self._last_benchmark = self._benchmark
                             self._benchmark = []
 
-                            ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
+                            outputs = await self.conn.publish_on_ipfs(outputs)
 
-                            await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
+                            await self.conn.submit_work(rid, request_hash, outputs)
 
                         except BaseException as e:
                             traceback.print_exc()
