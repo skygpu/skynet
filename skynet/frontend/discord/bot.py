@@ -44,7 +44,7 @@ class DiscordBot(commands.Bot):
                     await channel.send('Skynet bot online', view=SkynetView(self.bot))
                     # intro_msg = await channel.send('Welcome to the Skynet discord bot.\nSkynet is a decentralized compute layer, focused on supporting AI paradigms. Skynet leverages blockchain technology to manage work requests and fills. We are currently featuring image generation and support 11 different models. Get started with the /help command, or just click on some buttons. Here is an example command to generate an image:\n/txt2img a big red tractor in a giant field of corn')
                     intro_msg = await channel.send("Welcome to Skynet's Discord Bot,\n\nSkynet operates as a decentralized compute layer, offering a wide array of support for diverse AI paradigms through the use of blockchain technology. Our present focus is image generation, powered by 11 distinct models.\n\nTo begin exploring, use the '/help' command or directly interact with the provided buttons. Here is an example command to generate an image:\n\n'/txt2img a big red tractor in a giant field of corn'")
-                    await intro_msg.pin()
+                    # await intro_msg.pin()
 
         print("\n==============")
         print("Logged in as")

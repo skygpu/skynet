@@ -17,6 +17,7 @@ from leap.hyperion import HyperionAPI
 # from telebot.types import InputMediaPhoto
 
 import discord
+import requests
 import io
 from PIL import Image, UnidentifiedImageError
 
@@ -295,10 +296,20 @@ class SkynetDiscordFrontend:
         logging.info(f'success! sending generated image')
         await message.delete()
         if file_id:  # img2img
-            embed.set_thumbnail(
-                url='https://ipfs.skygpu.net/ipfs/' + binary_data + '/image.png')
             embed.set_image(url=ipfs_link)
-            await send(embed=embed, view=SkynetView(self))
+            orig_url = f'https://{self.ipfs_domain}/ipfs/' + binary_data
+            res = requests.get(orig_url, stream=True)
+            if res.status_code == 200:
+                with io.BytesIO(res.content) as img:
+                    file = discord.File(img, filename='image.png')
+                    embed.set_thumbnail(url='attachment://image.png')
+                    await send(embed=embed, view=SkynetView(self), file=file)
+            # orig_url = f'https://{self.ipfs_domain}/ipfs/' \
+            #         + binary_data + '/image.png'
+            # embed.set_thumbnail(
+            #     url=orig_url)
+            else:
+                await send(embed=embed, view=SkynetView(self))
         else:  # txt2img
             embed.set_image(url=ipfs_link)
             await send(embed=embed, view=SkynetView(self))
