@@ -17,7 +17,9 @@ from leap.hyperion import HyperionAPI
 # from telebot.types import InputMediaPhoto
 
 import discord
+import requests
 import io
+from PIL import Image, UnidentifiedImageError
 
 from skynet.db import open_database_connection
 from skynet.ipfs import get_ipfs_file, AsyncIPFSHTTP
@@ -66,7 +68,7 @@ class SkynetDiscordFrontend:
         self.bot = DiscordBot(self)
         self.cleos = CLEOS(None, None, url=node_url, remote=node_url)
         self.hyperion = HyperionAPI(hyperion_url)
-        self.ipfs_node = AsyncIPFSHTTP(ipfs_node)
+        self.ipfs_node = AsyncIPFSHTTP(ipfs_url)
 
         self._exit_stack = ExitStack()
         self._async_exit_stack = AsyncExitStack()
@@ -234,7 +236,7 @@ class SkynetDiscordFrontend:
             await message.edit(embed=embed)
             return False
 
-        tx_link = f'[**Your result on Skynet Explorer**](https://explorer.{DEFAULT_DOMAIN}/v2/explore/transaction/{tx_hash})'
+        tx_link = f'[**Your result on Skynet Explorer**](https://{self.explorer_domain}/v2/explore/transaction/{tx_hash})'
 
         msg_text += f'**request processed!**\n{tx_link}\n[{timestamp_pretty()}] *trying to download image...*\n '
         embed = discord.Embed(
@@ -264,7 +266,8 @@ class SkynetDiscordFrontend:
                         results[link] = png_img
 
                 except UnidentifiedImageError:
-                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+                    logging.warning(
+                        f'couldn\'t get ipfs binary data at {link}!')
 
         tasks = [
             get_and_set_results(ipfs_link),
@@ -280,32 +283,35 @@ class SkynetDiscordFrontend:
             png_img = results[ipfs_link]
 
         if not png_img:
-            await self.update_status_message(
-                status_msg,
-                caption,
-                reply_markup=build_redo_menu(),
-                parse_mode='HTML'
-            )
+            logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
+            embed.add_field(
+                name='Error', value=f'couldn\'t get ipfs hosted image [**here**]({ipfs_link})!')
+            await message.edit(embed=embed, view=SkynetView(self))
             return True
 
         # reword this function, may not need caption
         caption, embed = generate_reply_caption(
-            user, params, tx_hash, worker, reward)
+            user, params, tx_hash, worker, reward, self.explorer_domain)
 
-        if not resp or resp.status_code != 200:
-            logging.error(f'couldn\'t get ipfs hosted image at {ipfs_link}!')
-            embed.add_field(name='Error', value=f'couldn\'t get ipfs hosted image [**here**]({ipfs_link})!')
-            await message.edit(embed=embed, view=SkynetView(self))
-        else:
-            logging.info(f'success! sending generated image')
-            await message.delete()
-            if file_id:  # img2img
-                embed.set_thumbnail(
-                    url='https://ipfs.skygpu.net/ipfs/' + binary_data + '/image.png')
-                embed.set_image(url=ipfs_link)
+        logging.info(f'success! sending generated image')
+        await message.delete()
+        if file_id:  # img2img
+            embed.set_image(url=ipfs_link)
+            orig_url = f'https://{self.ipfs_domain}/ipfs/' + binary_data
+            res = requests.get(orig_url, stream=True)
+            if res.status_code == 200:
+                with io.BytesIO(res.content) as img:
+                    file = discord.File(img, filename='image.png')
+                    embed.set_thumbnail(url='attachment://image.png')
+                    await send(embed=embed, view=SkynetView(self), file=file)
+            # orig_url = f'https://{self.ipfs_domain}/ipfs/' \
+            #         + binary_data + '/image.png'
+            # embed.set_thumbnail(
+            #     url=orig_url)
+            else:
                 await send(embed=embed, view=SkynetView(self))
-            else:  # txt2img
-                embed.set_image(url=ipfs_link)
-                await send(embed=embed, view=SkynetView(self))
+        else:  # txt2img
+            embed.set_image(url=ipfs_link)
+            await send(embed=embed, view=SkynetView(self))
 
         return True
