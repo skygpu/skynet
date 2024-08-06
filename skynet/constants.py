@@ -16,7 +16,8 @@ MODELS = {
     'lambdalabs/sd-pokemon-diffusers':          {'short': 'pokemon',     'mem': 6},
     'Envvi/Inkpunk-Diffusion':                  {'short': 'ink',         'mem': 6},
     'nousr/robo-diffusion':                     {'short': 'robot',       'mem': 6},
-
+    # Note: not sure about mem
+    'black-forest-labs/FLUX.1-dev':             {'short': 'flux',        'mem': 8.3},
     # default is always last
     'stabilityai/stable-diffusion-xl-base-1.0': {'short': 'stablexl',    'mem': 8.3},
 }
