@@ -51,7 +51,7 @@ realesrgan = {version = '^0.3.0'}
 quart-trio = {version = '^0.11.0'}
 torchvision = {version = '0.15.2+cu118', source = 'torch'}
 accelerate = {version = '^0.32.0'}
-transformers = {version = '^4.33.2'}
+transformers = {version = '^4.37.2'}
 sentencepiece = {version = '^0.2.0'}
 huggingface-hub = {version = '^0.24.5'}
 invisible-watermark = {version = '^0.2.0'}

@@ -17,7 +17,7 @@ MODELS = {
     'Envvi/Inkpunk-Diffusion':                          {'short': 'ink',         'mem': 6},
     'nousr/robo-diffusion':                             {'short': 'robot',       'mem': 6},
     # Note: not sure about mem
-    'black-forest-labs/FLUX.1-dev':                     {'short': 'flux',        'mem': 8.3},
+    # 'black-forest-labs/FLUX.1-dev':                     {'short': 'flux',        'mem': 8.3},
     'stabilityai/stable-diffusion-3-medium-diffusers':  {'short': 'stable3', 'mem': 8.3},
     # default is always last
     'stabilityai/stable-diffusion-xl-base-1.0':         {'short': 'stablexl',    'mem': 8.3},
