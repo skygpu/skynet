@@ -45,8 +45,7 @@ triton = {version = '2.0.0', source = 'torch'}
 basicsr = {version = '^1.4.2'}
 xformers = {version = '^0.0.22'}
 hypercorn = {version = '^0.14.4'}
-# diffusers = {version = '^0.30.0.dev0'}
-diffusers = {git = 'https://github.com/iamzoltan/diffusers.git', branch = 'flux-pipeline-vae-slicing-tiling'}
+diffusers = {version = '^0.30.3'}
 requests = {version = '2.31.0'}
 realesrgan = {version = '^0.3.0'}
 quart-trio = {version = '^0.11.0'}
