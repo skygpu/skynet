@@ -45,13 +45,15 @@ triton = {version = '2.0.0', source = 'torch'}
 basicsr = {version = '^1.4.2'}
 xformers = {version = '^0.0.22'}
 hypercorn = {version = '^0.14.4'}
-diffusers = {version = '^0.21.2'}
+diffusers = {version = '^0.30.3'}
+requests = {version = '2.31.0'}
 realesrgan = {version = '^0.3.0'}
 quart-trio = {version = '^0.11.0'}
 torchvision = {version = '0.15.2+cu118', source = 'torch'}
-accelerate = {version = '^0.23.0'}
-transformers = {version = '^4.33.2'}
-huggingface-hub = {version = '^0.17.3'}
+accelerate = {version = '^0.32.0'}
+transformers = {version = '^4.37.2'}
+sentencepiece = {version = '^0.2.0'}
+huggingface-hub = {version = '^0.24.5'}
 invisible-watermark = {version = '^0.2.0'}
 
 [[tool.poetry.source]]
@@ -65,3 +67,4 @@ build-backend = 'poetry.core.masonry.api'
 
 [tool.poetry.scripts]
 skynet = 'skynet.cli:skynet'
+txt2img = 'skynet.cli:txt2img'
