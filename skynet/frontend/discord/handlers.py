@@ -309,7 +309,7 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
     # async def queue(message):
     #     an_hour_ago = datetime.now() - timedelta(hours=1)
     #     queue = await cleos.aget_table(
-    #         'telos.gpu', 'telos.gpu', 'queue',
+    #         'gpu.scd', 'gpu.scd', 'queue',
     #         index_position=2,
     #         key_type='i64',
     #         sort='desc',

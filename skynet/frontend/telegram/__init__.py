@@ -143,7 +143,7 @@ class SkynetTelegramFrontend:
 
         reward = '20.0000 GPU'
         res = await self.cleos.a_push_action(
-            'telos.gpu',
+            'gpu.scd',
             'enqueue',
             {
                 'user': Name(self.account),
@@ -193,7 +193,7 @@ class SkynetTelegramFrontend:
             try:
                 submits = await self.hyperion.aget_actions(
                     account=self.account,
-                    filter='telos.gpu:submit',
+                    filter='gpu.scd:submit',
                     sort='desc',
                     after=request_time
                 )

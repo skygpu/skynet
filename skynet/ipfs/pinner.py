@@ -44,8 +44,8 @@ class SkynetPinner:
 
     async def capture_enqueues(self, after: datetime):
         enqueues = await self.hyperion.aget_actions(
-            account='telos.gpu',
-            filter='telos.gpu:enqueue',
+            account='gpu.scd',
+            filter='gpu.scd:enqueue',
             sort='desc',
             after=after.isoformat(),
             limit=1000
@@ -63,8 +63,8 @@ class SkynetPinner:
 
     async def capture_submits(self, after: datetime):
         submits = await self.hyperion.aget_actions(
-            account='telos.gpu',
-            filter='telos.gpu:submit',
+            account='gpu.scd',
+            filter='gpu.scd:submit',
             sort='desc',
             after=after.isoformat(),
             limit=1000
