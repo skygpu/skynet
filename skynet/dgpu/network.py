@@ -72,7 +72,7 @@ class SkynetGPUConnector:
         return await failable(
             partial(
                 self.cleos.aget_table,
-                'telos.gpu', 'telos.gpu', 'queue',
+                'gpu.scd', 'gpu.scd', 'queue',
                 index_position=2,
                 key_type='i64',
                 lower_bound=int(time.time()) - 3600
@@ -83,14 +83,14 @@ class SkynetGPUConnector:
         return await failable(
             partial(
                 self.cleos.aget_table,
-                'telos.gpu', request_id, 'status'), ret_fail=[])
+                'gpu.scd', request_id, 'status'), ret_fail=[])
 
     async def get_global_config(self):
         logging.info('get_global_config')
         rows = await failable(
             partial(
                 self.cleos.aget_table,
-                'telos.gpu', 'telos.gpu', 'config'))
+                'gpu.scd', 'gpu.scd', 'config'))
 
         if rows:
             return rows[0]
@@ -102,7 +102,7 @@ class SkynetGPUConnector:
         rows = await failable(
             partial(
                 self.cleos.aget_table,
-                'telos.gpu', 'telos.gpu', 'users',
+                'gpu.scd', 'gpu.scd', 'users',
                 index_position=1,
                 key_type='name',
                 lower_bound=self.account,
@@ -149,7 +149,7 @@ class SkynetGPUConnector:
         return await failable(
             partial(
                 self.cleos.a_push_action,
-                'telos.gpu',
+                'gpu.scd',
                 'workbegin',
                 {
                     'worker': self.account,
@@ -166,7 +166,7 @@ class SkynetGPUConnector:
         return await failable(
             partial(
                 self.cleos.a_push_action,
-                'telos.gpu',
+                'gpu.scd',
                 'workcancel',
                 {
                     'worker': self.account,
@@ -189,7 +189,7 @@ class SkynetGPUConnector:
             await failable(
                 partial(
                     self.cleos.a_push_action,
-                    'telos.gpu',
+                    'gpu.scd',
                     'withdraw',
                     {
                         'user': self.account,
@@ -205,7 +205,7 @@ class SkynetGPUConnector:
         return await failable(
             partial(
                 self.cleos.aget_table,
-                'telos.gpu', 'telos.gpu', 'results',
+                'gpu.scd', 'gpu.scd', 'results',
                 index_position=4,
                 key_type='name',
                 lower_bound=self.account,
@@ -224,7 +224,7 @@ class SkynetGPUConnector:
         return await failable(
             partial(
                 self.cleos.a_push_action,
-                'telos.gpu',
+                'gpu.scd',
                 'submit',
                 {
                     'worker': self.account,

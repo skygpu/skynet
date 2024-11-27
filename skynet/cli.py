@@ -141,7 +141,7 @@ def enqueue(
             })
 
             res = await cleos.a_push_action(
-                'telos.gpu',
+                'gpu.scd',
                 'enqueue',
                 {
                     'user': Name(account),
@@ -176,7 +176,7 @@ def clean(
     trio.run(
         partial(
             cleos.a_push_action,
-            'telos.gpu',
+            'gpu.scd',
             'clean',
             {},
             account, key, permission=permission
@@ -191,9 +191,9 @@ def queue():
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
         json={
-            'code': 'telos.gpu',
+            'code': 'gpu.scd',
             'table': 'queue',
-            'scope': 'telos.gpu',
+            'scope': 'gpu.scd',
             'json': True
         }
     )
@@ -208,7 +208,7 @@ def status(request_id: int):
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
         json={
-            'code': 'telos.gpu',
+            'code': 'gpu.scd',
             'table': 'status',
             'scope': request_id,
             'json': True
@@ -232,7 +232,7 @@ def dequeue(request_id: int):
     res = trio.run(
         partial(
             cleos.a_push_action,
-            'telos.gpu',
+            'gpu.scd',
             'dequeue',
             {
                 'user': Name(account),
@@ -267,7 +267,7 @@ def config(
     res = trio.run(
         partial(
             cleos.a_push_action,
-            'telos.gpu',
+            'gpu.scd',
             'config',
             {
                 'token_contract': token_contract,
@@ -296,13 +296,13 @@ def deposit(quantity: str):
     res = trio.run(
         partial(
             cleos.a_push_action,
-            'telos.gpu',
+            'gpu.scd',
             'transfer',
             {
                 'sender': Name(account),
-                'recipient': Name('telos.gpu'),
+                'recipient': Name('gpu.scd'),
                 'amount': asset_from_str(quantity),
-                'memo': f'{account} transferred {quantity} to telos.gpu'
+                'memo': f'{account} transferred {quantity} to gpu.scd'
             },
             account, key, permission=permission
         )
