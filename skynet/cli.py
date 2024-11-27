@@ -453,7 +453,12 @@ def discord(
     node_url = load_key(config, 'skynet.discord.node_url')
     hyperion_url = load_key(config, 'skynet.discord.hyperion_url')
 
-    ipfs_gateway_url = load_key(config, 'skynet.discord.ipfs_gateway_url')
+    try:
+        ipfs_gateway_url = load_key(config, 'skynet.discord.ipfs_gateway_url')
+
+    except ConfigParsingError:
+        ipfs_gateway_url = None
+
     ipfs_url = load_key(config, 'skynet.discord.ipfs_url')
 
     try:
