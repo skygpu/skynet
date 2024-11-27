@@ -42,6 +42,7 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
             await ctx.reply(content=reply_txt, view=SkynetView(frontend))
 
     bot.remove_command('help')
+
     @bot.command(name='help', help='Responds with a help')
     async def help(ctx):
         splt_msg = ctx.message.content.split(' ')
@@ -62,7 +63,7 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
         clean_cool_word = '\n'.join(CLEAN_COOL_WORDS)
         await ctx.send(content=f'```{clean_cool_word}```', view=SkynetView(frontend))
 
-    @bot.command(name='stats', help='See user statistics' )
+    @bot.command(name='stats', help='See user statistics')
     async def user_stats(ctx):
         user = ctx.author
 
@@ -96,9 +97,8 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
         prompt = ' '.join(ctx.message.content.split(' ')[1:])
 
         if len(prompt) == 0:
-            await status_msg.edit(content=
-                'Empty text prompt ignored.'
-            )
+            await status_msg.edit(content='Empty text prompt ignored.'
+                                  )
             await db_call('update_user_request', status_msg.id, 'Empty text prompt ignored.')
             return
 
@@ -209,14 +209,23 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
         file_id = str(file.id)
         # file bytes
         image_raw = await file.read()
+
+        user_config = {**user_row}
+        del user_config['id']
         with Image.open(io.BytesIO(image_raw)) as image:
             w, h = image.size
 
-            if w > 512 or h > 512:
+            if w > user_config['width'] or h > user_config['height']:
                 logging.warning(f'user sent img of size {image.size}')
-                image.thumbnail((512, 512))
+                image.thumbnail(
+                    (user_config['width'], user_config['height']))
                 logging.warning(f'resized it to {image.size}')
 
+            # if w > 512 or h > 512:
+            #     logging.warning(f'user sent img of size {image.size}')
+            #     image.thumbnail((512, 512))
+            #     logging.warning(f'resized it to {image.size}')
+            # image.save(f'ipfs-docker-staging/image.png', format='PNG')
             image_loc = 'ipfs-staging/image.png'
             image.save(image_loc, format='PNG')
 
@@ -228,9 +237,6 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
 
         logging.info(f'mid: {ctx.message.id}')
 
-        user_config = {**user_row}
-        del user_config['id']
-
         params = {
             'prompt': prompt,
             **user_config
@@ -240,8 +246,8 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
             'update_user_stats',
             user.id,
             'img2img',
-            last_file=file_id,
             last_prompt=prompt,
+            last_file=file_id,
             last_binary=ipfs_hash
         )
 
@@ -254,8 +260,6 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
         if success:
             await db_call('increment_generated', user.id)
 
-
-        
         # TODO: DELETE BELOW
         # user = 'testworker3'
         # status_msg = 'status'
@@ -314,7 +318,6 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
     #     await bot.reply_to(
     #         message, f'Total requests on skynet queue: {len(queue)}')
 
-
     # @bot.message_handler(commands=['config'])
     # async def set_config(message):
     #     user = message.from_user.id
@@ -360,7 +363,6 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
     #         return
     #
     #     await bot.send_message(GROUP_ID, message.text[4:])
-
 
     # generic txt2img handler
 
@@ -562,7 +564,6 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
     #         binary_data=binary
     #     )
 
-
     # "proxy" handlers just request routers
 
     # @bot.message_handler(commands=['txt2img'])
@@ -593,7 +594,6 @@ def create_handler_context(frontend: 'SkynetDiscordFrontend'):
     #     match method:
     #         case 'redo':
     #             await _redo(call)
-
 
     # catch all handler for things we dont support
 
