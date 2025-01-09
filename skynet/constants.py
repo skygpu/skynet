@@ -18,7 +18,7 @@ MODELS = {
     'nousr/robo-diffusion':                             {'short': 'robot',               'mem': 6,   'size': {'w': 512,  'h': 512}},
 
     # -1 is always inpaint default
-    'diffusers/stable-diffusion-xl-1.0-inpainting-0.1': {'short': 'stablexl-inpainting': 'mem': 8.3, 'size': {'w': 1024, 'h': 1024}},
+    'diffusers/stable-diffusion-xl-1.0-inpainting-0.1': {'short': 'stablexl-inpainting', 'mem': 8.3, 'size': {'w': 1024, 'h': 1024}},
 
     # default is always last
     'stabilityai/stable-diffusion-xl-base-1.0':         {'short': 'stablexl',            'mem': 8.3, 'size': {'w': 1024, 'h': 1024}},

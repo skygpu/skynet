@@ -29,9 +29,6 @@ poetry shell
 # test you can run this command
 skynet --help
 
-# launch ipfs node
-skynet run ipfs
-
 # to launch worker
 skynet run dgpu
 
@@ -76,9 +73,6 @@ docker pull guilledk/skynet:runtime-cuda
 
 # or build it (takes a bit of time)
 ./build_docker.sh
-
-# launch simple ipfs node
-./launch_ipfs.sh
 
 # run worker with all gpus
 docker run \

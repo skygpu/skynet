@@ -18,6 +18,7 @@ from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from diffusers import (
     DiffusionPipeline,
+    AutoPipelineForInpainting,
     EulerAncestralDiscreteScheduler
 )
 from realesrgan import RealESRGANer
@@ -57,6 +58,9 @@ def crop_image(image: Image, max_w: int, max_h: int) -> Image:
         image.thumbnail((max_w, max_h))
 
     return image.convert('RGB')
+
+def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
+    return crop_image(convert_from_bytes_to_img(raw), max_w, max_h)
 
 
 def pipeline_for(
@@ -205,7 +209,7 @@ def inpaint(
     seed: Optional[int] = None
 ):
     login(token=hf_token)
-    pipe = pipeline_for(model, image=True)
+    pipe = pipeline_for(model, image=True, inpainting=True)
 
     model_info = MODELS[model]
 
@@ -220,7 +224,7 @@ def inpaint(
     image = pipe(
         prompt,
         image=input_img,
-        mask_image=mask_img
+        mask_image=mask_img,
         strength=strength,
         guidance_scale=guidance, num_inference_steps=steps,
         generator=torch.Generator("cuda").manual_seed(seed)
