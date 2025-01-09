@@ -383,12 +383,6 @@ def telegram(
     node_url = load_key(config, 'skynet.telegram.node_url')
     hyperion_url = load_key(config, 'skynet.telegram.hyperion_url')
 
-    try:
-        ipfs_gateway_url = load_key(config, 'skynet.telegram.ipfs_gateway_url')
-
-    except ConfigParsingError:
-        ipfs_gateway_url = None
-
     ipfs_url = load_key(config, 'skynet.telegram.ipfs_url')
 
     try:
@@ -412,7 +406,6 @@ def telegram(
             hyperion_url,
             db_host, db_user, db_pass,
             ipfs_url,
-            remote_ipfs_node=ipfs_gateway_url,
             key=key,
             explorer_domain=explorer_domain,
             ipfs_domain=ipfs_domain
@@ -453,12 +446,6 @@ def discord(
     node_url = load_key(config, 'skynet.discord.node_url')
     hyperion_url = load_key(config, 'skynet.discord.hyperion_url')
 
-    try:
-        ipfs_gateway_url = load_key(config, 'skynet.discord.ipfs_gateway_url')
-
-    except ConfigParsingError:
-        ipfs_gateway_url = None
-
     ipfs_url = load_key(config, 'skynet.discord.ipfs_url')
 
     try:
@@ -482,7 +469,6 @@ def discord(
             hyperion_url,
             db_host, db_user, db_pass,
             ipfs_url,
-            remote_ipfs_node=ipfs_gateway_url,
             key=key,
             explorer_domain=explorer_domain,
             ipfs_domain=ipfs_domain
@@ -493,17 +479,6 @@ def discord(
 
     asyncio.run(_async_main())
 
-
-@run.command()
-@click.option('--loglevel', '-l', default='INFO', help='logging level')
-@click.option('--name', '-n', default='skynet-ipfs', help='container name')
-@click.option('--peer', '-p', default=(), help='connect to peer', multiple=True, type=str)
-def ipfs(loglevel, name, peer):
-    from skynet.ipfs.docker import open_ipfs_node
-
-    logging.basicConfig(level=loglevel)
-    with open_ipfs_node(name=name, peers=peer):
-        ...
 
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='logging level')
