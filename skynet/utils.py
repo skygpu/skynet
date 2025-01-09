@@ -63,6 +63,7 @@ def pipeline_for(
     model: str,
     mem_fraction: float = 1.0,
     image: bool = False,
+    inpainting: bool = False,
     cache_dir: str | None = None
 ) -> DiffusionPipeline:
 
@@ -102,8 +103,13 @@ def pipeline_for(
 
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
 
-    pipe = DiffusionPipeline.from_pretrained(
-        model, **params)
+    if inpainting:
+        pipe = AutoPipelineForInpainting.from_pretrained(
+            model, **params)
+
+    else:
+        pipe = DiffusionPipeline.from_pretrained(
+            model, **params)
 
     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
         pipe.scheduler.config)
@@ -168,14 +174,53 @@ def img2img(
     login(token=hf_token)
     pipe = pipeline_for(model, image=True)
 
+    model_info = MODELS[model]
+
     with open(img_path, 'rb') as img_file:
-        input_img = convert_from_bytes_and_crop(img_file.read(), 512, 512)
+        input_img = convert_from_bytes_and_crop(img_file.read(), model_info['size']['w'], model_info['size']['h'])
 
     seed = seed if seed else random.randint(0, 2 ** 64)
     prompt = prompt
     image = pipe(
         prompt,
         image=input_img,
+        strength=strength,
+        guidance_scale=guidance, num_inference_steps=steps,
+        generator=torch.Generator("cuda").manual_seed(seed)
+    ).images[0]
+
+    image.save(output)
+
+
+def inpaint(
+    hf_token: str,
+    model: str = 'diffusers/stable-diffusion-xl-1.0-inpainting-0.1',
+    prompt: str = 'a red old tractor in a sunny wheat field',
+    img_path: str = 'input.png',
+    mask_path: str = 'mask.png',
+    output: str = 'output.png',
+    strength: float = 1.0,
+    guidance: float = 10,
+    steps: int = 28,
+    seed: Optional[int] = None
+):
+    login(token=hf_token)
+    pipe = pipeline_for(model, image=True)
+
+    model_info = MODELS[model]
+
+    with open(img_path, 'rb') as img_file:
+        input_img = convert_from_bytes_and_crop(img_file.read(), model_info['size']['w'], model_info['size']['h'])
+
+    with open(mask_path, 'rb') as mask_file:
+        mask_img = convert_from_bytes_and_crop(mask_file.read(), model_info['size']['w'], model_info['size']['h'])
+
+    seed = seed if seed else random.randint(0, 2 ** 64)
+    prompt = prompt
+    image = pipe(
+        prompt,
+        image=input_img,
+        mask_image=mask_img
         strength=strength,
         guidance_scale=guidance, num_inference_steps=steps,
         generator=torch.Generator("cuda").manual_seed(seed)
