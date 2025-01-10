@@ -268,7 +268,7 @@ class SkynetGPUConnector:
         return file_cid
 
     async def get_input_data(self, ipfs_hash: str) -> Image:
-        ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
+        link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
 
         res = await get_ipfs_file(link, timeout=1)
         logging.info(f'got response from {link}')

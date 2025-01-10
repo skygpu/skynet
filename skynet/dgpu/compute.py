@@ -34,6 +34,7 @@ def prepare_params_for_diffuse(
                 inputs[1], params['width'], params['height'])
 
             _params['image'] = image
+            _params['mask_image'] = mask
             _params['strength'] = float(params['strength'])
 
         case 'img2img':

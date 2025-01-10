@@ -1,9 +1,17 @@
+import json
 
+from skynet.dgpu.compute import SkynetMM
+from skynet.constants import *
 from skynet.config import *
 
-async def test_txt2img():
+async def test_txt2img(dgpu):
+    conn, mm, daemon = dgpu
+    await conn.cancel_work(0, 'testing')
+
+    daemon._snap['requests'][0] = {}
     req = {
         'id': 0,
+        'nonce': 0,
         'body': json.dumps({
             "method": "txt2img",
             "params": {
@@ -16,25 +24,20 @@ async def test_txt2img():
                 "guidance": "7.5"
             }
         }),
-        'inputs': [],
+        'binary_data': '',
     }
 
-    config = load_skynet_toml(file_path=config_path)
-    hf_token = load_key(config, 'skynet.dgpu.hf_token')
-    hf_home = load_key(config, 'skynet.dgpu.hf_home')
-    set_hf_vars(hf_token, hf_home)
-
-    assert 'skynet' in config
-    assert 'dgpu' in config['skynet']
-
-    mm = SkynetMM(config['skynet']['dgpu'])
-
-    mm.maybe_serve_one(req)
+    await daemon.maybe_serve_one(req)
 
 
-async def test_img2img():
+async def test_img2img(dgpu):
+    conn, mm, daemon = dgpu
+    await conn.cancel_work(0, 'testing')
+
+    daemon._snap['requests'][0] = {}
     req = {
         'id': 0,
+        'nonce': 0,
         'body': json.dumps({
             "method": "img2img",
             "params": {
@@ -48,24 +51,19 @@ async def test_img2img():
                 "strength": "0.5"
             }
         }),
-        'inputs': ['QmZcGdXXVQfpco1G3tr2CGFBtv8xVsCwcwuq9gnJBWDymi'],
+        'binary_data': 'QmZcGdXXVQfpco1G3tr2CGFBtv8xVsCwcwuq9gnJBWDymi',
     }
 
-    config = load_skynet_toml(file_path=config_path)
-    hf_token = load_key(config, 'skynet.dgpu.hf_token')
-    hf_home = load_key(config, 'skynet.dgpu.hf_home')
-    set_hf_vars(hf_token, hf_home)
+    await daemon.maybe_serve_one(req)
 
-    assert 'skynet' in config
-    assert 'dgpu' in config['skynet']
+async def test_inpaint(dgpu):
+    conn, mm, daemon = dgpu
+    await conn.cancel_work(0, 'testing')
 
-    mm = SkynetMM(config['skynet']['dgpu'])
-
-    mm.maybe_serve_one(req)
-
-async def test_inpaint():
+    daemon._snap['requests'][0] = {}
     req = {
         'id': 0,
+        'nonce': 0,
         'body': json.dumps({
             "method": "inpaint",
             "params": {
@@ -79,20 +77,9 @@ async def test_inpaint():
                 "strength": "0.5"
             }
         }),
-        'inputs': [
-            'QmZcGdXXVQfpco1G3tr2CGFBtv8xVsCwcwuq9gnJBWDymi',
+        'binary_data':
+            'QmZcGdXXVQfpco1G3tr2CGFBtv8xVsCwcwuq9gnJBWDymi,' +
             'Qmccx1aXNmq5mZDS3YviUhgGHXWhQeHvca3AgA7MDjj2hR'
-        ],
     }
 
-    config = load_skynet_toml(file_path=config_path)
-    hf_token = load_key(config, 'skynet.dgpu.hf_token')
-    hf_home = load_key(config, 'skynet.dgpu.hf_home')
-    set_hf_vars(hf_token, hf_home)
-
-    assert 'skynet' in config
-    assert 'dgpu' in config['skynet']
-
-    mm = SkynetMM(config['skynet']['dgpu'])
-
-    mm.maybe_serve_one(req)
+    await daemon.maybe_serve_one(req)

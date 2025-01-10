@@ -146,6 +146,7 @@ class SkynetDGPUDaemon:
                 inputs = [
                     await self.conn.get_input_data(_input)
                     for _input in req['binary_data'].split(',')
+                    if _input
                 ]
 
                 hash_str = (

@@ -65,8 +65,8 @@ def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
 
 def pipeline_for(
     model: str,
+    mode: str,
     mem_fraction: float = 1.0,
-    mode: str = [],
     cache_dir: str | None = None
 ) -> DiffusionPipeline:
 
@@ -112,7 +112,7 @@ def pipeline_for(
     else:
         pipe_class = DiffusionPipeline
 
-    pipe = AutoPipelineForInpainting.from_pretrained(
+    pipe = pipe_class.from_pretrained(
         model, **params)
 
     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
