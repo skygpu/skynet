@@ -18,6 +18,8 @@ from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from diffusers import (
     DiffusionPipeline,
+    AutoPipelineForText2Image,
+    AutoPipelineForImage2Image,
     AutoPipelineForInpainting,
     EulerAncestralDiscreteScheduler
 )
@@ -106,11 +108,15 @@ def pipeline_for(
 
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
 
-    if 'inpaint' in mode:
-        pipe_class = AutoPipelineForInpainting
+    match mode:
+        case 'inpaint':
+            pipe_class = AutoPipelineForInpainting
 
-    else:
-        pipe_class = DiffusionPipeline
+        case 'img2img':
+            pipe_class = AutoPipelineForImage2Image
+
+        case 'txt2img' | 'diffuse':
+            pipe_class = AutoPipelineForText2Image
 
     pipe = pipe_class.from_pretrained(
         model, **params)
@@ -121,7 +127,7 @@ def pipeline_for(
     pipe.enable_xformers_memory_efficient_attention()
 
     if over_mem:
-        if 'img2img' not in mode:
+        if mode == 'txt2img':
             pipe.enable_vae_slicing()
             pipe.enable_vae_tiling()
 

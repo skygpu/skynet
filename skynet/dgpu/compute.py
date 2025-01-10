@@ -44,14 +44,14 @@ def prepare_params_for_diffuse(
             _params['image'] = image
             _params['strength'] = float(params['strength'])
 
-        case 'txt2img':
+        case 'txt2img' | 'diffuse':
             ...
 
         case _:
-            raise DGPUComputeError(f'Unknown input_type {input_type}')
+            raise DGPUComputeError(f'Unknown mode {mode}')
 
-    _params['width'] = int(params['width'])
-    _params['height'] = int(params['height'])
+    # _params['width'] = int(params['width'])
+    # _params['height'] = int(params['height'])
 
     return (
         params['prompt'],
@@ -72,7 +72,10 @@ class SkynetMM:
         if 'hf_home' in config:
             self.cache_dir = config['hf_home']
 
-        self.load_model(DEFAULT_INITAL_MODEL, 'txt2img')
+        self._model_name = ''
+        self._model_mode = ''
+
+        # self.load_model(DEFAULT_INITAL_MODEL, 'txt2img')
 
     def log_debug_info(self):
         logging.info('memory summary:')
@@ -90,9 +93,12 @@ class SkynetMM:
         name: str,
         mode: str
     ):
-        logging.info(f'loading model {model_name}...')
+        logging.info(f'loading model {name}...')
         self._model_mode = mode
         self._model_name = name
+
+        if getattr(self, '_model', None):
+            del self._model
 
         gc.collect()
         torch.cuda.empty_cache()
@@ -131,7 +137,7 @@ class SkynetMM:
         output_hash = None
         try:
             match method:
-                case 'txt2img' | 'img2img' | 'inpaint':
+                case 'diffuse' | 'txt2img' | 'img2img' | 'inpaint':
                     arguments = prepare_params_for_diffuse(
                         params, method, inputs)
                     prompt, guidance, step, seed, upscaler, extra_params = arguments
