@@ -20,7 +20,7 @@ def skynet(*args, **kwargs):
 
 
 @click.command()
-@click.option('--model', '-m', default='midj')
+@click.option('--model', '-m', default=list(MODELS.keys())[-1])
 @click.option(
     '--prompt', '-p', default='a red old tractor in a sunny wheat field')
 @click.option('--output', '-o', default='output.png')
@@ -39,7 +39,7 @@ def txt2img(*args, **kwargs):
     utils.txt2img(hf_token, **kwargs)
 
 @click.command()
-@click.option('--model', '-m', default=list(MODELS.keys())[0])
+@click.option('--model', '-m', default=list(MODELS.keys())[-2])
 @click.option(
     '--prompt', '-p', default='a red old tractor in a sunny wheat field')
 @click.option('--input', '-i', default='input.png')
@@ -68,7 +68,7 @@ def img2img(model, prompt, input, output, strength, guidance, steps, seed):
 
 
 @click.command()
-@click.option('--model', '-m', default=list(MODELS.keys())[-1])
+@click.option('--model', '-m', default=list(MODELS.keys())[-3])
 @click.option(
     '--prompt', '-p', default='a red old tractor in a sunny wheat field')
 @click.option('--input', '-i', default='input.png')

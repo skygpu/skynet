@@ -13,7 +13,7 @@ from diffusers import DiffusionPipeline
 import trio
 import torch
 
-from skynet.constants import DEFAULT_INITAL_MODELS, MODELS
+from skynet.constants import DEFAULT_INITAL_MODEL, MODELS
 from skynet.dgpu.errors import DGPUComputeError, DGPUInferenceCancelled
 
 from skynet.utils import crop_image, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
@@ -21,28 +21,36 @@ from skynet.utils import crop_image, convert_from_cv2_to_image, convert_from_ima
 
 def prepare_params_for_diffuse(
     params: dict,
-    input_type: str,
-    binary = None
+    mode: str,
+    inputs: list[bytes]
 ):
     _params = {}
-    if binary != None:
-        match input_type:
-            case 'png':
-                image = crop_image(
-                    binary, params['width'], params['height'])
+    match mode:
+        case 'inpaint':
+            image = crop_image(
+                inputs[0], params['width'], params['height'])
 
-                _params['image'] = image
-                _params['strength'] = float(params['strength'])
+            mask = crop_image(
+                inputs[1], params['width'], params['height'])
 
-            case 'none':
-                ...
+            _params['image'] = image
+            _params['strength'] = float(params['strength'])
 
-            case _:
-                raise DGPUComputeError(f'Unknown input_type {input_type}')
+        case 'img2img':
+            image = crop_image(
+                inputs[0], params['width'], params['height'])
 
-    else:
-        _params['width'] = int(params['width'])
-        _params['height'] = int(params['height'])
+            _params['image'] = image
+            _params['strength'] = float(params['strength'])
+
+        case 'txt2img':
+            ...
+
+        case _:
+            raise DGPUComputeError(f'Unknown input_type {input_type}')
+
+    _params['width'] = int(params['width'])
+    _params['height'] = int(params['height'])
 
     return (
         params['prompt'],
@@ -58,94 +66,52 @@ class SkynetMM:
 
     def __init__(self, config: dict):
         self.upscaler = init_upscaler()
-        self.initial_models = (
-            config['initial_models']
-            if 'initial_models' in config else DEFAULT_INITAL_MODELS
-        )
 
         self.cache_dir = None
         if 'hf_home' in config:
             self.cache_dir = config['hf_home']
 
-        self._models = {}
-        for model in self.initial_models:
-            self.load_model(model, False, force=True)
+        self.load_model(DEFAULT_INITAL_MODEL, 'txt2img')
 
     def log_debug_info(self):
         logging.info('memory summary:')
         logging.info('\n' + torch.cuda.memory_summary())
 
-    def is_model_loaded(self, model_name: str, image: bool):
-        for model_key, model_data in self._models.items():
-            if (model_key == model_name and
-                model_data['image'] == image):
-                return True
+    def is_model_loaded(self, name: str, mode: str):
+        if (name == self._model_name and
+            mode == self._model_mode):
+            return True
 
         return False
 
     def load_model(
         self,
-        model_name: str,
-        image: bool,
-        force=False
+        name: str,
+        mode: str
     ):
         logging.info(f'loading model {model_name}...')
-        if force or len(self._models.keys()) == 0:
-            pipe = pipeline_for(
-                model_name, image=image, cache_dir=self.cache_dir)
+        self._model_mode = mode
+        self._model_name = name
 
-            self._models[model_name] = {
-                'pipe': pipe,
-                'generated': 0,
-                'image': image
-            }
+        gc.collect()
+        torch.cuda.empty_cache()
 
-        else:
-            least_used = list(self._models.keys())[0]
+        self._model = pipeline_for(
+            name, mode, cache_dir=self.cache_dir)
 
-            for model in self._models:
-                if self._models[
-                    least_used]['generated'] > self._models[model]['generated']:
-                    least_used = model
-
-            del self._models[least_used]
-
-            logging.info(f'swapping model {least_used} for {model_name}...')
-
-            gc.collect()
-            torch.cuda.empty_cache()
-
-            pipe = pipeline_for(
-                model_name, image=image, cache_dir=self.cache_dir)
-
-            self._models[model_name] = {
-                'pipe': pipe,
-                'generated': 0,
-                'image': image
-            }
-
-        logging.info(f'loaded model {model_name}')
-        return pipe
-
-    def get_model(self, model_name: str, image: bool) -> DiffusionPipeline:
-        if model_name not in MODELS:
+    def get_model(self, name: str, mode: str) -> DiffusionPipeline:
+        if name not in MODELS:
             raise DGPUComputeError(f'Unknown model {model_name}')
 
-        if not self.is_model_loaded(model_name, image):
-            pipe = self.load_model(model_name, image=image)
-
-        else:
-            pipe = self._models[model_name]['pipe']
-
-        return pipe
+        if not self.is_model_loaded(name, mode):
+            self.load_model(name, mode)
 
     def compute_one(
         self,
         request_id: int,
         method: str,
         params: dict,
-        input_type: str = 'png',
-        binary: bytes | None = None
+        inputs: list[bytes] = []
     ):
         def maybe_cancel_work(step, *args, **kwargs):
             if self._should_cancel:
@@ -164,17 +130,16 @@ class SkynetMM:
         output_hash = None
         try:
             match method:
-                case 'diffuse':
+                case 'txt2img' | 'img2img' | 'inpaint':
                     arguments = prepare_params_for_diffuse(
-                        params, input_type, binary=binary)
+                        params, method, inputs)
                     prompt, guidance, step, seed, upscaler, extra_params = arguments
-                    model = self.get_model(
+                    self.get_model(
                         params['model'],
-                        'image' in extra_params,
-                        'mask_image' in extra_params
+                        method
                     )
 
-                    output = model(
+                    output = self._model(
                         prompt,
                         guidance_scale=guidance,
                         num_inference_steps=step,

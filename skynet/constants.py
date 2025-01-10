@@ -4,34 +4,108 @@ VERSION = '0.1a12'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
-MODELS = {
-    'prompthero/openjourney':                           {'short': 'midj',                'mem': 6,   'size': {'w': 512,  'h': 512}},
-    'runwayml/stable-diffusion-v1-5':                   {'short': 'stable',              'mem': 6,   'size': {'w': 512,  'h': 512}},
-    'stabilityai/stable-diffusion-2-1-base':            {'short': 'stable2',             'mem': 6,   'size': {'w': 512,  'h': 512}},
-    'snowkidy/stable-diffusion-xl-base-0.9':            {'short': 'stablexl0.9',         'mem': 8.3, 'size': {'w': 1024, 'h': 1024}},
-    'Linaqruf/anything-v3.0':                           {'short': 'hdanime',             'mem': 6,   'size': {'w': 512,  'h': 512}},
-    'hakurei/waifu-diffusion':                          {'short': 'waifu',               'mem': 6,   'size': {'w': 512,  'h': 512}},
-    'nitrosocke/Ghibli-Diffusion':                      {'short': 'ghibli',              'mem': 6,   'size': {'w': 512,  'h': 512}},
-    'dallinmackay/Van-Gogh-diffusion':                  {'short': 'van-gogh',            'mem': 6,   'size': {'w': 512,  'h': 512}},
-    'lambdalabs/sd-pokemon-diffusers':                  {'short': 'pokemon',             'mem': 6,   'size': {'w': 512,  'h': 512}},
-    'Envvi/Inkpunk-Diffusion':                          {'short': 'ink',                 'mem': 6,   'size': {'w': 512,  'h': 512}},
-    'nousr/robo-diffusion':                             {'short': 'robot',               'mem': 6,   'size': {'w': 512,  'h': 512}},
+import msgspec
+from typing import Literal
 
-    # -1 is always inpaint default
-    'diffusers/stable-diffusion-xl-1.0-inpainting-0.1': {'short': 'stablexl-inpainting', 'mem': 8.3, 'size': {'w': 1024, 'h': 1024}},
+class Size(msgspec.Struct):
+    w: int
+    h: int
 
-    # default is always last
-    'stabilityai/stable-diffusion-xl-base-1.0':         {'short': 'stablexl',            'mem': 8.3, 'size': {'w': 1024, 'h': 1024}},
+class ModelDesc(msgspec.Struct):
+    short: str
+    mem: float
+    size: Size
+    tags: list[Literal['txt2img', 'img2img', 'inpaint']]
+
+MODELS: dict[str, ModelDesc] = {
+    'runwayml/stable-diffusion-v1-5': ModelDesc(
+        short='stable',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'stabilityai/stable-diffusion-2-1-base': ModelDesc(
+        short='stable2',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'snowkidy/stable-diffusion-xl-base-0.9': ModelDesc(
+        short='stablexl0.9',
+        mem=8.3,
+        size=Size(w=1024, h=1024),
+        tags=['txt2img']
+    ),
+    'Linaqruf/anything-v3.0': ModelDesc(
+        short='hdanime',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'hakurei/waifu-diffusion': ModelDesc(
+        short='waifu',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'nitrosocke/Ghibli-Diffusion': ModelDesc(
+        short='ghibli',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'dallinmackay/Van-Gogh-diffusion': ModelDesc(
+        short='van-gogh',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'lambdalabs/sd-pokemon-diffusers': ModelDesc(
+        short='pokemon',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'Envvi/Inkpunk-Diffusion': ModelDesc(
+        short='ink',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'nousr/robo-diffusion': ModelDesc(
+        short='robot',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'diffusers/stable-diffusion-xl-1.0-inpainting-0.1': ModelDesc(
+        short='stablexl-inpainting',
+        mem=8.3,
+        size=Size(w=1024, h=1024),
+        tags=['inpaint']
+    ),
+    'prompthero/openjourney': ModelDesc(
+        short='midj',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img', 'img2img']
+    ),
+    'stabilityai/stable-diffusion-xl-base-1.0': ModelDesc(
+        short='stablexl',
+        mem=8.3,
+        size=Size(w=1024, h=1024),
+        tags=['txt2img']
+    ),
 }
 
 SHORT_NAMES = [
-    model_info['short']
+    model_info.short
     for model_info in MODELS.values()
 ]
 
 def get_model_by_shortname(short: str):
     for model, info in MODELS.items():
-        if short == info['short']:
+        if short == info.short:
             return model
 
 N = '\n'
@@ -169,9 +243,7 @@ DEFAULT_UPSCALER = None
 
 DEFAULT_CONFIG_PATH = 'skynet.toml'
 
-DEFAULT_INITAL_MODELS = [
-    'stabilityai/stable-diffusion-xl-base-1.0'
-]
+DEFAULT_INITAL_MODEL = list(MODELS.keys())[-1]
 
 DATE_FORMAT = '%B the %dth %Y, %H:%M:%S'
 

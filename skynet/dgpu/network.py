@@ -267,46 +267,15 @@ class SkynetGPUConnector:
 
         return file_cid
 
-    async def get_input_data(self, ipfs_hash: str) -> tuple[bytes, str]:
-        input_type = 'none'
-
-        if ipfs_hash == '':
-            return b'', input_type
-
-        results = {}
+    async def get_input_data(self, ipfs_hash: str) -> Image:
         ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
-        ipfs_link_legacy = ipfs_link + '/image.png'
 
-        async with trio.open_nursery() as n:
-            async def get_and_set_results(link: str):
-                res = await get_ipfs_file(link, timeout=1)
-                logging.info(f'got response from {link}')
-                if not res or res.status_code != 200:
-                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+        res = await get_ipfs_file(link, timeout=1)
+        logging.info(f'got response from {link}')
+        if not res or res.status_code != 200:
+            logging.warning(f'couldn\'t get ipfs binary data at {link}!')
 
-                else:
-                    try:
-                        # attempt to decode as image
-                        results[link] = Image.open(io.BytesIO(res.raw))
-                        input_type = 'png'
-                        n.cancel_scope.cancel()
+        # attempt to decode as image
+        input_data = Image.open(io.BytesIO(res.raw))
 
-                    except UnidentifiedImageError:
-                        logging.warning(f'couldn\'t get ipfs binary data at {link}!')
-
-            n.start_soon(
-                get_and_set_results, ipfs_link)
-            n.start_soon(
-                get_and_set_results, ipfs_link_legacy)
-
-        input_data = None
-        if ipfs_link_legacy in results:
-            input_data = results[ipfs_link_legacy]
-
-        if ipfs_link in results:
-            input_data = results[ipfs_link]
-
-        if input_data == None:
-            raise DGPUComputeError('Couldn\'t gather input data from ipfs')
-
-        return input_data, input_type
+        return input_data

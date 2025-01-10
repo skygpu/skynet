@@ -116,7 +116,7 @@ class SkynetTelegramFrontend:
         method: str,
         params: dict,
         file_id: str | None = None,
-        binary_data: str = ''
+        inputs: list[str] = []
     ) -> bool:
         if params['seed'] == None:
             params['seed'] = random.randint(0, 0xFFFFFFFF)
@@ -148,7 +148,7 @@ class SkynetTelegramFrontend:
             {
                 'user': Name(self.account),
                 'request_body': body,
-                'binary_data': binary_data,
+                'binary_data': inputs.joint(','),
                 'reward': asset_from_str(reward),
                 'min_verification': 1
             },
@@ -181,7 +181,7 @@ class SkynetTelegramFrontend:
         request_id, nonce = out.split(':')
 
         request_hash = sha256(
-            (nonce + body + binary_data).encode('utf-8')).hexdigest().upper()
+            (nonce + body + inputs.join(',')).encode('utf-8')).hexdigest().upper()
 
         request_id = int(request_id)
 
@@ -241,46 +241,28 @@ class SkynetTelegramFrontend:
             user, params, tx_hash, worker, reward, self.explorer_domain)
 
         # attempt to get the image and send it
-        results = {}
         ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
-        ipfs_link_legacy = ipfs_link + '/image.png'
 
-        async def get_and_set_results(link: str):
-            res = await get_ipfs_file(link)
-            logging.info(f'got response from {link}')
-            if not res or res.status_code != 200:
+        res = await get_ipfs_file(link)
+        logging.info(f'got response from {link}')
+        if not res or res.status_code != 200:
+            logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+
+        else:
+            try:
+                with Image.open(io.BytesIO(res.raw)) as image:
+                    w, h = image.size
+
+                    if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
+                        logging.warning(f'result is of size {image.size}')
+                        image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
+
+                    tmp_buf = io.BytesIO()
+                    image.save(tmp_buf, format='PNG')
+                    png_img = tmp_buf.getvalue()
+
+            except UnidentifiedImageError:
                 logging.warning(f'couldn\'t get ipfs binary data at {link}!')
-
-            else:
-                try:
-                    with Image.open(io.BytesIO(res.raw)) as image:
-                        w, h = image.size
-
-                        if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
-                            logging.warning(f'result is of size {image.size}')
-                            image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
-
-                        tmp_buf = io.BytesIO()
-                        image.save(tmp_buf, format='PNG')
-                        png_img = tmp_buf.getvalue()
-
-                        results[link] = png_img
-
-                except UnidentifiedImageError:
-                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
-
-        tasks = [
-            get_and_set_results(ipfs_link),
-            get_and_set_results(ipfs_link_legacy)
-        ]
-        await asyncio.gather(*tasks)
-
-        png_img = None
-        if ipfs_link_legacy in results:
-            png_img = results[ipfs_link_legacy]
-
-        if ipfs_link in results:
-            png_img = results[ipfs_link]
 
         if not png_img:
             await self.update_status_message(

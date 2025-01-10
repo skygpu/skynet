@@ -66,8 +66,7 @@ def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
 def pipeline_for(
     model: str,
     mem_fraction: float = 1.0,
-    image: bool = False,
-    inpainting: bool = False,
+    mode: str = [],
     cache_dir: str | None = None
 ) -> DiffusionPipeline:
 
@@ -85,14 +84,14 @@ def pipeline_for(
 
     model_info = MODELS[model]
 
-    req_mem = model_info['mem']
+    req_mem = model_info.mem
     mem_gb = torch.cuda.mem_get_info()[1] / (10**9)
     mem_gb *= mem_fraction
     over_mem = mem_gb < req_mem
     if over_mem:
         logging.warn(f'model requires {req_mem} but card has {mem_gb}, model will run slower..')
 
-    shortname = model_info['short']
+    shortname = model_info.short
 
     params = {
         'safety_checker': None,
@@ -107,13 +106,14 @@ def pipeline_for(
 
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
 
-    if inpainting:
-        pipe = AutoPipelineForInpainting.from_pretrained(
-            model, **params)
+    if 'inpaint' in mode:
+        pipe_class = AutoPipelineForInpainting
 
     else:
-        pipe = DiffusionPipeline.from_pretrained(
-            model, **params)
+        pipe_class = DiffusionPipeline
+
+    pipe = AutoPipelineForInpainting.from_pretrained(
+        model, **params)
 
     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
         pipe.scheduler.config)
@@ -121,7 +121,7 @@ def pipeline_for(
     pipe.enable_xformers_memory_efficient_attention()
 
     if over_mem:
-        if not image:
+        if 'img2img' not in mode:
             pipe.enable_vae_slicing()
             pipe.enable_vae_tiling()
 
@@ -140,7 +140,7 @@ def pipeline_for(
 
 def txt2img(
     hf_token: str,
-    model: str = 'prompthero/openjourney',
+    model: str = list(MODELS.keys())[-1],
     prompt: str = 'a red old tractor in a sunny wheat field',
     output: str = 'output.png',
     width: int = 512, height: int = 512,
@@ -166,7 +166,7 @@ def txt2img(
 
 def img2img(
     hf_token: str,
-    model: str = 'prompthero/openjourney',
+    model: str = list(MODELS.keys())[-2],
     prompt: str = 'a red old tractor in a sunny wheat field',
     img_path: str = 'input.png',
     output: str = 'output.png',
@@ -181,7 +181,7 @@ def img2img(
     model_info = MODELS[model]
 
     with open(img_path, 'rb') as img_file:
-        input_img = convert_from_bytes_and_crop(img_file.read(), model_info['size']['w'], model_info['size']['h'])
+        input_img = convert_from_bytes_and_crop(img_file.read(), model_info.size.w, model_info.size.h)
 
     seed = seed if seed else random.randint(0, 2 ** 64)
     prompt = prompt
@@ -198,7 +198,7 @@ def img2img(
 
 def inpaint(
     hf_token: str,
-    model: str = 'diffusers/stable-diffusion-xl-1.0-inpainting-0.1',
+    model: str = list(MODELS.keys())[-3],
     prompt: str = 'a red old tractor in a sunny wheat field',
     img_path: str = 'input.png',
     mask_path: str = 'mask.png',
@@ -214,10 +214,10 @@ def inpaint(
     model_info = MODELS[model]
 
     with open(img_path, 'rb') as img_file:
-        input_img = convert_from_bytes_and_crop(img_file.read(), model_info['size']['w'], model_info['size']['h'])
+        input_img = convert_from_bytes_and_crop(img_file.read(), model_info.size.w, model_info.size.h)
 
     with open(mask_path, 'rb') as mask_file:
-        mask_img = convert_from_bytes_and_crop(mask_file.read(), model_info['size']['w'], model_info['size']['h'])
+        mask_img = convert_from_bytes_and_crop(mask_file.read(), model_info.size.w, model_info.size.h)
 
     seed = seed if seed else random.randint(0, 2 ** 64)
     prompt = prompt
