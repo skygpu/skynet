@@ -125,7 +125,7 @@ class SkynetDGPUDaemon:
         model = body['params']['model']
 
         # if model not known
-        if model not in MODELS:
+        if model != 'RealESRGAN_x4plus' and model not in MODELS:
             logging.warning(f'Unknown model {model}')
             return False
 
@@ -143,11 +143,17 @@ class SkynetDGPUDaemon:
             statuses = self._snap['requests'][rid]
 
             if len(statuses) == 0:
-                inputs = [
-                    await self.conn.get_input_data(_input)
-                    for _input in req['binary_data'].split(',')
-                    if _input
-                ]
+                inputs = []
+                for _input in req['binary_data'].split(','):
+                    if _input:
+                        for _ in range(3):
+                            try:
+                                img = await self.conn.get_input_data(_input)
+                                inputs.append(img)
+                                break
+
+                            except:
+                                ...
 
                 hash_str = (
                     str(req['nonce'])

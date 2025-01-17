@@ -15,7 +15,7 @@ import anyio
 from PIL import Image, UnidentifiedImageError
 
 from leap.cleos import CLEOS
-from leap.sugar import Checksum256, Name, asset_from_str
+from leap.protocol import Asset
 from skynet.constants import DEFAULT_IPFS_DOMAIN
 
 from skynet.ipfs import AsyncIPFSHTTP, get_ipfs_file
@@ -23,6 +23,225 @@ from skynet.dgpu.errors import DGPUComputeError
 
 
 REQUEST_UPDATE_TIME = 3
+
+gpu_abi = {
+    "version": "eosio::abi/1.2",
+    "types": [],
+    "structs": [
+        {
+            "name": "account",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "balance", "type": "asset"},
+                {"name": "nonce", "type": "uint64"}
+            ]
+        },
+        {
+            "name": "card",
+            "base": "",
+            "fields": [
+                {"name": "id", "type": "uint64"},
+                {"name": "owner", "type": "name"},
+                {"name": "card_name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "total_memory", "type": "uint64"},
+                {"name": "mp_count", "type": "uint32"},
+                {"name": "extra", "type": "string"}
+            ]
+        },
+        {
+            "name": "clean",
+            "base": "",
+            "fields": []
+        },
+        {
+            "name": "config",
+            "base": "",
+            "fields": [
+                {"name": "token_contract", "type": "name"},
+                {"name": "token_symbol", "type": "symbol"}
+            ]
+        },
+        {
+            "name": "dequeue",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "request_id", "type": "uint64"}
+            ]
+        },
+        {
+            "name": "enqueue",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "request_body", "type": "string"},
+                {"name": "binary_data", "type": "string"},
+                {"name": "reward", "type": "asset"},
+                {"name": "min_verification", "type": "uint32"}
+            ]
+        },
+        {
+            "name": "gcfgstruct",
+            "base": "",
+            "fields": [
+                {"name": "token_contract", "type": "name"},
+                {"name": "token_symbol", "type": "symbol"}
+            ]
+        },
+        {
+            "name": "submit",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "request_hash", "type": "checksum256"},
+                {"name": "result_hash", "type": "checksum256"},
+                {"name": "ipfs_hash", "type": "string"}
+            ]
+        },
+        {
+            "name": "withdraw",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "quantity", "type": "asset"}
+            ]
+        },
+        {
+            "name": "work_request_struct",
+            "base": "",
+            "fields": [
+                {"name": "id", "type": "uint64"},
+                {"name": "user", "type": "name"},
+                {"name": "reward", "type": "asset"},
+                {"name": "min_verification", "type": "uint32"},
+                {"name": "nonce", "type": "uint64"},
+                {"name": "body", "type": "string"},
+                {"name": "binary_data", "type": "string"},
+                {"name": "timestamp", "type": "time_point_sec"}
+            ]
+        },
+        {
+            "name": "work_result_struct",
+            "base": "",
+            "fields": [
+                {"name": "id", "type": "uint64"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "user", "type": "name"},
+                {"name": "worker", "type": "name"},
+                {"name": "result_hash", "type": "checksum256"},
+                {"name": "ipfs_hash", "type": "string"},
+                {"name": "submited", "type": "time_point_sec"}
+            ]
+        },
+        {
+            "name": "workbegin",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "max_workers", "type": "uint32"}
+            ]
+        },
+        {
+            "name": "workcancel",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "reason", "type": "string"}
+            ]
+        },
+        {
+            "name": "worker",
+            "base": "",
+            "fields": [
+                {"name": "account", "type": "name"},
+                {"name": "joined", "type": "time_point_sec"},
+                {"name": "left", "type": "time_point_sec"},
+                {"name": "url", "type": "string"}
+            ]
+        },
+        {
+            "name": "worker_status_struct",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "status", "type": "string"},
+                {"name": "started", "type": "time_point_sec"}
+            ]
+        }
+    ],
+    "actions": [
+        {"name": "clean", "type": "clean", "ricardian_contract": ""},
+        {"name": "config", "type": "config", "ricardian_contract": ""},
+        {"name": "dequeue", "type": "dequeue", "ricardian_contract": ""},
+        {"name": "enqueue", "type": "enqueue", "ricardian_contract": ""},
+        {"name": "submit", "type": "submit", "ricardian_contract": ""},
+        {"name": "withdraw", "type": "withdraw", "ricardian_contract": ""},
+        {"name": "workbegin", "type": "workbegin", "ricardian_contract": ""},
+        {"name": "workcancel", "type": "workcancel", "ricardian_contract": ""}
+    ],
+    "tables": [
+        {
+            "name": "cards",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "card"
+        },
+        {
+            "name": "gcfgstruct",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "gcfgstruct"
+        },
+        {
+            "name": "queue",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "work_request_struct"
+        },
+        {
+            "name": "results",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "work_result_struct"
+        },
+        {
+            "name": "status",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "worker_status_struct"
+        },
+        {
+            "name": "users",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "account"
+        },
+        {
+            "name": "workers",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "worker"
+        }
+    ],
+    "ricardian_clauses": [],
+    "error_messages": [],
+    "abi_extensions": [],
+    "variants": [],
+    "action_results": []
+}
+
 
 
 async def failable(fn: partial, ret_fail=None):
@@ -35,22 +254,22 @@ async def failable(fn: partial, ret_fail=None):
         asks.errors.RequestTimeout,
         asks.errors.BadHttpResponse,
         anyio.BrokenResourceError
-    ):
+    ) as e:
         return ret_fail
 
 
 class SkynetGPUConnector:
 
     def __init__(self, config: dict):
-        self.account = Name(config['account'])
+        self.account = config['account']
         self.permission = config['permission']
         self.key = config['key']
 
         self.node_url = config['node_url']
         self.hyperion_url = config['hyperion_url']
 
-        self.cleos = CLEOS(
-            None, None, self.node_url, remote=self.node_url)
+        self.cleos = CLEOS(endpoint=self.node_url)
+        self.cleos.load_abi('gpu.scd', gpu_abi)
 
         self.ipfs_gateway_url = None
         if 'ipfs_gateway_url' in config:
@@ -151,11 +370,11 @@ class SkynetGPUConnector:
                 self.cleos.a_push_action,
                 'gpu.scd',
                 'workbegin',
-                {
+                list({
                     'worker': self.account,
                     'request_id': request_id,
                     'max_workers': 2
-                },
+                }.values()),
                 self.account, self.key,
                 permission=self.permission
             )
@@ -168,11 +387,11 @@ class SkynetGPUConnector:
                 self.cleos.a_push_action,
                 'gpu.scd',
                 'workcancel',
-                {
+                list({
                     'worker': self.account,
                     'request_id': request_id,
                     'reason': reason
-                },
+                }.values()),
                 self.account, self.key,
                 permission=self.permission
             )
@@ -191,10 +410,10 @@ class SkynetGPUConnector:
                     self.cleos.a_push_action,
                     'gpu.scd',
                     'withdraw',
-                    {
+                    list({
                         'user': self.account,
-                        'quantity': asset_from_str(balance)
-                    },
+                        'quantity': Asset.from_str(balance)
+                    }.values()),
                     self.account, self.key,
                     permission=self.permission
                 )
@@ -226,13 +445,13 @@ class SkynetGPUConnector:
                 self.cleos.a_push_action,
                 'gpu.scd',
                 'submit',
-                {
+                list({
                     'worker': self.account,
                     'request_id': request_id,
-                    'request_hash': Checksum256(request_hash),
-                    'result_hash': Checksum256(result_hash),
+                    'request_hash': request_hash,
+                    'result_hash': result_hash,
                     'ipfs_hash': ipfs_hash
-                },
+                }.values()),
                 self.account, self.key,
                 permission=self.permission
             )

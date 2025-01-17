@@ -6,28 +6,41 @@ import sys
 import time
 import random
 import logging
+import importlib
 
 from typing import Optional
 from pathlib import Path
-import asks
 
+import trio
 import torch
 import numpy as np
 
 from PIL import Image
-from basicsr.archs.rrdbnet_arch import RRDBNet
 from diffusers import (
     DiffusionPipeline,
     AutoPipelineForText2Image,
     AutoPipelineForImage2Image,
     AutoPipelineForInpainting,
-    EulerAncestralDiscreteScheduler
+    EulerAncestralDiscreteScheduler,
 )
-from realesrgan import RealESRGANer
 from huggingface_hub import login
-import trio
 
 from .constants import MODELS
+
+# Hack to fix a changed import in torchvision 0.17+, which otherwise breaks
+# basicsr; see https://github.com/AUTOMATIC1111/stable-diffusion-webui/issues/13985
+try:
+    import torchvision.transforms.functional_tensor  # noqa: F401
+except ImportError:
+    try:
+        import torchvision.transforms.functional as functional
+        sys.modules["torchvision.transforms.functional_tensor"] = functional
+    except ImportError:
+        pass  # shrug...
+
+from basicsr.archs.rrdbnet_arch import RRDBNet
+from realesrgan import RealESRGANer
+
 
 
 def time_ms():
@@ -72,6 +85,7 @@ def pipeline_for(
     cache_dir: str | None = None
 ) -> DiffusionPipeline:
 
+    logging.info(f'pipeline_for {model} {mode}')
     assert torch.cuda.is_available()
     torch.cuda.empty_cache()
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -85,21 +99,35 @@ def pipeline_for(
     torch.use_deterministic_algorithms(True)
 
     model_info = MODELS[model]
+    shortname = model_info.short
+
+    # disable for compat with "diffuse" method
+    # assert mode in model_info.tags
+
+    # default to checking if custom pipeline exist and return that if not, attempt generic
+    try:
+        normalized_shortname = shortname.replace('-', '_')
+        custom_pipeline = importlib.import_module(f'skynet.dgpu.pipes.{normalized_shortname}')
+        assert custom_pipeline.__model['name'] == model
+        return custom_pipeline.pipeline_for(model, mode, mem_fraction=mem_fraction, cache_dir=cache_dir)
+
+    except ImportError:
+        ...
+
 
     req_mem = model_info.mem
+
     mem_gb = torch.cuda.mem_get_info()[1] / (10**9)
     mem_gb *= mem_fraction
     over_mem = mem_gb < req_mem
     if over_mem:
         logging.warn(f'model requires {req_mem} but card has {mem_gb}, model will run slower..')
 
-    shortname = model_info.short
-
     params = {
         'safety_checker': None,
         'torch_dtype': torch.float16,
         'cache_dir': cache_dir,
-        'variant': 'fp16'
+        'variant': 'fp16',
     }
 
     match shortname:
@@ -108,6 +136,7 @@ def pipeline_for(
 
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
 
+    pipe_class = DiffusionPipeline
     match mode:
         case 'inpaint':
             pipe_class = AutoPipelineForInpainting
@@ -115,7 +144,7 @@ def pipeline_for(
         case 'img2img':
             pipe_class = AutoPipelineForImage2Image
 
-        case 'txt2img' | 'diffuse':
+        case 'txt2img':
             pipe_class = AutoPipelineForText2Image
 
     pipe = pipe_class.from_pretrained(
@@ -124,20 +153,20 @@ def pipeline_for(
     pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
         pipe.scheduler.config)
 
-    pipe.enable_xformers_memory_efficient_attention()
+    # pipe.enable_xformers_memory_efficient_attention()
 
     if over_mem:
         if mode == 'txt2img':
-            pipe.enable_vae_slicing()
-            pipe.enable_vae_tiling()
-
+            pipe.vae.enable_tiling()
+            pipe.vae.enable_slicing()
+        
         pipe.enable_model_cpu_offload()
 
     else:
-        if sys.version_info[1] < 11:
-            # torch.compile only supported on python < 3.11
-            pipe.unet = torch.compile(
-                pipe.unet, mode='reduce-overhead', fullgraph=True)
+        # if sys.version_info[1] < 11:
+        #     # torch.compile only supported on python < 3.11
+        #     pipe.unet = torch.compile(
+        #         pipe.unet, mode='reduce-overhead', fullgraph=True)
 
         pipe = pipe.to('cuda')
 
@@ -155,7 +184,7 @@ def txt2img(
     seed: Optional[int] = None
 ):
     login(token=hf_token)
-    pipe = pipeline_for(model)
+    pipe = pipeline_for(model, 'txt2img')
 
     seed = seed if seed else random.randint(0, 2 ** 64)
     prompt = prompt
@@ -182,7 +211,7 @@ def img2img(
     seed: Optional[int] = None
 ):
     login(token=hf_token)
-    pipe = pipeline_for(model, image=True)
+    pipe = pipeline_for(model, 'img2img')
 
     model_info = MODELS[model]
 
@@ -215,7 +244,7 @@ def inpaint(
     seed: Optional[int] = None
 ):
     login(token=hf_token)
-    pipe = pipeline_for(model, image=True, inpainting=True)
+    pipe = pipeline_for(model, 'inpaint')
 
     model_info = MODELS[model]
 
@@ -225,21 +254,25 @@ def inpaint(
     with open(mask_path, 'rb') as mask_file:
         mask_img = convert_from_bytes_and_crop(mask_file.read(), model_info.size.w, model_info.size.h)
 
+    var_params = {}
+    if 'flux' not in model.lower():
+        var_params['strength'] = strength
+
     seed = seed if seed else random.randint(0, 2 ** 64)
     prompt = prompt
     image = pipe(
         prompt,
         image=input_img,
         mask_image=mask_img,
-        strength=strength,
         guidance_scale=guidance, num_inference_steps=steps,
-        generator=torch.Generator("cuda").manual_seed(seed)
+        generator=torch.Generator("cuda").manual_seed(seed),
+        **var_params
     ).images[0]
 
     image.save(output)
 
 
-def init_upscaler(model_path: str = 'weights/RealESRGAN_x4plus.pth'):
+def init_upscaler(model_path: str = 'hf_home/RealESRGAN_x4plus.pth'):
     return RealESRGANer(
         scale=4,
         model_path=model_path,
@@ -258,7 +291,7 @@ def init_upscaler(model_path: str = 'weights/RealESRGAN_x4plus.pth'):
 def upscale(
     img_path: str = 'input.png',
     output: str = 'output.png',
-    model_path: str = 'weights/RealESRGAN_x4plus.pth'
+    model_path: str = 'hf_home/RealESRGAN_x4plus.pth'
 ):
     input_img = Image.open(img_path).convert('RGB')
 
@@ -269,25 +302,3 @@ def upscale(
 
     image = convert_from_cv2_to_image(up_img)
     image.save(output)
-
-
-async def download_upscaler():
-    print('downloading upscaler...')
-    weights_path = Path('weights')
-    weights_path.mkdir(exist_ok=True)
-    upscaler_url = 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth'
-    save_path = weights_path / 'RealESRGAN_x4plus.pth'
-    response = await asks.get(upscaler_url)
-    with open(save_path, 'wb') as f:
-        f.write(response.content)
-    print('done')
-
-def download_all_models(hf_token: str, hf_home: str):
-    assert torch.cuda.is_available()
-
-    trio.run(download_upscaler)
-
-    login(token=hf_token)
-    for model in MODELS:
-        print(f'DOWNLOADING {model.upper()}')
-        pipeline_for(model, cache_dir=hf_home)

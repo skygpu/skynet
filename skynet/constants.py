@@ -78,8 +78,20 @@ MODELS: dict[str, ModelDesc] = {
         size=Size(w=512, h=512),
         tags=['txt2img']
     ),
+    'black-forest-labs/FLUX.1-schnell': ModelDesc(
+        short='flux',
+        mem=24,
+        size=Size(w=1024, h=1024),
+        tags=['txt2img']
+    ),
+    'black-forest-labs/FLUX.1-Fill-dev': ModelDesc(
+        short='flux-inpaint',
+        mem=24,
+        size=Size(w=1024, h=1024),
+        tags=['inpaint']
+    ),
     'diffusers/stable-diffusion-xl-1.0-inpainting-0.1': ModelDesc(
-        short='stablexl-inpainting',
+        short='stablexl-inpaint',
         mem=8.3,
         size=Size(w=1024, h=1024),
         tags=['inpaint']

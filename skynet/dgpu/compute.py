@@ -18,7 +18,6 @@ from skynet.dgpu.errors import DGPUComputeError, DGPUInferenceCancelled
 
 from skynet.utils import crop_image, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
 
-
 def prepare_params_for_diffuse(
     params: dict,
     mode: str,
@@ -35,7 +34,11 @@ def prepare_params_for_diffuse(
 
             _params['image'] = image
             _params['mask_image'] = mask
-            _params['strength'] = float(params['strength'])
+
+            if 'flux' in params['model'].lower():
+                _params['max_sequence_length'] = 512
+            else:
+                _params['strength'] = float(params['strength'])
 
         case 'img2img':
             image = crop_image(
@@ -66,8 +69,6 @@ def prepare_params_for_diffuse(
 class SkynetMM:
 
     def __init__(self, config: dict):
-        self.upscaler = init_upscaler()
-
         self.cache_dir = None
         if 'hf_home' in config:
             self.cache_dir = config['hf_home']
@@ -88,30 +89,28 @@ class SkynetMM:
 
         return False
 
-    def load_model(
-        self,
-        name: str,
-        mode: str
-    ):
-        logging.info(f'loading model {name}...')
-        self._model_mode = mode
-        self._model_name = name
-
+    def unload_model(self):
         if getattr(self, '_model', None):
             del self._model
 
         gc.collect()
         torch.cuda.empty_cache()
 
+        self._model_name = ''
+        self._model_mode = ''
+
+    def load_model(
+        self,
+        name: str,
+        mode: str
+    ):
+        logging.info(f'loading model {name}...')
+        self.unload_model()
         self._model = pipeline_for(
             name, mode, cache_dir=self.cache_dir)
+        self._model_mode = mode
+        self._model_name = name
 
-    def get_model(self, name: str, mode: str) -> DiffusionPipeline:
-        if name not in MODELS:
-            raise DGPUComputeError(f'Unknown model {model_name}')
-
-        if not self.is_model_loaded(name, mode):
-            self.load_model(name, mode)
 
     def compute_one(
         self,
@@ -127,6 +126,8 @@ class SkynetMM:
                     logging.warn(f'cancelling work at step {step}')
                     raise DGPUInferenceCancelled()
 
+            return {}
+
         maybe_cancel_work(0)
 
         output_type = 'png'
@@ -136,23 +137,29 @@ class SkynetMM:
         output = None
         output_hash = None
         try:
+            name = params['model']
+
             match method:
                 case 'diffuse' | 'txt2img' | 'img2img' | 'inpaint':
+                    if not self.is_model_loaded(name, method):
+                        self.load_model(name, method)
+
                     arguments = prepare_params_for_diffuse(
                         params, method, inputs)
                     prompt, guidance, step, seed, upscaler, extra_params = arguments
-                    self.get_model(
-                        params['model'],
-                        method
-                    )
+
+                    if 'flux' in name.lower():
+                        extra_params['callback_on_step_end'] = maybe_cancel_work
+
+                    else:
+                        extra_params['callback'] = maybe_cancel_work
+                        extra_params['callback_steps'] = 1
 
                     output = self._model(
                         prompt,
                         guidance_scale=guidance,
                         num_inference_steps=step,
                         generator=seed,
-                        callback=maybe_cancel_work,
-                        callback_steps=1,
                         **extra_params
                     ).images[0]
 
@@ -161,7 +168,7 @@ class SkynetMM:
                         case 'png':
                             if upscaler == 'x4':
                                 input_img = output.convert('RGB')
-                                up_img, _ = self.upscaler.enhance(
+                                up_img, _ = init_upscaler().enhance(
                                     convert_from_image_to_cv2(input_img), outscale=4)
 
                                 output = convert_from_cv2_to_image(up_img)
@@ -171,6 +178,22 @@ class SkynetMM:
                         case _:
                             raise DGPUComputeError(f'Unsupported output type: {output_type}')
 
+                    output_hash = sha256(output_binary).hexdigest()
+
+                case 'upscale':
+                    if self._model_mode != 'upscale':
+                        self.unload_model()
+                        self._model = init_upscaler()
+                        self._model_mode = 'upscale'
+                        self._model_name = 'realesrgan'
+
+                    input_img = inputs[0].convert('RGB')
+                    up_img, _ = self._model.enhance(
+                        convert_from_image_to_cv2(input_img), outscale=4)
+
+                    output = convert_from_cv2_to_image(up_img)
+
+                    output_binary = convert_from_img_to_bytes(output)
                     output_hash = sha256(output_binary).hexdigest()
 
                 case _:

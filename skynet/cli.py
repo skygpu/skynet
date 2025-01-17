@@ -8,7 +8,7 @@ from functools import partial
 
 import click
 
-from leap.sugar import Name, asset_from_str
+from leap.protocol import Name, Asset
 
 from .config import *
 from .constants import *
@@ -178,7 +178,7 @@ def enqueue(
                     'user': Name(account),
                     'request_body': req,
                     'binary_data': binary,
-                    'reward': asset_from_str(reward),
+                    'reward': Asset.from_str(reward),
                     'min_verification': 1
                 },
                 account, key, permission,
