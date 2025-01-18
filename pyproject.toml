@@ -26,6 +26,7 @@ hqq = "^0.2.2"
 optimum-quanto = "^0.2.6"
 basicsr = "^1.4.2"
 realesrgan = "^0.3.0"
+click = "^8.1.8"
 
 [tool.poetry.group.frontend]
 optional = true

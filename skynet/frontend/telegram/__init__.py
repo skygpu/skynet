@@ -14,7 +14,7 @@ from contextlib import AsyncExitStack
 from contextlib import asynccontextmanager as acm
 
 from leap.cleos import CLEOS
-from leap.sugar import Name, asset_from_str, collect_stdout
+from leap.protocol import Name, Asset
 from leap.hyperion import HyperionAPI
 
 from telebot.types import InputMediaPhoto
@@ -28,6 +28,224 @@ from . import *
 
 from .utils import *
 from .handlers import create_handler_context
+
+gpu_abi = {
+    "version": "eosio::abi/1.2",
+    "types": [],
+    "structs": [
+        {
+            "name": "account",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "balance", "type": "asset"},
+                {"name": "nonce", "type": "uint64"}
+            ]
+        },
+        {
+            "name": "card",
+            "base": "",
+            "fields": [
+                {"name": "id", "type": "uint64"},
+                {"name": "owner", "type": "name"},
+                {"name": "card_name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "total_memory", "type": "uint64"},
+                {"name": "mp_count", "type": "uint32"},
+                {"name": "extra", "type": "string"}
+            ]
+        },
+        {
+            "name": "clean",
+            "base": "",
+            "fields": []
+        },
+        {
+            "name": "config",
+            "base": "",
+            "fields": [
+                {"name": "token_contract", "type": "name"},
+                {"name": "token_symbol", "type": "symbol"}
+            ]
+        },
+        {
+            "name": "dequeue",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "request_id", "type": "uint64"}
+            ]
+        },
+        {
+            "name": "enqueue",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "request_body", "type": "string"},
+                {"name": "binary_data", "type": "string"},
+                {"name": "reward", "type": "asset"},
+                {"name": "min_verification", "type": "uint32"}
+            ]
+        },
+        {
+            "name": "gcfgstruct",
+            "base": "",
+            "fields": [
+                {"name": "token_contract", "type": "name"},
+                {"name": "token_symbol", "type": "symbol"}
+            ]
+        },
+        {
+            "name": "submit",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "request_hash", "type": "checksum256"},
+                {"name": "result_hash", "type": "checksum256"},
+                {"name": "ipfs_hash", "type": "string"}
+            ]
+        },
+        {
+            "name": "withdraw",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "quantity", "type": "asset"}
+            ]
+        },
+        {
+            "name": "work_request_struct",
+            "base": "",
+            "fields": [
+                {"name": "id", "type": "uint64"},
+                {"name": "user", "type": "name"},
+                {"name": "reward", "type": "asset"},
+                {"name": "min_verification", "type": "uint32"},
+                {"name": "nonce", "type": "uint64"},
+                {"name": "body", "type": "string"},
+                {"name": "binary_data", "type": "string"},
+                {"name": "timestamp", "type": "time_point_sec"}
+            ]
+        },
+        {
+            "name": "work_result_struct",
+            "base": "",
+            "fields": [
+                {"name": "id", "type": "uint64"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "user", "type": "name"},
+                {"name": "worker", "type": "name"},
+                {"name": "result_hash", "type": "checksum256"},
+                {"name": "ipfs_hash", "type": "string"},
+                {"name": "submited", "type": "time_point_sec"}
+            ]
+        },
+        {
+            "name": "workbegin",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "max_workers", "type": "uint32"}
+            ]
+        },
+        {
+            "name": "workcancel",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "reason", "type": "string"}
+            ]
+        },
+        {
+            "name": "worker",
+            "base": "",
+            "fields": [
+                {"name": "account", "type": "name"},
+                {"name": "joined", "type": "time_point_sec"},
+                {"name": "left", "type": "time_point_sec"},
+                {"name": "url", "type": "string"}
+            ]
+        },
+        {
+            "name": "worker_status_struct",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "status", "type": "string"},
+                {"name": "started", "type": "time_point_sec"}
+            ]
+        }
+    ],
+    "actions": [
+        {"name": "clean", "type": "clean", "ricardian_contract": ""},
+        {"name": "config", "type": "config", "ricardian_contract": ""},
+        {"name": "dequeue", "type": "dequeue", "ricardian_contract": ""},
+        {"name": "enqueue", "type": "enqueue", "ricardian_contract": ""},
+        {"name": "submit", "type": "submit", "ricardian_contract": ""},
+        {"name": "withdraw", "type": "withdraw", "ricardian_contract": ""},
+        {"name": "workbegin", "type": "workbegin", "ricardian_contract": ""},
+        {"name": "workcancel", "type": "workcancel", "ricardian_contract": ""}
+    ],
+    "tables": [
+        {
+            "name": "cards",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "card"
+        },
+        {
+            "name": "gcfgstruct",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "gcfgstruct"
+        },
+        {
+            "name": "queue",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "work_request_struct"
+        },
+        {
+            "name": "results",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "work_result_struct"
+        },
+        {
+            "name": "status",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "worker_status_struct"
+        },
+        {
+            "name": "users",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "account"
+        },
+        {
+            "name": "workers",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "worker"
+        }
+    ],
+    "ricardian_clauses": [],
+    "error_messages": [],
+    "abi_extensions": [],
+    "variants": [],
+    "action_results": []
+}
 
 
 class SkynetTelegramFrontend:
@@ -43,7 +261,6 @@ class SkynetTelegramFrontend:
         db_user: str,
         db_pass: str,
         ipfs_node: str,
-        remote_ipfs_node: str | None,
         key: str,
         explorer_domain: str,
         ipfs_domain: str
@@ -56,22 +273,19 @@ class SkynetTelegramFrontend:
         self.db_host = db_host
         self.db_user = db_user
         self.db_pass = db_pass
-        self.remote_ipfs_node = remote_ipfs_node
         self.key = key
         self.explorer_domain = explorer_domain
         self.ipfs_domain = ipfs_domain
 
         self.bot = AsyncTeleBot(token, exception_handler=SKYExceptionHandler)
-        self.cleos = CLEOS(None, None, url=node_url, remote=node_url)
+        self.cleos = CLEOS(endpoint=node_url)
+        self.cleos.load_abi('gpu.scd', gpu_abi)
         self.hyperion = HyperionAPI(hyperion_url)
         self.ipfs_node = AsyncIPFSHTTP(ipfs_node)
 
         self._async_exit_stack = AsyncExitStack()
 
     async def start(self):
-        if self.remote_ipfs_node:
-            await self.ipfs_node.connect(self.remote_ipfs_node)
-
         self.db_call = await self._async_exit_stack.enter_async_context(
             open_database_connection(
                 self.db_user, self.db_pass, self.db_host))
@@ -145,13 +359,13 @@ class SkynetTelegramFrontend:
         res = await self.cleos.a_push_action(
             'gpu.scd',
             'enqueue',
-            {
+            list({
                 'user': Name(self.account),
                 'request_body': body,
-                'binary_data': inputs.joint(','),
-                'reward': asset_from_str(reward),
+                'binary_data': ','.join(inputs),
+                'reward': Asset.from_str(reward),
                 'min_verification': 1
-            },
+            }.values()),
             self.account, self.key, permission=self.permission
         )
 
@@ -176,12 +390,12 @@ class SkynetTelegramFrontend:
             parse_mode='HTML'
         )
 
-        out = collect_stdout(res)
+        out = res['processed']['action_traces'][0]['console'] 
 
         request_id, nonce = out.split(':')
 
         request_hash = sha256(
-            (nonce + body + inputs.join(',')).encode('utf-8')).hexdigest().upper()
+            (nonce + body + ','.join(inputs)).encode('utf-8')).hexdigest().upper()
 
         request_id = int(request_id)
 
@@ -189,7 +403,7 @@ class SkynetTelegramFrontend:
 
         tx_hash = None
         ipfs_hash = None
-        for i in range(60):
+        for i in range(60 * 3):
             try:
                 submits = await self.hyperion.aget_actions(
                     account=self.account,
@@ -243,10 +457,10 @@ class SkynetTelegramFrontend:
         # attempt to get the image and send it
         ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
 
-        res = await get_ipfs_file(link)
-        logging.info(f'got response from {link}')
+        res = await get_ipfs_file(ipfs_link)
+        logging.info(f'got response from {ipfs_link}')
         if not res or res.status_code != 200:
-            logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+            logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link}!')
 
         else:
             try:
@@ -262,7 +476,7 @@ class SkynetTelegramFrontend:
                     png_img = tmp_buf.getvalue()
 
             except UnidentifiedImageError:
-                logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+                logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link}!')
 
         if not png_img:
             await self.update_status_message(

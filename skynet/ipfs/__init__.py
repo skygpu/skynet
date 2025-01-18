@@ -55,7 +55,7 @@ class AsyncIPFSHTTP:
         ))['Peers']
 
 
-async def get_ipfs_file(ipfs_link: str, timeout: int = 60):
+async def get_ipfs_file(ipfs_link: str, timeout: int = 60 * 5):
     logging.info(f'attempting to get image at {ipfs_link}')
     resp = None
     for i in range(timeout):
