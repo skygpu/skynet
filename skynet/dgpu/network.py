@@ -11,6 +11,7 @@ from functools import partial
 import asks
 import trio
 import anyio
+import httpx
 
 from PIL import Image, UnidentifiedImageError
 
@@ -253,7 +254,8 @@ async def failable(fn: partial, ret_fail=None):
         json.JSONDecodeError,
         asks.errors.RequestTimeout,
         asks.errors.BadHttpResponse,
-        anyio.BrokenResourceError
+        anyio.BrokenResourceError,
+        httpx.ReadError
     ) as e:
         return ret_fail
 
