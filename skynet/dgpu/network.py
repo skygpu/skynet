@@ -9,6 +9,7 @@ from pathlib import Path
 from functools import partial
 
 import trio
+import leap
 import anyio
 import httpx
 
@@ -33,7 +34,8 @@ async def failable(fn: partial, ret_fail=None):
         OSError,
         json.JSONDecodeError,
         anyio.BrokenResourceError,
-        httpx.ReadError
+        httpx.ReadError,
+        leap.errors.TransactionPushError
     ) as e:
         return ret_fail
 
