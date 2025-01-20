@@ -117,6 +117,103 @@ class SkynetDGPUDaemon:
 
         return app
 
+    async def maybe_serve_one(self, req):
+        rid = req['id']
+
+        # parse request
+        body = json.loads(req['body'])
+        model = body['params']['model']
+
+        # if model not known
+        if model != 'RealESRGAN_x4plus' and model not in MODELS:
+            logging.warning(f'Unknown model {model}')
+            return False
+
+        # if whitelist enabled and model not in it continue
+        if (len(self.model_whitelist) > 0 and
+            not model in self.model_whitelist):
+            return False
+
+        # if blacklist contains model skip
+        if model in self.model_blacklist:
+            return False
+
+        my_results = [res['id'] for res in self._snap['my_results']]
+        if rid not in my_results and rid in self._snap['requests']:
+            statuses = self._snap['requests'][rid]
+
+            if len(statuses) == 0:
+                inputs = []
+                for _input in req['binary_data'].split(','):
+                    if _input:
+                        for _ in range(3):
+                            try:
+                                img = await self.conn.get_input_data(_input)
+                                inputs.append(img)
+                                break
+
+                            except:
+                                ...
+
+                hash_str = (
+                    str(req['nonce'])
+                    +
+                    req['body']
+                    +
+                    req['binary_data']
+                )
+                logging.info(f'hashing: {hash_str}')
+                request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
+
+                # TODO: validate request
+
+                # perform work
+                logging.info(f'working on {body}')
+
+                resp = await self.conn.begin_work(rid)
+                if not resp or 'code' in resp:
+                    logging.info(f'probably being worked on already... skip.')
+
+                else:
+                    try:
+                        output_type = 'png'
+                        if 'output_type' in body['params']:
+                            output_type = body['params']['output_type']
+
+                        output = None
+                        output_hash = None
+                        match self.backend:
+                            case 'sync-on-thread':
+                                self.mm._should_cancel = self.should_cancel_work
+                                output_hash, output = await trio.to_thread.run_sync(
+                                    partial(
+                                        self.mm.compute_one,
+                                        rid,
+                                        body['method'], body['params'],
+                                        inputs=inputs
+                                    )
+                                )
+
+                            case _:
+                                raise DGPUComputeError(f'Unsupported backend {self.backend}')
+                        self._last_generation_ts = datetime.now().isoformat()
+                        self._last_benchmark = self._benchmark
+                        self._benchmark = []
+
+                        ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
+
+                        await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
+
+                    except BaseException as e:
+                        traceback.print_exc()
+                        await self.conn.cancel_work(rid, str(e))
+
+                    finally:
+                        return True
+
+        else:
+            logging.info(f'request {rid} already beign worked on, skip...')
+
     async def serve_forever(self):
         try:
             while True:
@@ -133,92 +230,8 @@ class SkynetDGPUDaemon:
                 )
 
                 for req in queue:
-                    rid = req['id']
-
-                    # parse request
-                    body = json.loads(req['body'])
-                    model = body['params']['model']
-
-                    # if model not known
-                    if model not in MODELS:
-                        logging.warning(f'Unknown model {model}')
-                        continue
-
-                    # if whitelist enabled and model not in it continue
-                    if (len(self.model_whitelist) > 0 and
-                        not model in self.model_whitelist):
-                        continue
-
-                    # if blacklist contains model skip
-                    if model in self.model_blacklist:
-                        continue
-
-                    my_results = [res['id'] for res in self._snap['my_results']]
-                    if rid not in my_results and rid in self._snap['requests']:
-                        statuses = self._snap['requests'][rid]
-
-                        if len(statuses) == 0:
-                            binary, input_type = await self.conn.get_input_data(req['binary_data'])
-
-                            hash_str = (
-                                str(req['nonce'])
-                                +
-                                req['body']
-                                +
-                                req['binary_data']
-                            )
-                            logging.info(f'hashing: {hash_str}')
-                            request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
-
-                            # TODO: validate request
-
-                            # perform work
-                            logging.info(f'working on {body}')
-
-                            resp = await self.conn.begin_work(rid)
-                            if 'code' in resp:
-                                logging.info(f'probably being worked on already... skip.')
-
-                            else:
-                                try:
-                                    output_type = 'png'
-                                    if 'output_type' in body['params']:
-                                        output_type = body['params']['output_type']
-
-                                    output = None
-                                    output_hash = None
-                                    match self.backend:
-                                        case 'sync-on-thread':
-                                            self.mm._should_cancel = self.should_cancel_work
-                                            output_hash, output = await trio.to_thread.run_sync(
-                                                partial(
-                                                    self.mm.compute_one,
-                                                    rid,
-                                                    body['method'], body['params'],
-                                                    input_type=input_type,
-                                                    binary=binary
-                                                )
-                                            )
-
-                                        case _:
-                                            raise DGPUComputeError(f'Unsupported backend {self.backend}')
-                                    self._last_generation_ts = datetime.now().isoformat()
-                                    self._last_benchmark = self._benchmark
-                                    self._benchmark = []
-
-                                    ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
-
-                                    await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
-
-                                except BaseException as e:
-                                    traceback.print_exc()
-                                    await self.conn.cancel_work(rid, str(e))
-
-                                finally:
-                                    break
-
-                    else:
-                        logging.info(f'request {rid} already beign worked on, skip...')
+                    if (await self.maybe_serve_one(req)):
+                        break
 
                 await trio.sleep(1)
 

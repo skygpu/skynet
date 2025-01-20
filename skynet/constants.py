@@ -4,31 +4,120 @@ VERSION = '0.1a12'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
-MODELS = {
-    'prompthero/openjourney':                   {'short': 'midj',        'mem': 6},
-    'runwayml/stable-diffusion-v1-5':           {'short': 'stable',      'mem': 6},
-    'stabilityai/stable-diffusion-2-1-base':    {'short': 'stable2',     'mem': 6},
-    'snowkidy/stable-diffusion-xl-base-0.9':    {'short': 'stablexl0.9', 'mem': 8.3},
-    'Linaqruf/anything-v3.0':                   {'short': 'hdanime',     'mem': 6},
-    'hakurei/waifu-diffusion':                  {'short': 'waifu',       'mem': 6},
-    'nitrosocke/Ghibli-Diffusion':              {'short': 'ghibli',      'mem': 6},
-    'dallinmackay/Van-Gogh-diffusion':          {'short': 'van-gogh',    'mem': 6},
-    'lambdalabs/sd-pokemon-diffusers':          {'short': 'pokemon',     'mem': 6},
-    'Envvi/Inkpunk-Diffusion':                  {'short': 'ink',         'mem': 6},
-    'nousr/robo-diffusion':                     {'short': 'robot',       'mem': 6},
+import msgspec
+from typing import Literal
 
-    # default is always last
-    'stabilityai/stable-diffusion-xl-base-1.0': {'short': 'stablexl',    'mem': 8.3},
+class Size(msgspec.Struct):
+    w: int
+    h: int
+
+class ModelDesc(msgspec.Struct):
+    short: str
+    mem: float
+    size: Size
+    tags: list[Literal['txt2img', 'img2img', 'inpaint']]
+
+MODELS: dict[str, ModelDesc] = {
+    'runwayml/stable-diffusion-v1-5': ModelDesc(
+        short='stable',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'stabilityai/stable-diffusion-2-1-base': ModelDesc(
+        short='stable2',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'snowkidy/stable-diffusion-xl-base-0.9': ModelDesc(
+        short='stablexl0.9',
+        mem=8.3,
+        size=Size(w=1024, h=1024),
+        tags=['txt2img']
+    ),
+    'Linaqruf/anything-v3.0': ModelDesc(
+        short='hdanime',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'hakurei/waifu-diffusion': ModelDesc(
+        short='waifu',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'nitrosocke/Ghibli-Diffusion': ModelDesc(
+        short='ghibli',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'dallinmackay/Van-Gogh-diffusion': ModelDesc(
+        short='van-gogh',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'lambdalabs/sd-pokemon-diffusers': ModelDesc(
+        short='pokemon',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'Envvi/Inkpunk-Diffusion': ModelDesc(
+        short='ink',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'nousr/robo-diffusion': ModelDesc(
+        short='robot',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img']
+    ),
+    'black-forest-labs/FLUX.1-schnell': ModelDesc(
+        short='flux',
+        mem=24,
+        size=Size(w=1024, h=1024),
+        tags=['txt2img']
+    ),
+    'black-forest-labs/FLUX.1-Fill-dev': ModelDesc(
+        short='flux-inpaint',
+        mem=24,
+        size=Size(w=1024, h=1024),
+        tags=['inpaint']
+    ),
+    'diffusers/stable-diffusion-xl-1.0-inpainting-0.1': ModelDesc(
+        short='stablexl-inpaint',
+        mem=8.3,
+        size=Size(w=1024, h=1024),
+        tags=['inpaint']
+    ),
+    'prompthero/openjourney': ModelDesc(
+        short='midj',
+        mem=6,
+        size=Size(w=512, h=512),
+        tags=['txt2img', 'img2img']
+    ),
+    'stabilityai/stable-diffusion-xl-base-1.0': ModelDesc(
+        short='stablexl',
+        mem=8.3,
+        size=Size(w=1024, h=1024),
+        tags=['txt2img']
+    ),
 }
 
 SHORT_NAMES = [
-    model_info['short']
+    model_info.short
     for model_info in MODELS.values()
 ]
 
 def get_model_by_shortname(short: str):
     for model, info in MODELS.items():
-        if short == info['short']:
+        if short == info.short:
             return model
 
 N = '\n'
@@ -166,9 +255,7 @@ DEFAULT_UPSCALER = None
 
 DEFAULT_CONFIG_PATH = 'skynet.toml'
 
-DEFAULT_INITAL_MODELS = [
-    'stabilityai/stable-diffusion-xl-base-1.0'
-]
+DEFAULT_INITAL_MODEL = list(MODELS.keys())[-1]
 
 DATE_FORMAT = '%B the %dth %Y, %H:%M:%S'
 
@@ -193,3 +280,221 @@ TG_MAX_WIDTH = 1280
 TG_MAX_HEIGHT = 1280
 
 DEFAULT_SINGLE_CARD_MAP = 'cuda:0'
+
+GPU_CONTRACT_ABI = {
+    "version": "eosio::abi/1.2",
+    "types": [],
+    "structs": [
+        {
+            "name": "account",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "balance", "type": "asset"},
+                {"name": "nonce", "type": "uint64"}
+            ]
+        },
+        {
+            "name": "card",
+            "base": "",
+            "fields": [
+                {"name": "id", "type": "uint64"},
+                {"name": "owner", "type": "name"},
+                {"name": "card_name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "total_memory", "type": "uint64"},
+                {"name": "mp_count", "type": "uint32"},
+                {"name": "extra", "type": "string"}
+            ]
+        },
+        {
+            "name": "clean",
+            "base": "",
+            "fields": []
+        },
+        {
+            "name": "config",
+            "base": "",
+            "fields": [
+                {"name": "token_contract", "type": "name"},
+                {"name": "token_symbol", "type": "symbol"}
+            ]
+        },
+        {
+            "name": "dequeue",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "request_id", "type": "uint64"}
+            ]
+        },
+        {
+            "name": "enqueue",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "request_body", "type": "string"},
+                {"name": "binary_data", "type": "string"},
+                {"name": "reward", "type": "asset"},
+                {"name": "min_verification", "type": "uint32"}
+            ]
+        },
+        {
+            "name": "gcfgstruct",
+            "base": "",
+            "fields": [
+                {"name": "token_contract", "type": "name"},
+                {"name": "token_symbol", "type": "symbol"}
+            ]
+        },
+        {
+            "name": "submit",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "request_hash", "type": "checksum256"},
+                {"name": "result_hash", "type": "checksum256"},
+                {"name": "ipfs_hash", "type": "string"}
+            ]
+        },
+        {
+            "name": "withdraw",
+            "base": "",
+            "fields": [
+                {"name": "user", "type": "name"},
+                {"name": "quantity", "type": "asset"}
+            ]
+        },
+        {
+            "name": "work_request_struct",
+            "base": "",
+            "fields": [
+                {"name": "id", "type": "uint64"},
+                {"name": "user", "type": "name"},
+                {"name": "reward", "type": "asset"},
+                {"name": "min_verification", "type": "uint32"},
+                {"name": "nonce", "type": "uint64"},
+                {"name": "body", "type": "string"},
+                {"name": "binary_data", "type": "string"},
+                {"name": "timestamp", "type": "time_point_sec"}
+            ]
+        },
+        {
+            "name": "work_result_struct",
+            "base": "",
+            "fields": [
+                {"name": "id", "type": "uint64"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "user", "type": "name"},
+                {"name": "worker", "type": "name"},
+                {"name": "result_hash", "type": "checksum256"},
+                {"name": "ipfs_hash", "type": "string"},
+                {"name": "submited", "type": "time_point_sec"}
+            ]
+        },
+        {
+            "name": "workbegin",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "max_workers", "type": "uint32"}
+            ]
+        },
+        {
+            "name": "workcancel",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "request_id", "type": "uint64"},
+                {"name": "reason", "type": "string"}
+            ]
+        },
+        {
+            "name": "worker",
+            "base": "",
+            "fields": [
+                {"name": "account", "type": "name"},
+                {"name": "joined", "type": "time_point_sec"},
+                {"name": "left", "type": "time_point_sec"},
+                {"name": "url", "type": "string"}
+            ]
+        },
+        {
+            "name": "worker_status_struct",
+            "base": "",
+            "fields": [
+                {"name": "worker", "type": "name"},
+                {"name": "status", "type": "string"},
+                {"name": "started", "type": "time_point_sec"}
+            ]
+        }
+    ],
+    "actions": [
+        {"name": "clean", "type": "clean", "ricardian_contract": ""},
+        {"name": "config", "type": "config", "ricardian_contract": ""},
+        {"name": "dequeue", "type": "dequeue", "ricardian_contract": ""},
+        {"name": "enqueue", "type": "enqueue", "ricardian_contract": ""},
+        {"name": "submit", "type": "submit", "ricardian_contract": ""},
+        {"name": "withdraw", "type": "withdraw", "ricardian_contract": ""},
+        {"name": "workbegin", "type": "workbegin", "ricardian_contract": ""},
+        {"name": "workcancel", "type": "workcancel", "ricardian_contract": ""}
+    ],
+    "tables": [
+        {
+            "name": "cards",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "card"
+        },
+        {
+            "name": "gcfgstruct",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "gcfgstruct"
+        },
+        {
+            "name": "queue",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "work_request_struct"
+        },
+        {
+            "name": "results",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "work_result_struct"
+        },
+        {
+            "name": "status",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "worker_status_struct"
+        },
+        {
+            "name": "users",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "account"
+        },
+        {
+            "name": "workers",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": [],
+            "type": "worker"
+        }
+    ],
+    "ricardian_clauses": [],
+    "error_messages": [],
+    "abi_extensions": [],
+    "variants": [],
+    "action_results": []
+}

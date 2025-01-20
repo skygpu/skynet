@@ -55,9 +55,9 @@ class SkynetPinner:
 
         cids = []
         for action in enqueues['actions']:
-            cid = action['act']['data']['binary_data']
-            if cid and not self.is_pinned(cid):
-                cids.append(cid)
+            for cid in action['act']['data']['binary_data'].split(','):
+                if cid and not self.is_pinned(cid):
+                    cids.append(cid)
 
         return cids
 

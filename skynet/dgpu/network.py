@@ -8,15 +8,16 @@ import logging
 from pathlib import Path
 from functools import partial
 
-import asks
 import trio
+import leap
 import anyio
+import httpx
 
 from PIL import Image, UnidentifiedImageError
 
 from leap.cleos import CLEOS
-from leap.sugar import Checksum256, Name, asset_from_str
-from skynet.constants import DEFAULT_IPFS_DOMAIN
+from leap.protocol import Asset
+from skynet.constants import DEFAULT_IPFS_DOMAIN, GPU_CONTRACT_ABI
 
 from skynet.ipfs import AsyncIPFSHTTP, get_ipfs_file
 from skynet.dgpu.errors import DGPUComputeError
@@ -32,25 +33,25 @@ async def failable(fn: partial, ret_fail=None):
     except (
         OSError,
         json.JSONDecodeError,
-        asks.errors.RequestTimeout,
-        asks.errors.BadHttpResponse,
-        anyio.BrokenResourceError
-    ):
+        anyio.BrokenResourceError,
+        httpx.ReadError,
+        leap.errors.TransactionPushError
+    ) as e:
         return ret_fail
 
 
 class SkynetGPUConnector:
 
     def __init__(self, config: dict):
-        self.account = Name(config['account'])
+        self.account = config['account']
         self.permission = config['permission']
         self.key = config['key']
 
         self.node_url = config['node_url']
         self.hyperion_url = config['hyperion_url']
 
-        self.cleos = CLEOS(
-            None, None, self.node_url, remote=self.node_url)
+        self.cleos = CLEOS(endpoint=self.node_url)
+        self.cleos.load_abi('gpu.scd', GPU_CONTRACT_ABI)
 
         self.ipfs_gateway_url = None
         if 'ipfs_gateway_url' in config:
@@ -151,11 +152,11 @@ class SkynetGPUConnector:
                 self.cleos.a_push_action,
                 'gpu.scd',
                 'workbegin',
-                {
+                list({
                     'worker': self.account,
                     'request_id': request_id,
                     'max_workers': 2
-                },
+                }.values()),
                 self.account, self.key,
                 permission=self.permission
             )
@@ -168,11 +169,11 @@ class SkynetGPUConnector:
                 self.cleos.a_push_action,
                 'gpu.scd',
                 'workcancel',
-                {
+                list({
                     'worker': self.account,
                     'request_id': request_id,
                     'reason': reason
-                },
+                }.values()),
                 self.account, self.key,
                 permission=self.permission
             )
@@ -191,10 +192,10 @@ class SkynetGPUConnector:
                     self.cleos.a_push_action,
                     'gpu.scd',
                     'withdraw',
-                    {
+                    list({
                         'user': self.account,
-                        'quantity': asset_from_str(balance)
-                    },
+                        'quantity': Asset.from_str(balance)
+                    }.values()),
                     self.account, self.key,
                     permission=self.permission
                 )
@@ -226,13 +227,13 @@ class SkynetGPUConnector:
                 self.cleos.a_push_action,
                 'gpu.scd',
                 'submit',
-                {
+                list({
                     'worker': self.account,
                     'request_id': request_id,
-                    'request_hash': Checksum256(request_hash),
-                    'result_hash': Checksum256(result_hash),
+                    'request_hash': request_hash,
+                    'result_hash': result_hash,
                     'ipfs_hash': ipfs_hash
-                },
+                }.values()),
                 self.account, self.key,
                 permission=self.permission
             )
@@ -267,46 +268,15 @@ class SkynetGPUConnector:
 
         return file_cid
 
-    async def get_input_data(self, ipfs_hash: str) -> tuple[bytes, str]:
-        input_type = 'none'
+    async def get_input_data(self, ipfs_hash: str) -> Image:
+        link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
 
-        if ipfs_hash == '':
-            return b'', input_type
+        res = await get_ipfs_file(link, timeout=1)
+        logging.info(f'got response from {link}')
+        if not res or res.status_code != 200:
+            logging.warning(f'couldn\'t get ipfs binary data at {link}!')
 
-        results = {}
-        ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
-        ipfs_link_legacy = ipfs_link + '/image.png'
+        # attempt to decode as image
+        input_data = Image.open(io.BytesIO(res.raw))
 
-        async with trio.open_nursery() as n:
-            async def get_and_set_results(link: str):
-                res = await get_ipfs_file(link, timeout=1)
-                logging.info(f'got response from {link}')
-                if not res or res.status_code != 200:
-                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
-
-                else:
-                    try:
-                        # attempt to decode as image
-                        results[link] = Image.open(io.BytesIO(res.raw))
-                        input_type = 'png'
-                        n.cancel_scope.cancel()
-
-                    except UnidentifiedImageError:
-                        logging.warning(f'couldn\'t get ipfs binary data at {link}!')
-
-            n.start_soon(
-                get_and_set_results, ipfs_link)
-            n.start_soon(
-                get_and_set_results, ipfs_link_legacy)
-
-        input_data = None
-        if ipfs_link_legacy in results:
-            input_data = results[ipfs_link_legacy]
-
-        if ipfs_link in results:
-            input_data = results[ipfs_link]
-
-        if input_data == None:
-            raise DGPUComputeError('Couldn\'t gather input data from ipfs')
-
-        return input_data, input_type
+        return input_data

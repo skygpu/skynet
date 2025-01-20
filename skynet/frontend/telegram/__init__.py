@@ -14,7 +14,7 @@ from contextlib import AsyncExitStack
 from contextlib import asynccontextmanager as acm
 
 from leap.cleos import CLEOS
-from leap.sugar import Name, asset_from_str, collect_stdout
+from leap.protocol import Name, Asset
 from leap.hyperion import HyperionAPI
 
 from telebot.types import InputMediaPhoto
@@ -43,7 +43,6 @@ class SkynetTelegramFrontend:
         db_user: str,
         db_pass: str,
         ipfs_node: str,
-        remote_ipfs_node: str | None,
         key: str,
         explorer_domain: str,
         ipfs_domain: str
@@ -56,22 +55,19 @@ class SkynetTelegramFrontend:
         self.db_host = db_host
         self.db_user = db_user
         self.db_pass = db_pass
-        self.remote_ipfs_node = remote_ipfs_node
         self.key = key
         self.explorer_domain = explorer_domain
         self.ipfs_domain = ipfs_domain
 
         self.bot = AsyncTeleBot(token, exception_handler=SKYExceptionHandler)
-        self.cleos = CLEOS(None, None, url=node_url, remote=node_url)
+        self.cleos = CLEOS(endpoint=node_url)
+        self.cleos.load_abi('gpu.scd', GPU_CONTRACT_ABI)
         self.hyperion = HyperionAPI(hyperion_url)
         self.ipfs_node = AsyncIPFSHTTP(ipfs_node)
 
         self._async_exit_stack = AsyncExitStack()
 
     async def start(self):
-        if self.remote_ipfs_node:
-            await self.ipfs_node.connect(self.remote_ipfs_node)
-
         self.db_call = await self._async_exit_stack.enter_async_context(
             open_database_connection(
                 self.db_user, self.db_pass, self.db_host))
@@ -116,7 +112,7 @@ class SkynetTelegramFrontend:
         method: str,
         params: dict,
         file_id: str | None = None,
-        binary_data: str = ''
+        inputs: list[str] = []
     ) -> bool:
         if params['seed'] == None:
             params['seed'] = random.randint(0, 0xFFFFFFFF)
@@ -145,13 +141,13 @@ class SkynetTelegramFrontend:
         res = await self.cleos.a_push_action(
             'gpu.scd',
             'enqueue',
-            {
+            list({
                 'user': Name(self.account),
                 'request_body': body,
-                'binary_data': binary_data,
-                'reward': asset_from_str(reward),
+                'binary_data': ','.join(inputs),
+                'reward': Asset.from_str(reward),
                 'min_verification': 1
-            },
+            }.values()),
             self.account, self.key, permission=self.permission
         )
 
@@ -176,12 +172,12 @@ class SkynetTelegramFrontend:
             parse_mode='HTML'
         )
 
-        out = collect_stdout(res)
+        out = res['processed']['action_traces'][0]['console'] 
 
         request_id, nonce = out.split(':')
 
         request_hash = sha256(
-            (nonce + body + binary_data).encode('utf-8')).hexdigest().upper()
+            (nonce + body + ','.join(inputs)).encode('utf-8')).hexdigest().upper()
 
         request_id = int(request_id)
 
@@ -189,7 +185,7 @@ class SkynetTelegramFrontend:
 
         tx_hash = None
         ipfs_hash = None
-        for i in range(60):
+        for i in range(60 * 3):
             try:
                 submits = await self.hyperion.aget_actions(
                     account=self.account,
@@ -241,46 +237,28 @@ class SkynetTelegramFrontend:
             user, params, tx_hash, worker, reward, self.explorer_domain)
 
         # attempt to get the image and send it
-        results = {}
         ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
-        ipfs_link_legacy = ipfs_link + '/image.png'
 
-        async def get_and_set_results(link: str):
-            res = await get_ipfs_file(link)
-            logging.info(f'got response from {link}')
-            if not res or res.status_code != 200:
-                logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+        res = await get_ipfs_file(ipfs_link)
+        logging.info(f'got response from {ipfs_link}')
+        if not res or res.status_code != 200:
+            logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link}!')
 
-            else:
-                try:
-                    with Image.open(io.BytesIO(res.raw)) as image:
-                        w, h = image.size
+        else:
+            try:
+                with Image.open(io.BytesIO(res.raw)) as image:
+                    w, h = image.size
 
-                        if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
-                            logging.warning(f'result is of size {image.size}')
-                            image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
+                    if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
+                        logging.warning(f'result is of size {image.size}')
+                        image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
 
-                        tmp_buf = io.BytesIO()
-                        image.save(tmp_buf, format='PNG')
-                        png_img = tmp_buf.getvalue()
+                    tmp_buf = io.BytesIO()
+                    image.save(tmp_buf, format='PNG')
+                    png_img = tmp_buf.getvalue()
 
-                        results[link] = png_img
-
-                except UnidentifiedImageError:
-                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
-
-        tasks = [
-            get_and_set_results(ipfs_link),
-            get_and_set_results(ipfs_link_legacy)
-        ]
-        await asyncio.gather(*tasks)
-
-        png_img = None
-        if ipfs_link_legacy in results:
-            png_img = results[ipfs_link_legacy]
-
-        if ipfs_link in results:
-            png_img = results[ipfs_link]
+            except UnidentifiedImageError:
+                logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link}!')
 
         if not png_img:
             await self.update_status_message(

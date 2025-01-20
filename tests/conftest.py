@@ -2,7 +2,7 @@
 
 import pytest
 
-from skynet.db import open_new_database
+from skynet.config import *
 from skynet.ipfs import AsyncIPFSHTTP
 from skynet.ipfs.docker import open_ipfs_node
 from skynet.nodeos import open_nodeos
@@ -15,6 +15,7 @@ def ipfs_client():
 
 @pytest.fixture(scope='session')
 def postgres_db():
+    from skynet.db import open_new_database
     with open_new_database() as db_params:
         yield db_params
 
@@ -22,3 +23,20 @@ def postgres_db():
 def cleos():
     with open_nodeos() as cli:
         yield cli
+
+@pytest.fixture(scope='session')
+def dgpu():
+    from skynet.dgpu.network import SkynetGPUConnector
+    from skynet.dgpu.compute import SkynetMM
+    from skynet.dgpu.daemon import SkynetDGPUDaemon
+
+    config = load_skynet_toml(file_path='skynet.toml')
+    hf_token = load_key(config, 'skynet.dgpu.hf_token')
+    hf_home = load_key(config, 'skynet.dgpu.hf_home')
+    set_hf_vars(hf_token, hf_home)
+    config = config['skynet']['dgpu']
+    conn = SkynetGPUConnector(config)
+    mm = SkynetMM(config)
+    daemon = SkynetDGPUDaemon(mm, conn, config)
+
+    yield conn, mm, daemon

@@ -39,7 +39,7 @@ def validate_user_config_request(req: str):
                 case 'model' | 'algo':
                     attr = 'model'
                     val = params[2]
-                    shorts = [model_info['short'] for model_info in MODELS.values()]
+                    shorts = [model_info.short for model_info in MODELS.values()]
                     if val not in shorts:
                         raise ConfigUnknownAlgorithm(f'no model named {val}')
 
@@ -112,20 +112,10 @@ def validate_user_config_request(req: str):
 
 
 def perform_auto_conf(config: dict) -> dict:
-    model = config['model']
-    prefered_size_w = 512
-    prefered_size_h = 512
-
-    if 'xl' in model:
-        prefered_size_w = 1024
-        prefered_size_h = 1024
-
-    else:
-        prefered_size_w = 512
-        prefered_size_h = 512
+    model = MODELS[config['model']]
 
     config['step'] = random.randint(20, 35)
-    config['width'] = prefered_size_w
-    config['height'] = prefered_size_h
+    config['width'] = model.size.w
+    config['height'] = model.size.h
 
     return config

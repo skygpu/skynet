@@ -254,7 +254,7 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
         success = await work_request(
             user, status_msg, 'img2img', params,
             file_id=file_id,
-            binary_data=ipfs_hash
+            inputs=ipfs_hash
         )
 
         if success:
@@ -320,7 +320,7 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
         success = await work_request(
             user, status_msg, 'redo', params,
             file_id=file_id,
-            binary_data=binary
+            inputs=binary
         )
 
         if success:
