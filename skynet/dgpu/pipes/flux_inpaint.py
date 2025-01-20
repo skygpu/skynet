@@ -45,6 +45,7 @@ def pipeline_for(
         torch_dtype=torch.bfloat16,
         quantization_config=qonfig
     )
+    params['transformer'] = transformer
 
     pipe = FluxFillPipeline.from_pretrained(
         model, **params)

@@ -171,7 +171,7 @@ class SkynetDGPUDaemon:
                 logging.info(f'working on {body}')
 
                 resp = await self.conn.begin_work(rid)
-                if 'code' in resp:
+                if not resp or 'code' in resp:
                     logging.info(f'probably being worked on already... skip.')
 
                 else:
