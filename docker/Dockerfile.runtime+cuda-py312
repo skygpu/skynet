@@ -1,42 +1,40 @@
 from nvidia/cuda:12.4.1-devel-ubuntu22.04
-from python:3.12
 
 env DEBIAN_FRONTEND=noninteractive
 
 run apt-get update && apt-get install -y \
     git \
-    llvm \
-    ffmpeg \
-    libsm6 \
-    libxext6 \
-    ninja-build
+    curl \
+    libgl1 \
+    libglib2.0-0 \
+    libglu1-mesa \
+    libgl1-mesa-glx
 
-# env CC /usr/bin/clang
-# env CXX /usr/bin/clang++
-# 
-# # install llvm10 as required by llvm-lite
-# run git clone https://github.com/llvm/llvm-project.git -b llvmorg-10.0.1
-# workdir /llvm-project
-# # this adds a commit from 12.0.0 that fixes build on newer compilers
-# run git cherry-pick -n b498303066a63a203d24f739b2d2e0e56dca70d1
-# run cmake -S llvm -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-# run ninja -C build install  # -j8
+env PATH="/opt/uv:$PATH"
 
-run curl -sSL https://install.python-poetry.org | python3 -
+arg USER_ID=1000
+arg GROUP_ID=1000
 
-env PATH "/root/.local/bin:$PATH"
+run groupadd -g $GROUP_ID skynet \
+    && useradd -l -u $USER_ID -g skynet -s /bin/bash skynet \
+    && mkdir -p /home/skynet \
+    && chown -R skynet:skynet /home/skynet
 
-copy . /skynet
+run curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/opt/uv" sh
 
-workdir /skynet
+run chown -R skynet:skynet /opt/uv
 
-env POETRY_VIRTUALENVS_PATH /skynet/.venv
+run ls /opt/uv -lah
 
-run poetry install --with=cuda -v
+user skynet
 
-workdir /root/target
+workdir /home/skynet
 
-env PYTORCH_CUDA_ALLOC_CONF max_split_size_mb:128
+run uv venv --python 3.12
+
+workdir /home/skynet/target
+
+env PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
 env NVIDIA_VISIBLE_DEVICES=all
 
 copy docker/entrypoint.sh /entrypoint.sh
