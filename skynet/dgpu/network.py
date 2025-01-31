@@ -34,7 +34,9 @@ async def failable(fn: partial, ret_fail=None):
         OSError,
         json.JSONDecodeError,
         anyio.BrokenResourceError,
+        httpx.ConnectTimeout,
         httpx.ReadError,
+        httpx.ReadTimeout,
         leap.errors.TransactionPushError
     ) as e:
         return ret_fail
