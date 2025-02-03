@@ -1,3 +1,5 @@
+import logging
+
 import trio
 
 from hypercorn.config import Config
@@ -16,6 +18,10 @@ async def open_dgpu_node(config: dict) -> None:
     and *maybe* serve a `hypercorn` web API.
 
     '''
+
+    # suppress logs from httpx (logs url + status after every query)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     conn = NetConnector(config)
     mm = ModelMngr(config)
     daemon = WorkerDaemon(mm, conn, config)
@@ -33,6 +39,7 @@ async def open_dgpu_node(config: dict) -> None:
         # TODO, consider a more explicit `as hypercorn_serve`
         # to clarify?
         if api:
+            logging.info(f'serving api @ {config["api_bind"]}')
             tn.start_soon(serve, api, api_conf)
 
         # block until cancelled

@@ -83,8 +83,8 @@ class ModelMngr:
         # self.load_model(DEFAULT_INITAL_MODEL, 'txt2img')
 
     def log_debug_info(self):
-        logging.info('memory summary:')
-        logging.info('\n' + torch.cuda.memory_summary())
+        logging.debug('memory summary:')
+        logging.debug('\n' + torch.cuda.memory_summary())
 
     def is_model_loaded(self, name: str, mode: str):
         if (name == self._model_name and
@@ -114,6 +114,8 @@ class ModelMngr:
             name, mode, cache_dir=self.cache_dir)
         self._model_mode = mode
         self._model_name = name
+        logging.info('{name} loaded!')
+        self.log_debug_info()
 
     def compute_one(
         self,
@@ -126,11 +128,7 @@ class ModelMngr:
             if self._should_cancel:
                 should_raise = trio.from_thread.run(self._should_cancel, request_id)
                 if should_raise:
-                    logging.warn(f'cancelling work at step {step}')
-
-                    # ?TODO, this is never caught, so why is it
-                    # raised specially?
-                    raise DGPUInferenceCancelled()
+                    logging.warn(f'CANCELLING work at step {step}')
 
             return {}
 
@@ -206,8 +204,6 @@ class ModelMngr:
                     raise DGPUComputeError('Unsupported compute method')
 
         except BaseException as err:
-            logging.error(err)
-            # to see the src exc in tb
             raise DGPUComputeError(str(err)) from err
 
         finally:

@@ -72,9 +72,6 @@ class NetConnector:
         self.cleos = CLEOS(endpoint=self.node_url)
         self.cleos.load_abi('gpu.scd', GPU_CONTRACT_ABI)
 
-        self.ipfs_gateway_url = None
-        if 'ipfs_gateway_url' in config:
-            self.ipfs_gateway_url = config['ipfs_gateway_url']
         self.ipfs_url = config['ipfs_url']
 
         self.ipfs_client = AsyncIPFSHTTP(self.ipfs_url)
@@ -89,7 +86,7 @@ class NetConnector:
 
     async def get_work_requests_last_hour(self):
         logging.info('get_work_requests_last_hour')
-        return await failable(
+        rows = await failable(
             partial(
                 self.cleos.aget_table,
                 'gpu.scd', 'gpu.scd', 'queue',
@@ -98,12 +95,18 @@ class NetConnector:
                 lower_bound=int(time.time()) - 3600
             ), ret_fail=[])
 
+        logging.info(f'found {len(rows)} requests on queue')
+        return rows
+
     async def get_status_by_request_id(self, request_id: int):
         logging.info('get_status_by_request_id')
-        return await failable(
+        rows = await failable(
             partial(
                 self.cleos.aget_table,
                 'gpu.scd', request_id, 'status'), ret_fail=[])
+
+        logging.info(f'found status for workers: {[r["worker"] for r in rows]}')
+        return rows
 
     async def get_global_config(self):
         logging.info('get_global_config')
@@ -113,8 +116,11 @@ class NetConnector:
                 'gpu.scd', 'gpu.scd', 'config'))
 
         if rows:
-            return rows[0]
+            cfg = rows[0]
+            logging.info(f'config found: {cfg}')
+            return cfg
         else:
+            logging.error('global config not found, is the contract initialized?')
             return None
 
     async def get_worker_balance(self):
@@ -130,19 +136,12 @@ class NetConnector:
             ))
 
         if rows:
-            return rows[0]['balance']
+            b = rows[0]['balance']
+            logging.info(f'balance: {b}')
+            return b
         else:
+            logging.info('no balance info found')
             return None
-
-    async def get_competitors_for_req(self, request_id: int) -> set:
-        competitors = [
-            status['worker']
-            for status in
-            (await self.get_status_by_request_id(request_id))
-            if status['worker'] != self.account
-        ]
-        logging.info(f'competitors: {competitors}')
-        return set(competitors)
 
     # TODO, considery making this a NON-method and instead
     # handing in the `snap['queue']` output beforehand?
@@ -177,7 +176,7 @@ class NetConnector:
         step.
 
         '''
-        logging.info('begin_work')
+        logging.info(f'begin_work on #{request_id}')
         return await failable(
             partial(
                 self.cleos.a_push_action,
@@ -194,7 +193,7 @@ class NetConnector:
         )
 
     async def cancel_work(self, request_id: int, reason: str):
-        logging.info('cancel_work')
+        logging.info(f'cancel_work on #{request_id}')
         return await failable(
             partial(
                 self.cleos.a_push_action,
@@ -234,7 +233,7 @@ class NetConnector:
 
     async def find_results(self):
         logging.info('find_results')
-        return await failable(
+        rows = await failable(
             partial(
                 self.cleos.aget_table,
                 'gpu.scd', 'gpu.scd', 'results',
@@ -244,6 +243,7 @@ class NetConnector:
                 upper_bound=self.account
             )
         )
+        return rows
 
     async def submit_work(
         self,
@@ -252,7 +252,7 @@ class NetConnector:
         result_hash: str,
         ipfs_hash: str
     ):
-        logging.info('submit_work')
+        logging.info('submit_work #{request_id}')
         return await failable(
             partial(
                 self.cleos.a_push_action,
@@ -285,17 +285,12 @@ class NetConnector:
             case _:
                 raise ValueError(f'Unsupported output type: {typ}')
 
-        if self.ipfs_gateway_url:
-            # check peer connections, reconnect to skynet gateway if not
-            gateway_id = Path(self.ipfs_gateway_url).name
-            peers = await self.ipfs_client.peers()
-            if gateway_id not in [p['Peer'] for p in peers]:
-                await self.ipfs_client.connect(self.ipfs_gateway_url)
-
         file_info = await self.ipfs_client.add(Path(target_file))
         file_cid = file_info['Hash']
+        logging.info(f'added file to ipfs, CID: {file_cid}')
 
         await self.ipfs_client.pin(file_cid)
+        logging.info(f'pinned {file_cid}')
 
         return file_cid
 
@@ -311,11 +306,11 @@ class NetConnector:
         link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
 
         res = await get_ipfs_file(link, timeout=1)
-        logging.info(f'got response from {link}')
         if not res or res.status_code != 200:
             logging.warning(f'couldn\'t get ipfs binary data at {link}!')
 
         # attempt to decode as image
         input_data = Image.open(io.BytesIO(res.raw))
+        logging.info('decoded as image successfully')
 
         return input_data

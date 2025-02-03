@@ -105,7 +105,11 @@ class WorkerDaemon:
             for status in self._snap['requests'][request_id]
             if status['worker'] != self.account
         ])
-        return bool(self.non_compete & competitors)
+        logging.info('should cancel work?')
+        logging.info(f'competitors: {competitors}')
+        should_cancel = bool(self.non_compete & competitors)
+        logging.info(f'cancel: {should_cancel}')
+        return should_cancel
 
 
     async def snap_updater_task(self):
@@ -150,6 +154,7 @@ class WorkerDaemon:
         req: dict,
     ):
         rid = req['id']
+        logging.info(f'maybe serve request #{rid}')
 
         # parse request
         body = json.loads(req['body'])
@@ -161,7 +166,7 @@ class WorkerDaemon:
             and
             model not in MODELS
         ):
-            logging.warning(f'Unknown model {model}')
+            logging.warning(f'unknown model {model}!, skip...')
             return False
 
         # only handle whitelisted models
@@ -170,98 +175,110 @@ class WorkerDaemon:
             and
             model not in self.model_whitelist
         ):
+            logging.warning('model not whitelisted!, skip...')
             return False
 
         # if blacklist contains model skip
         if model in self.model_blacklist:
+            logging.warning('model not blacklisted!, skip...')
             return False
 
-        results = [res['id'] for res in self._snap['results']]
+        results = [res['request_id'] for res in self._snap['results']]
 
-        # if worker is already on that request or
-        # if worker has a stale status for that request
-        if rid in results or rid not in self._snap['requests']:
-            logging.info(f'request {rid} already beign worked on, skip...')
-            return
+        # if worker already produced a result for this request
+        if rid in results:
+            logging.info(f'worker already submitted a result for request #{rid}, skip...')
+            return False
 
         statuses = self._snap['requests'][rid]
-        if len(statuses) == 0:
-            inputs = []
-            for _input in req['binary_data'].split(','):
-                if _input:
-                    for _ in range(3):
-                        try:
-                            # user `GPUConnector` to IO with
-                            # storage layer to seed the compute
-                            # task.
-                            img = await self.conn.get_input_data(_input)
-                            inputs.append(img)
-                            break
 
-                        except BaseException:
-                            logging.exception(
-                                'Model input error !?!\n'
+        # skip if workers in non_compete already on it
+        competitors = set((status['worker'] for status in statuses))
+        if bool(self.non_compete & competitors):
+            logging.info('worker in configured non_compete list already working on request, skip...')
+            return False
+
+        # resolve the ipfs hashes into the actual data behind them
+        inputs = []
+        raw_inputs = req['binary_data'].split(',')
+        if raw_inputs:
+            logging.info(f'fetching IPFS inputs: {raw_inputs}')
+
+        retry = 3
+        for _input in req['binary_data'].split(','):
+            if _input:
+                for r in range(retry):
+                    try:
+                        # user `GPUConnector` to IO with
+                        # storage layer to seed the compute
+                        # task.
+                        img = await self.conn.get_input_data(_input)
+                        inputs.append(img)
+                        logging.info(f'retrieved {_input}!')
+                        break
+
+                    except BaseException:
+                        logging.exception(
+                            f'IPFS fetch input error !?! retries left {retry - r - 1}\n'
+                        )
+
+        # compute unique request hash used on submit
+        hash_str = (
+            str(req['nonce'])
+            +
+            req['body']
+            +
+            req['binary_data']
+        )
+        logging.debug(f'hashing: {hash_str}')
+        request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
+        logging.info(f'calculated request hash: {request_hash}')
+
+        # TODO: validate request
+
+        resp = await self.conn.begin_work(rid)
+        if not resp or 'code' in resp:
+            logging.info('begin_work error, probably being worked on already... skip.')
+
+        else:
+            try:
+                output_type = 'png'
+                if 'output_type' in body['params']:
+                    output_type = body['params']['output_type']
+
+                output = None
+                output_hash = None
+                match self.backend:
+                    case 'sync-on-thread':
+                        self.mm._should_cancel = self.should_cancel_work
+                        output_hash, output = await trio.to_thread.run_sync(
+                            partial(
+                                self.mm.compute_one,
+                                rid,
+                                body['method'], body['params'],
+                                inputs=inputs
                             )
+                        )
 
-            hash_str = (
-                str(req['nonce'])
-                +
-                req['body']
-                +
-                req['binary_data']
-            )
-            logging.info(f'hashing: {hash_str}')
-            request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
+                    case _:
+                        raise DGPUComputeError(
+                            f'Unsupported backend {self.backend}'
+                        )
 
-            # TODO: validate request
+                self._last_generation_ts: str = datetime.now().isoformat()
+                self._last_benchmark: list[float] = self._benchmark
+                self._benchmark: list[float] = []
 
-            # perform work
-            logging.info(f'working on {body}')
+                ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
 
-            resp = await self.conn.begin_work(rid)
-            if not resp or 'code' in resp:
-                logging.info('probably being worked on already... skip.')
+                await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
 
-            else:
-                try:
-                    output_type = 'png'
-                    if 'output_type' in body['params']:
-                        output_type = body['params']['output_type']
+            except BaseException as err:
+                logging.exception('Failed to serve model request !?\n')
+                await self.conn.cancel_work(rid, str(err))
 
-                    output = None
-                    output_hash = None
-                    match self.backend:
-                        case 'sync-on-thread':
-                            self.mm._should_cancel = self.should_cancel_work
-                            output_hash, output = await trio.to_thread.run_sync(
-                                partial(
-                                    self.mm.compute_one,
-                                    rid,
-                                    body['method'], body['params'],
-                                    inputs=inputs
-                                )
-                            )
-
-                        case _:
-                            raise DGPUComputeError(
-                                f'Unsupported backend {self.backend}'
-                            )
-
-                    self._last_generation_ts: str = datetime.now().isoformat()
-                    self._last_benchmark: list[float] = self._benchmark
-                    self._benchmark: list[float] = []
-
-                    ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
-
-                    await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
-
-                except BaseException as err:
-                    logging.exception('Failed to serve model request !?\n')
-                    # traceback.print_exc()  # TODO? <- replaced by above ya?
-                    await self.conn.cancel_work(rid, str(err))
-
-                finally:
-                    return True
+            finally:
+                return True
 
     # TODO, as per above on `.maybe_serve_one()`, it's likely a bit
     # more *trionic* to define this all as a module level task-func
