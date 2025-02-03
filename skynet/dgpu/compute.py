@@ -7,17 +7,10 @@ import gc
 import logging
 
 from hashlib import sha256
-# import zipfile
-# from PIL import Image
-# from diffusers import DiffusionPipeline
 
 import trio
 import torch
 
-# from skynet.constants import (
-#     DEFAULT_INITAL_MODEL,
-#     MODELS,
-# )
 from skynet.dgpu.errors import (
     DGPUComputeError,
     DGPUInferenceCancelled,
