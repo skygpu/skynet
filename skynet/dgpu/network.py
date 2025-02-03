@@ -12,6 +12,7 @@ import trio
 import leap
 import anyio
 import httpx
+import outcome
 
 from PIL import (
     Image,
@@ -36,27 +37,23 @@ from skynet.ipfs import (
 REQUEST_UPDATE_TIME: int = 3
 
 
-# TODO, consider using the `outcome` lib instead?
-# - it's already purpose built for exactly this, boxing (async)
-#  function invocations..
-# |_ https://outcome.readthedocs.io/en/latest/api.html#outcome.capture
-async def failable(
-    fn: partial,
-    ret_fail=None,
-):
-    try:
-        return await fn()
-    except (
-        OSError,
-        json.JSONDecodeError,
-        anyio.BrokenResourceError,
-        httpx.ConnectError,
-        httpx.ConnectTimeout,
-        httpx.ReadError,
-        httpx.ReadTimeout,
-        leap.errors.TransactionPushError
-    ):
-        return ret_fail
+async def failable(fn: partial, ret_fail=None):
+    o = await outcome.acapture(fn)
+    match o:
+        case outcome.Error(error=(
+            OSError() |
+            json.JSONDecodeError() |
+            anyio.BrokenResourceError() |
+            httpx.ConnectError() |
+            httpx.ConnectTimeout() |
+            httpx.ReadError() |
+            httpx.ReadTimeout() |
+            leap.errors.TransactionPushError()
+        )):
+            return ret_fail
+
+        case _:
+            return o.unwrap()
 
 
 # TODO, again the prefix XD
