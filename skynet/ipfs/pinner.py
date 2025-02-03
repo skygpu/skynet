@@ -118,7 +118,8 @@ class SkynetPinner:
                     for cid in cids:
                         n.start_soon(self.task_pin, cid)
 
-                except OSError as e:
+                except OSError:
+                    # TODO, use `logging.exception()` here instead ??
                     traceback.print_exc()
 
                 except KeyboardInterrupt:
