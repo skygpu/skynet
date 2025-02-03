@@ -46,10 +46,7 @@ async def failable(fn: partial, ret_fail=None):
             return o.unwrap()
 
 
-# TODO, again the prefix XD
-# -[ ] better name then `GPUConnector` ??
-# |_ `Compute[Net]IO[Mngr]`
-class SkynetGPUConnector:
+class NetConnector:
     '''
     An API for connecting to and conducting various "high level"
     network-service operations in the skynet.

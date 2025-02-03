@@ -17,8 +17,8 @@ from skynet.constants import (
 from skynet.dgpu.errors import (
     DGPUComputeError,
 )
-from skynet.dgpu.compute import SkynetMM
-from skynet.dgpu.network import SkynetGPUConnector
+from skynet.dgpu.compute import ModelMngr
+from skynet.dgpu.network import NetConnector
 
 
 def convert_reward_to_int(reward_str):
@@ -29,8 +29,7 @@ def convert_reward_to_int(reward_str):
     return int(int_part + decimal_part)
 
 
-# prolly don't need the `Skynet` prefix since that's kinda implied ;p
-class SkynetDGPUDaemon:
+class WorkerDaemon:
     '''
     The root "GPU daemon".
 
@@ -40,12 +39,12 @@ class SkynetDGPUDaemon:
     '''
     def __init__(
         self,
-        mm: SkynetMM,
-        conn: SkynetGPUConnector,
+        mm: ModelMngr,
+        conn: NetConnector,
         config: dict
     ):
-        self.mm: SkynetMM = mm
-        self.conn: SkynetGPUConnector = conn
+        self.mm: ModelMngr = mm
+        self.conn: NetConnector = conn
         self.auto_withdraw = (
             config['auto_withdraw']
             if 'auto_withdraw' in config else False
@@ -147,7 +146,7 @@ class SkynetDGPUDaemon:
 
     # TODO? this func is kinda big and maybe is better at module
     # level to reduce indentation?
-    # -[ ] just pass `daemon: SkynetDGPUDaemon` vs. `self`
+    # -[ ] just pass `daemon: WorkerDaemon` vs. `self`
     async def maybe_serve_one(
         self,
         req: dict,
@@ -271,7 +270,7 @@ class SkynetDGPUDaemon:
 
     # TODO, as per above on `.maybe_serve_one()`, it's likely a bit
     # more *trionic* to define this all as a module level task-func
-    # which operates on a `daemon: SkynetDGPUDaemon`?
+    # which operates on a `daemon: WorkerDaemon`?
     #
     # -[ ] keeps tasks-as-funcs style prominent
     # -[ ] avoids so much indentation due to methods

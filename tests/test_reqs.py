@@ -1,6 +1,6 @@
 import json
 
-from skynet.dgpu.compute import SkynetMM
+from skynet.dgpu.compute import ModelMngr
 from skynet.constants import *
 from skynet.config import *
 

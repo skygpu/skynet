@@ -66,8 +66,7 @@ def prepare_params_for_diffuse(
     )
 
 
-# TODO, yet again - drop the redundant prefix ;)
-class SkynetMM:
+class ModelMngr:
     '''
     (AI algo) Model manager for loading models, computing outputs,
     checking load state, and unloading when no-longer-needed/finished.
