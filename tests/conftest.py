@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import pytest
 
 from skynet.config import *

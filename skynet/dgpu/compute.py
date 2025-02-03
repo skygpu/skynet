@@ -1,12 +1,3 @@
-#!/usr/bin/python
-# ^TODO? again, why..
-#
-# Do we expect this mod
-# to be invoked? if so why is there no
-# `if __name__ == '__main__'` guard?
-#
-# if anything this should contain a license header ;)
-
 '''
 Skynet Memory Manager
 

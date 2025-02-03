@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from json import JSONDecodeError
 import random
 import logging
