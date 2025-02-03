@@ -34,6 +34,7 @@ async def failable(fn: partial, ret_fail=None):
         OSError,
         json.JSONDecodeError,
         anyio.BrokenResourceError,
+        httpx.ConnectError,
         httpx.ConnectTimeout,
         httpx.ReadError,
         httpx.ReadTimeout,
