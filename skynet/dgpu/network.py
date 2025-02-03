@@ -155,7 +155,7 @@ class NetConnector:
         '''
         snap = {
             'requests': {},
-            'my_results': []
+            'results': []
         }
 
         snap['queue'] = await self.get_work_requests_last_hour()
@@ -164,7 +164,7 @@ class NetConnector:
             d[key] = await fn(*args, **kwargs)
 
         async with trio.open_nursery() as n:
-            n.start_soon(_run_and_save, snap, 'my_results', self.find_my_results)
+            n.start_soon(_run_and_save, snap, 'results', self.find_results)
             for req in snap['queue']:
                 n.start_soon(
                     _run_and_save, snap['requests'], req['id'], self.get_status_by_request_id, req['id'])
@@ -232,8 +232,8 @@ class NetConnector:
                 )
             )
 
-    async def find_my_results(self):
-        logging.info('find_my_results')
+    async def find_results(self):
+        logging.info('find_results')
         return await failable(
             partial(
                 self.cleos.aget_table,
