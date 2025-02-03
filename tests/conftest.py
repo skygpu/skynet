@@ -2,14 +2,12 @@ import pytest
 
 from skynet.config import *
 from skynet.ipfs import AsyncIPFSHTTP
-from skynet.ipfs.docker import open_ipfs_node
 from skynet.nodeos import open_nodeos
 
 
 @pytest.fixture(scope='session')
 def ipfs_client():
-    with open_ipfs_node(teardown=True):
-        yield AsyncIPFSHTTP('http://127.0.0.1:5001')
+    yield AsyncIPFSHTTP('http://127.0.0.1:5001')
 
 @pytest.fixture(scope='session')
 def postgres_db():
