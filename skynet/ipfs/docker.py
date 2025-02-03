@@ -63,6 +63,8 @@ def open_ipfs_node(
         if ec != 0:
             logging.error(out)
 
+    # TODO, why not deliver some kinda API here for controlling the
+    # ipfs node?
     yield
 
     if teardown and container:
