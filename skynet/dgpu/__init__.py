@@ -4,21 +4,21 @@ from hypercorn.config import Config
 from hypercorn.trio import serve
 from quart_trio import QuartTrio as Quart
 
-from skynet.dgpu.compute import SkynetMM
-from skynet.dgpu.daemon import SkynetDGPUDaemon
-from skynet.dgpu.network import SkynetGPUConnector
+from skynet.dgpu.compute import ModelMngr
+from skynet.dgpu.daemon import WorkerDaemon
+from skynet.dgpu.network import NetConnector
 
 
 async def open_dgpu_node(config: dict) -> None:
     '''
     Open a top level "GPU mgmt daemon", keep the
-    `SkynetDGPUDaemon._snap: dict[str, list|dict]` table
+    `WorkerDaemon._snap: dict[str, list|dict]` table
     and *maybe* serve a `hypercorn` web API.
 
     '''
-    conn = SkynetGPUConnector(config)
-    mm = SkynetMM(config)
-    daemon = SkynetDGPUDaemon(mm, conn, config)
+    conn = NetConnector(config)
+    mm = ModelMngr(config)
+    daemon = WorkerDaemon(mm, conn, config)
 
     api: Quart|None = None
     if 'api_bind' in config:
