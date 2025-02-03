@@ -8,10 +8,25 @@ from functools import partial
 
 import click
 
-from leap.protocol import Name, Asset
+from leap.protocol import (
+    Name,
+    Asset,
+)
 
-from .config import *
-from .constants import *
+from .config import (
+    load_skynet_toml,
+    load_key,
+    set_hf_vars,
+    ConfigParsingError,
+)
+from .constants import (
+    # TODO, more conventional to make these private i'm pretty
+    # sure according to pep8?
+    DEFAULT_IPFS_DOMAIN,
+    DEFAULT_EXPLORER_DOMAIN,
+    DEFAULT_CONFIG_PATH,
+    MODELS,
+)
 
 
 @click.group()
@@ -22,7 +37,10 @@ def skynet(*args, **kwargs):
 @click.command()
 @click.option('--model', '-m', default=list(MODELS.keys())[-1])
 @click.option(
-    '--prompt', '-p', default='a red old tractor in a sunny wheat field')
+    '--prompt',
+    '-p',
+    default='a red old tractor in a sunny wheat field',
+)
 @click.option('--output', '-o', default='output.png')
 @click.option('--width', '-w', default=512)
 @click.option('--height', '-h', default=512)
@@ -30,7 +48,7 @@ def skynet(*args, **kwargs):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def txt2img(*args, **kwargs):
-    from . import utils
+    from . import utils  # TODO? why here, import cycle?
 
     config = load_skynet_toml()
     hf_token = load_key(config, 'skynet.dgpu.hf_token')
@@ -38,10 +56,18 @@ def txt2img(*args, **kwargs):
     set_hf_vars(hf_token, hf_home)
     utils.txt2img(hf_token, **kwargs)
 
+
 @click.command()
-@click.option('--model', '-m', default=list(MODELS.keys())[-2])
 @click.option(
-    '--prompt', '-p', default='a red old tractor in a sunny wheat field')
+    '--model',
+    '-m',
+    default=list(MODELS.keys())[-2]
+)
+@click.option(
+    '--prompt',
+    '-p',
+    default='a red old tractor in a sunny wheat field',
+)
 @click.option('--input', '-i', default='input.png')
 @click.option('--output', '-o', default='output.png')
 @click.option('--strength', '-Z', default=1.0)
@@ -117,6 +143,7 @@ def download():
     hf_home = load_key(config, 'skynet.dgpu.hf_home')
     set_hf_vars(hf_token, hf_home)
     utils.download_all_models(hf_token, hf_home)
+
 
 @skynet.command()
 @click.option(
@@ -315,6 +342,7 @@ def config(
 def deposit(quantity: str):
     import trio
     from leap.cleos import CLEOS
+    from leap.sugar import asset_from_str
 
     config = load_skynet_toml()
 
@@ -365,7 +393,10 @@ def nodeos():
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='Logging level')
 @click.option(
-    '--config-path', '-c', default=DEFAULT_CONFIG_PATH)
+    '--config-path',
+    '-c',
+    default=DEFAULT_CONFIG_PATH,
+)
 def dgpu(
     loglevel: str,
     config_path: str
