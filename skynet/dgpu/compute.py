@@ -1,20 +1,36 @@
 #!/usr/bin/python
+# ^TODO? again, why..
+#
+# Do we expect this mod
+# to be invoked? if so why is there no
+# `if __name__ == '__main__'` guard?
+#
+# if anything this should contain a license header ;)
 
-# Skynet Memory Manager
+'''
+Skynet Memory Manager
+
+'''
 
 import gc
 import logging
 
 from hashlib import sha256
-import zipfile
-from PIL import Image
-from diffusers import DiffusionPipeline
+# import zipfile
+# from PIL import Image
+# from diffusers import DiffusionPipeline
 
 import trio
 import torch
 
-from skynet.constants import DEFAULT_INITAL_MODEL, MODELS
-from skynet.dgpu.errors import DGPUComputeError, DGPUInferenceCancelled
+# from skynet.constants import (
+#     DEFAULT_INITAL_MODEL,
+#     MODELS,
+# )
+from skynet.dgpu.errors import (
+    DGPUComputeError,
+    DGPUInferenceCancelled,
+)
 
 from skynet.utils import crop_image, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
 
@@ -66,15 +82,20 @@ def prepare_params_for_diffuse(
     )
 
 
+# TODO, yet again - drop the redundant prefix ;)
 class SkynetMM:
+    '''
+    (AI algo) Model manager for loading models, computing outputs,
+    checking load state, and unloading when no-longer-needed/finished.
 
+    '''
     def __init__(self, config: dict):
         self.cache_dir = None
         if 'hf_home' in config:
             self.cache_dir = config['hf_home']
 
-        self._model_name = ''
-        self._model_mode = ''
+        self._model_name: str = ''
+        self._model_mode: str = ''
 
         # self.load_model(DEFAULT_INITAL_MODEL, 'txt2img')
 
@@ -89,7 +110,7 @@ class SkynetMM:
 
         return False
 
-    def unload_model(self):
+    def unload_model(self) -> None:
         if getattr(self, '_model', None):
             del self._model
 
@@ -103,14 +124,13 @@ class SkynetMM:
         self,
         name: str,
         mode: str
-    ):
+    ) -> None:
         logging.info(f'loading model {name}...')
         self.unload_model()
         self._model = pipeline_for(
             name, mode, cache_dir=self.cache_dir)
         self._model_mode = mode
         self._model_name = name
-
 
     def compute_one(
         self,
@@ -124,6 +144,9 @@ class SkynetMM:
                 should_raise = trio.from_thread.run(self._should_cancel, request_id)
                 if should_raise:
                     logging.warn(f'cancelling work at step {step}')
+
+                    # ?TODO, this is never caught, so why is it
+                    # raised specially?
                     raise DGPUInferenceCancelled()
 
             return {}
@@ -199,9 +222,10 @@ class SkynetMM:
                 case _:
                     raise DGPUComputeError('Unsupported compute method')
 
-        except BaseException as e:
-            logging.error(e)
-            raise DGPUComputeError(str(e))
+        except BaseException as err:
+            logging.error(err)
+            # to see the src exc in tb
+            raise DGPUComputeError(str(err)) from err
 
         finally:
             torch.cuda.empty_cache()

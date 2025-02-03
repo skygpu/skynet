@@ -1,23 +1,25 @@
 #!/usr/bin/python
 
-import json
-import random
-import logging
-import time
-import traceback
-
-from hashlib import sha256
 from datetime import datetime
 from functools import partial
+from hashlib import sha256
+import json
+import logging
+import random
+# import traceback
+import time
 
 import trio
-
 from quart import jsonify
 from quart_trio import QuartTrio as Quart
 
-from skynet.constants import MODELS, VERSION
-
-from skynet.dgpu.errors import *
+from skynet.constants import (
+    MODELS,
+    VERSION,
+)
+from skynet.dgpu.errors import (
+    DGPUComputeError,
+)
 from skynet.dgpu.compute import SkynetMM
 from skynet.dgpu.network import SkynetGPUConnector
 
@@ -30,22 +32,29 @@ def convert_reward_to_int(reward_str):
     return int(int_part + decimal_part)
 
 
+# prolly don't need the `Skynet` prefix since that's kinda implied ;p
 class SkynetDGPUDaemon:
+    '''
+    The root "GPU daemon".
 
+    Contains/manages underlying susystems:
+    - a GPU connecto
+
+    '''
     def __init__(
         self,
         mm: SkynetMM,
         conn: SkynetGPUConnector,
         config: dict
     ):
-        self.mm = mm
-        self.conn = conn
+        self.mm: SkynetMM = mm
+        self.conn: SkynetGPUConnector = conn
         self.auto_withdraw = (
             config['auto_withdraw']
             if 'auto_withdraw' in config else False
         )
 
-        self.account = config['account']
+        self.account: str = config['account']
 
         self.non_compete = set()
         if 'non_compete' in config:
@@ -67,13 +76,20 @@ class SkynetDGPUDaemon:
             'queue': [],
             'requests': {},
             'my_results': []
+            # ^and here i thot they were **my** results..
+            # :sadcat:
         }
 
-        self._benchmark = []
-        self._last_benchmark = None
-        self._last_generation_ts = None
+        self._benchmark: list[float] = []
+        self._last_benchmark: list[float]|None = None
+        self._last_generation_ts: str|None = None
 
     def _get_benchmark_speed(self) -> float:
+        '''
+        Return the (arithmetic) average work-iterations-per-second
+        fconducted by this compute worker.
+
+        '''
         if not self._last_benchmark:
             return 0
 
@@ -99,11 +115,26 @@ class SkynetDGPUDaemon:
 
 
     async def snap_updater_task(self):
+        '''
+        Busy loop update the local `._snap: dict` table from
+
+        '''
         while True:
             self._snap = await self.conn.get_full_queue_snapshot()
             await trio.sleep(1)
 
-    async def generate_api(self):
+    # TODO, design suggestion, just make this a lazily accessed
+    # `@class_property` if we're 3.12+
+    # |_ https://docs.python.org/3/library/functools.html#functools.cached_property
+    async def generate_api(self) -> Quart:
+        '''
+        Gen a `Quart`-compat web API spec which (for now) simply
+        serves a small monitoring ep that reports,
+
+        - iso-time-stamp of the last served model-output
+        - the worker's average "compute-iterations-per-second"
+
+        '''
         app = Quart(__name__)
 
         @app.route('/')
@@ -117,21 +148,34 @@ class SkynetDGPUDaemon:
 
         return app
 
-    async def maybe_serve_one(self, req):
+    # TODO? this func is kinda big and maybe is better at module
+    # level to reduce indentation?
+    # -[ ] just pass `daemon: SkynetDGPUDaemon` vs. `self`
+    async def maybe_serve_one(
+        self,
+        req: dict,
+    ):
         rid = req['id']
 
         # parse request
         body = json.loads(req['body'])
         model = body['params']['model']
 
-        # if model not known
-        if model != 'RealESRGAN_x4plus' and model not in MODELS:
+        # if model not known, ignore.
+        if (
+            model != 'RealESRGAN_x4plus'
+            and
+            model not in MODELS
+        ):
             logging.warning(f'Unknown model {model}')
             return False
 
-        # if whitelist enabled and model not in it continue
-        if (len(self.model_whitelist) > 0 and
-            not model in self.model_whitelist):
+        # only handle whitelisted models
+        if (
+            len(self.model_whitelist) > 0
+            and
+            model not in self.model_whitelist
+        ):
             return False
 
         # if blacklist contains model skip
@@ -139,21 +183,29 @@ class SkynetDGPUDaemon:
             return False
 
         my_results = [res['id'] for res in self._snap['my_results']]
-        if rid not in my_results and rid in self._snap['requests']:
+        if (
+            rid not in my_results
+            and
+            rid in self._snap['requests']
+        ):
             statuses = self._snap['requests'][rid]
-
             if len(statuses) == 0:
                 inputs = []
                 for _input in req['binary_data'].split(','):
                     if _input:
                         for _ in range(3):
                             try:
+                                # user `GPUConnector` to IO with
+                                # storage layer to seed the compute
+                                # task.
                                 img = await self.conn.get_input_data(_input)
                                 inputs.append(img)
                                 break
 
-                            except:
-                                ...
+                            except BaseException:
+                                logging.exception(
+                                    'Model input error !?!\n'
+                                )
 
                 hash_str = (
                     str(req['nonce'])
@@ -172,7 +224,7 @@ class SkynetDGPUDaemon:
 
                 resp = await self.conn.begin_work(rid)
                 if not resp or 'code' in resp:
-                    logging.info(f'probably being worked on already... skip.')
+                    logging.info('probably being worked on already... skip.')
 
                 else:
                     try:
@@ -195,25 +247,37 @@ class SkynetDGPUDaemon:
                                 )
 
                             case _:
-                                raise DGPUComputeError(f'Unsupported backend {self.backend}')
-                        self._last_generation_ts = datetime.now().isoformat()
-                        self._last_benchmark = self._benchmark
-                        self._benchmark = []
+                                raise DGPUComputeError(
+                                    f'Unsupported backend {self.backend}'
+                                )
+
+                        self._last_generation_ts: str = datetime.now().isoformat()
+                        self._last_benchmark: list[float] = self._benchmark
+                        self._benchmark: list[float] = []
 
                         ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
 
                         await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
 
-                    except BaseException as e:
-                        traceback.print_exc()
-                        await self.conn.cancel_work(rid, str(e))
+                    except BaseException as err:
+                        logging.exception('Failed to serve model request !?\n')
+                        # traceback.print_exc()  # TODO? <- replaced by above ya?
+                        await self.conn.cancel_work(rid, str(err))
 
                     finally:
                         return True
 
+        # TODO, i would inverse this case logic to avoid an indent
+        # level in above block ;)
         else:
             logging.info(f'request {rid} already beign worked on, skip...')
 
+    # TODO, as per above on `.maybe_serve_one()`, it's likely a bit
+    # more *trionic* to define this all as a module level task-func
+    # which operates on a `daemon: SkynetDGPUDaemon`?
+    #
+    # -[ ] keeps tasks-as-funcs style prominent
+    # -[ ] avoids so much indentation due to methods
     async def serve_forever(self):
         try:
             while True:
@@ -230,6 +294,8 @@ class SkynetDGPUDaemon:
                 )
 
                 for req in queue:
+                    # TODO, as mentioned above just inline this once
+                    # converted to a mod level func.
                     if (await self.maybe_serve_one(req)):
                         break
 
