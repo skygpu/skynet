@@ -71,9 +71,7 @@ class WorkerDaemon:
         self._snap = {
             'queue': [],
             'requests': {},
-            'my_results': []
-            # ^and here i thot they were **my** results..
-            # :sadcat:
+            'results': []
         }
 
         self._benchmark: list[float] = []
@@ -178,9 +176,9 @@ class WorkerDaemon:
         if model in self.model_blacklist:
             return False
 
-        my_results = [res['id'] for res in self._snap['my_results']]
+        results = [res['id'] for res in self._snap['results']]
         if (
-            rid not in my_results
+            rid not in results
             and
             rid in self._snap['requests']
         ):
