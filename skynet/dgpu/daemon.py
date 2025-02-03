@@ -1,11 +1,10 @@
-from datetime import datetime
-from functools import partial
-from hashlib import sha256
 import json
 import logging
 import random
-# import traceback
 import time
+from datetime import datetime
+from functools import partial
+from hashlib import sha256
 
 import trio
 from quart import jsonify

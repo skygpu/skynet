@@ -2,7 +2,6 @@ import io
 import json
 import time
 import logging
-
 from pathlib import Path
 from functools import partial
 
@@ -11,12 +10,7 @@ import leap
 import anyio
 import httpx
 import outcome
-
-from PIL import (
-    Image,
-    # UnidentifiedImageError,  # TODO, remove?
-)
-
+from PIL import Image
 from leap.cleos import CLEOS
 from leap.protocol import Asset
 from skynet.constants import (
@@ -28,8 +22,6 @@ from skynet.ipfs import (
     AsyncIPFSHTTP,
     get_ipfs_file,
 )
-# TODO, remove?
-# from skynet.dgpu.errors import DGPUComputeError
 
 
 REQUEST_UPDATE_TIME: int = 3
