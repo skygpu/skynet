@@ -14,8 +14,8 @@ from skynet.dgpu.network import SkynetGPUConnector
 async def open_dgpu_node(config: dict) -> None:
     '''
     Open a top level "GPU mgmt daemon", keep the
-    `SkynetDGPUDaemon._snap: dict[str, list|dict]` table and *maybe*
-    serve a `hypercorn` web API.
+    `SkynetDGPUDaemon._snap: dict[str, list|dict]` table
+    and *maybe* serve a `hypercorn` web API.
 
     '''
     conn = SkynetGPUConnector(config)
@@ -32,6 +32,8 @@ async def open_dgpu_node(config: dict) -> None:
     async with trio.open_nursery() as tn:
         tn.start_soon(daemon.snap_updater_task)
 
+        # TODO, consider a more explicit `as hypercorn_serve`
+        # to clarify?
         if api:
             tn.start_soon(serve, api, api_conf)
 

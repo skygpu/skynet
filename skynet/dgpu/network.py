@@ -13,23 +13,39 @@ import leap
 import anyio
 import httpx
 
-from PIL import Image, UnidentifiedImageError
+from PIL import (
+    Image,
+    # UnidentifiedImageError,  # TODO, remove?
+)
 
 from leap.cleos import CLEOS
 from leap.protocol import Asset
-from skynet.constants import DEFAULT_IPFS_DOMAIN, GPU_CONTRACT_ABI
+from skynet.constants import (
+    DEFAULT_IPFS_DOMAIN,
+    GPU_CONTRACT_ABI,
+)
 
-from skynet.ipfs import AsyncIPFSHTTP, get_ipfs_file
-from skynet.dgpu.errors import DGPUComputeError
+from skynet.ipfs import (
+    AsyncIPFSHTTP,
+    get_ipfs_file,
+)
+# TODO, remove?
+# from skynet.dgpu.errors import DGPUComputeError
 
 
-REQUEST_UPDATE_TIME = 3
+REQUEST_UPDATE_TIME: int = 3
 
 
-async def failable(fn: partial, ret_fail=None):
+# TODO, consider using the `outcome` lib instead?
+# - it's already purpose built for exactly this, boxing (async)
+#  function invocations..
+# |_ https://outcome.readthedocs.io/en/latest/api.html#outcome.capture
+async def failable(
+    fn: partial,
+    ret_fail=None,
+):
     try:
         return await fn()
-
     except (
         OSError,
         json.JSONDecodeError,
@@ -39,17 +55,33 @@ async def failable(fn: partial, ret_fail=None):
         httpx.ReadError,
         httpx.ReadTimeout,
         leap.errors.TransactionPushError
-    ) as e:
+    ):
         return ret_fail
 
 
+# TODO, again the prefix XD
+# -[ ] better name then `GPUConnector` ??
+# |_ `Compute[Net]IO[Mngr]`
 class SkynetGPUConnector:
+    '''
+    An API for connecting to and conducting various "high level"
+    network-service operations in the skynet.
 
+    - skynet user account creds
+    - hyperion API
+    - IPFs client
+    - CLEOS client
+
+    '''
     def __init__(self, config: dict):
+        # TODO, why these extra instance vars for an (unsynced)
+        # copy of the `config` state?
         self.account = config['account']
         self.permission = config['permission']
         self.key = config['key']
 
+        # TODO, neither of these instance vars are used anywhere in
+        # methods? so why are they set on this type?
         self.node_url = config['node_url']
         self.hyperion_url = config['hyperion_url']
 
@@ -128,7 +160,9 @@ class SkynetGPUConnector:
         logging.info(f'competitors: {competitors}')
         return set(competitors)
 
-
+    # TODO, considery making this a NON-method and instead
+    # handing in the `snap['queue']` output beforehand?
+    # -> since that call is the only usage of `self`?
     async def get_full_queue_snapshot(self):
         snap = {
             'requests': {},
@@ -149,6 +183,11 @@ class SkynetGPUConnector:
         return snap
 
     async def begin_work(self, request_id: int):
+        '''
+        Publish to the bc that the worker is beginning a model-computation
+        step.
+
+        '''
         logging.info('begin_work')
         return await failable(
             partial(
@@ -272,6 +311,14 @@ class SkynetGPUConnector:
         return file_cid
 
     async def get_input_data(self, ipfs_hash: str) -> Image:
+        '''
+        Retrieve an input (image) from the IPFs layer.
+
+        Normally used to retreive seed (visual) content previously
+        generated/validated by the network to be fed to some
+        consuming AI model.
+
+        '''
         link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
 
         res = await get_ipfs_file(link, timeout=1)
