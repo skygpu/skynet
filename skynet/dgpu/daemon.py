@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from datetime import datetime
 from functools import partial
 from hashlib import sha256

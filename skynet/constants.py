@@ -1,4 +1,3 @@
-#!/usr/bin/python
 import msgspec
 from typing import Literal
 

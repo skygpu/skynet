@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import trio
 
 from hypercorn.config import Config
