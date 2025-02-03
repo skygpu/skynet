@@ -86,8 +86,6 @@ def open_nodeos(cleanup: bool = True):
         logging.info(f'GPU KEYS: {(priv, pub)}')
         cleos.new_account('telos.gpu', ram=4200000, key=pub)
 
-        # lol, magic #s much XD ?
-        # TODO, why is there 4 workers/keys?
         for i in range(1, 4):
             priv, pub = cleos.create_key_pair()
             cleos.import_key(priv)
