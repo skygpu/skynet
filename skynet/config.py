@@ -3,8 +3,6 @@
 import os
 import toml
 
-from pathlib import Path
-
 from .constants import DEFAULT_CONFIG_PATH
 
 

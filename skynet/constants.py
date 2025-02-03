@@ -1,21 +1,23 @@
 #!/usr/bin/python
+import msgspec
+from typing import Literal
 
 VERSION = '0.1a12'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
 
-import msgspec
-from typing import Literal
 
 class Size(msgspec.Struct):
     w: int
     h: int
+
 
 class ModelDesc(msgspec.Struct):
     short: str
     mem: float
     size: Size
     tags: list[Literal['txt2img', 'img2img', 'inpaint']]
+
 
 MODELS: dict[str, ModelDesc] = {
     'runwayml/stable-diffusion-v1-5': ModelDesc(

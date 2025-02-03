@@ -9,9 +9,7 @@ import logging
 import importlib
 
 from typing import Optional
-from pathlib import Path
 
-import trio
 import torch
 import numpy as np
 
@@ -112,6 +110,7 @@ def pipeline_for(
         return custom_pipeline.pipeline_for(model, mode, mem_fraction=mem_fraction, cache_dir=cache_dir)
 
     except ImportError:
+        # TODO, uhh why not warn/error log this?
         ...
 
 
@@ -159,7 +158,7 @@ def pipeline_for(
         if mode == 'txt2img':
             pipe.vae.enable_tiling()
             pipe.vae.enable_slicing()
-        
+
         pipe.enable_model_cpu_offload()
 
     else:
