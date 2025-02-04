@@ -161,6 +161,11 @@ class SkynetGPUConnector:
     # handing in the `snap['queue']` output beforehand?
     # -> since that call is the only usage of `self`?
     async def get_full_queue_snapshot(self):
+        '''
+        Keep in-sync with latest (telos chain's smart-contract) table
+        state by polling (currently with period 1s).
+
+        '''
         snap = {
             'requests': {},
             'my_results': []
