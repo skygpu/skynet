@@ -114,7 +114,7 @@ class ModelMngr:
             name, mode, cache_dir=self.cache_dir)
         self._model_mode = mode
         self._model_name = name
-        logging.info('{name} loaded!')
+        logging.info(f'{name} loaded!')
         self.log_debug_info()
 
     def compute_one(
@@ -125,10 +125,14 @@ class ModelMngr:
         inputs: list[bytes] = []
     ):
         def maybe_cancel_work(step, *args, **kwargs):
+            '''This is a callback function that gets invoked every inference step,
+            we need to raise an exception here if we need to cancel work
+            '''
             if self._should_cancel:
                 should_raise = trio.from_thread.run(self._should_cancel, request_id)
                 if should_raise:
-                    logging.warn(f'CANCELLING work at step {step}')
+                    logging.warning(f'CANCELLING work at step {step}')
+                    raise DGPUInferenceCancelled('network cancel')
 
             return {}
 
