@@ -1,3 +1,4 @@
+# vim: ft=toml
 version = 1
 requires-python = ">=3.10, <3.13"
 resolution-markers = [
