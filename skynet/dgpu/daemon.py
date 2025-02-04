@@ -100,12 +100,16 @@ class WorkerDaemon:
 
     async def should_cancel_work(self, request_id: int):
         self._benchmark.append(time.time())
+        logging.info('should cancel work?')
+        if request_id not in self._snap['requests']:
+            logging.info(f'request #{request_id} no longer in queue, likely its been filled by another worker, cancelling work...')
+            return True
+
         competitors = set([
             status['worker']
             for status in self._snap['requests'][request_id]
             if status['worker'] != self.account
         ])
-        logging.info('should cancel work?')
         logging.info(f'competitors: {competitors}')
         should_cancel = bool(self.non_compete & competitors)
         logging.info(f'cancel: {should_cancel}')
@@ -274,8 +278,11 @@ class WorkerDaemon:
                 await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
 
             except BaseException as err:
-                logging.exception('Failed to serve model request !?\n')
-                await self.conn.cancel_work(rid, str(err))
+                if 'network cancel' not in str(err):
+                    logging.exception('Failed to serve model request !?\n')
+
+                if rid in self._snap['requests']:
+                    await self.conn.cancel_work(rid, 'reason not provided')
 
             finally:
                 return True
