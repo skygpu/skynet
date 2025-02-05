@@ -61,6 +61,7 @@ cuda = [
     "basicsr>=1.4.2,<2",
     "realesrgan>=0.3.0,<0.4",
     "sentencepiece>=0.2.0",
+    "urwid>=2.6.16",
 ]
 
 [tool.uv]

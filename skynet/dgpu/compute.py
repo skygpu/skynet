@@ -11,6 +11,7 @@ from hashlib import sha256
 import trio
 import torch
 
+from skynet.dgpu.tui import WorkerMonitor
 from skynet.dgpu.errors import (
     DGPUComputeError,
     DGPUInferenceCancelled,
@@ -72,15 +73,14 @@ class ModelMngr:
     checking load state, and unloading when no-longer-needed/finished.
 
     '''
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, tui: WorkerMonitor | None = None):
+        self._tui = tui
         self.cache_dir = None
         if 'hf_home' in config:
             self.cache_dir = config['hf_home']
 
         self._model_name: str = ''
         self._model_mode: str = ''
-
-        # self.load_model(DEFAULT_INITAL_MODEL, 'txt2img')
 
     def log_debug_info(self):
         logging.debug('memory summary:')
@@ -110,6 +110,7 @@ class ModelMngr:
     ) -> None:
         logging.info(f'loading model {name}...')
         self.unload_model()
+
         self._model = pipeline_for(
             name, mode, cache_dir=self.cache_dir)
         self._model_mode = mode
@@ -124,19 +125,30 @@ class ModelMngr:
         params: dict,
         inputs: list[bytes] = []
     ):
-        def maybe_cancel_work(step, *args, **kwargs):
+        total_steps = params['step']
+        def inference_step_wakeup(*args, **kwargs):
             '''This is a callback function that gets invoked every inference step,
             we need to raise an exception here if we need to cancel work
             '''
-            if self._should_cancel:
-                should_raise = trio.from_thread.run(self._should_cancel, request_id)
-                if should_raise:
-                    logging.warning(f'CANCELLING work at step {step}')
-                    raise DGPUInferenceCancelled('network cancel')
+            step = args[0]
+            # compat with callback_on_step_end
+            if not isinstance(step, int):
+                step = args[1]
+
+            if self._tui:
+                self._tui.set_progress(step, done=total_steps)
+
+            should_raise = trio.from_thread.run(self._should_cancel, request_id)
+            if should_raise:
+                logging.warning(f'CANCELLING work at step {step}')
+                raise DGPUInferenceCancelled('network cancel')
 
             return {}
 
-        maybe_cancel_work(0)
+        if self._tui:
+            self._tui.set_status(f'Request #{request_id}')
+
+        inference_step_wakeup(0)
 
         output_type = 'png'
         if 'output_type' in params:
@@ -157,10 +169,10 @@ class ModelMngr:
                     prompt, guidance, step, seed, upscaler, extra_params = arguments
 
                     if 'flux' in name.lower():
-                        extra_params['callback_on_step_end'] = maybe_cancel_work
+                        extra_params['callback_on_step_end'] = inference_step_wakeup
 
                     else:
-                        extra_params['callback'] = maybe_cancel_work
+                        extra_params['callback'] = inference_step_wakeup
                         extra_params['callback_steps'] = 1
 
                     output = self._model(
@@ -212,5 +224,8 @@ class ModelMngr:
 
         finally:
             torch.cuda.empty_cache()
+
+        if self._tui:
+            self._tui.set_status('')
 
         return output_hash, output
