@@ -8,7 +8,6 @@ from hypercorn.trio import serve
 from quart_trio import QuartTrio as Quart
 
 from skynet.dgpu.tui import WorkerMonitor
-from skynet.dgpu.compute import ModelMngr
 from skynet.dgpu.daemon import WorkerDaemon
 from skynet.dgpu.network import NetConnector
 
@@ -48,8 +47,7 @@ async def open_dgpu_node(config: dict) -> None:
         tui = WorkerMonitor()
 
     conn = NetConnector(config, tui=tui)
-    mm = ModelMngr(config, tui=tui)
-    daemon = WorkerDaemon(mm, conn, config, tui=tui)
+    daemon = WorkerDaemon(conn, config, tui=tui)
 
     api: Quart|None = None
     if 'api_bind' in config:

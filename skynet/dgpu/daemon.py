@@ -18,7 +18,7 @@ from skynet.dgpu.errors import (
     DGPUComputeError,
 )
 from skynet.dgpu.tui import WorkerMonitor
-from skynet.dgpu.compute import ModelMngr
+from skynet.dgpu.compute import maybe_load_model, compute_one
 from skynet.dgpu.network import NetConnector
 
 
@@ -40,12 +40,10 @@ class WorkerDaemon:
     '''
     def __init__(
         self,
-        mm: ModelMngr,
         conn: NetConnector,
         config: dict,
         tui: WorkerMonitor | None = None
     ):
-        self.mm: ModelMngr = mm
         self.conn: NetConnector = conn
         self._tui = tui
         self.auto_withdraw = (
@@ -248,14 +246,17 @@ class WorkerDaemon:
         logging.info(f'calculated request hash: {request_hash}')
 
         total_step = body['params']['step']
+        model = body['params']['model']
+        mode = body['method']
 
         # TODO: validate request
 
         resp = await self.conn.begin_work(rid)
         if not resp or 'code' in resp:
             logging.info('begin_work error, probably being worked on already... skip.')
+            return False
 
-        else:
+        with maybe_load_model(model, mode):
             try:
                 if self._tui:
                     self._tui.set_progress(0, done=total_step)
@@ -268,13 +269,14 @@ class WorkerDaemon:
                 output_hash = None
                 match self.backend:
                     case 'sync-on-thread':
-                        self.mm._should_cancel = self.should_cancel_work
                         output_hash, output = await trio.to_thread.run_sync(
                             partial(
-                                self.mm.compute_one,
+                                compute_one,
                                 rid,
-                                body['method'], body['params'],
-                                inputs=inputs
+                                mode, body['params'],
+                                inputs=inputs,
+                                should_cancel=self.should_cancel_work,
+                                tui=self._tui
                             )
                         )
 
