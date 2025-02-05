@@ -310,7 +310,7 @@ class NetConnector:
             logging.warning(f'couldn\'t get ipfs binary data at {link}!')
 
         # attempt to decode as image
-        input_data = Image.open(io.BytesIO(res.raw))
+        input_data = Image.open(io.BytesIO(res.read()))
         logging.info('decoded as image successfully')
 
         return input_data
