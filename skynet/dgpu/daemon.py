@@ -17,7 +17,7 @@ from skynet.constants import (
 from skynet.dgpu.errors import (
     DGPUComputeError,
 )
-from skynet.dgpu.tui import WorkerMonitor
+from skynet.dgpu.tui import maybe_update_tui, maybe_update_tui_async
 from skynet.dgpu.compute import maybe_load_model, compute_one
 from skynet.dgpu.network import NetConnector
 
@@ -41,11 +41,9 @@ class WorkerDaemon:
     def __init__(
         self,
         conn: NetConnector,
-        config: dict,
-        tui: WorkerMonitor | None = None
+        config: dict
     ):
         self.conn: NetConnector = conn
-        self._tui = tui
         self.auto_withdraw = (
             config['auto_withdraw']
             if 'auto_withdraw' in config else False
@@ -152,10 +150,12 @@ class WorkerDaemon:
         return app
 
     async def _update_balance(self):
-        if self._tui:
+        async def _fn(tui):
             # update balance
             balance = await self.conn.get_worker_balance()
-            self._tui.set_header_text(new_balance=f'balance: {balance}')
+            tui.set_header_text(new_balance=f'balance: {balance}')
+
+        await maybe_update_tui_async(_fn)
 
     # TODO? this func is kinda big and maybe is better at module
     # level to reduce indentation?
@@ -258,8 +258,7 @@ class WorkerDaemon:
 
         with maybe_load_model(model, mode):
             try:
-                if self._tui:
-                    self._tui.set_progress(0, done=total_step)
+                maybe_update_tui(lambda tui: tui.set_progress(0, done=total_step))
 
                 output_type = 'png'
                 if 'output_type' in body['params']:
@@ -276,7 +275,6 @@ class WorkerDaemon:
                                 mode, body['params'],
                                 inputs=inputs,
                                 should_cancel=self.should_cancel_work,
-                                tui=self._tui
                             )
                         )
 
@@ -285,8 +283,7 @@ class WorkerDaemon:
                             f'Unsupported backend {self.backend}'
                         )
 
-                if self._tui:
-                    self._tui.set_progress(total_step)
+                maybe_update_tui(lambda tui: tui.set_progress(total_step))
 
                 self._last_generation_ts: str = datetime.now().isoformat()
                 self._last_benchmark: list[float] = self._benchmark

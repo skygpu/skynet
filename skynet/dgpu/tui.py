@@ -1,6 +1,9 @@
-import urwid
-import trio
 import json
+import logging
+import warnings
+
+import trio
+import urwid
 
 
 class WorkerMonitor:
@@ -163,86 +166,41 @@ class WorkerMonitor:
         self.update_requests(queue)
 
 
-# # -----------------------------------------------------------------------------
-# # Example usage
-# # -----------------------------------------------------------------------------
-# 
-# async def main():
-#     # Example data
-#     example_requests = [
-#         {
-#             "id": 12,
-#             "model": "black-forest-labs/FLUX.1-schnell",
-#             "prompt": "Generate an answer about quantum entanglement.",
-#             "user": "alice123",
-#             "reward": "20.0000 GPU",
-#             "workers": ["workerA", "workerB"],
-#         },
-#         {
-#             "id": 5,
-#             "model": "some-other-model/v2.0",
-#             "prompt": "A story about dragons.",
-#             "user": "bobthebuilder",
-#             "reward": "15.0000 GPU",
-#             "workers": ["workerX"],
-#         },
-#         {
-#             "id": 99,
-#             "model": "cool-model/turbo",
-#             "prompt": "Classify sentiment in these tweets.",
-#             "user": "charlie",
-#             "reward": "25.5000 GPU",
-#             "workers": ["workerOne", "workerTwo", "workerThree"],
-#         },
-#     ]
-# 
-#     ui = WorkerMonitor()
-# 
-#     async def progress_task():
-#         # Fill from 0% to 100%
-#         for pct in range(101):
-#             ui.set_progress(
-#                 current=pct,
-#                 status_str=f"Request #1234 ({pct}%)"
-#             )
-#             await trio.sleep(0.05)
-#         # Reset to 0
-#         ui.set_progress(
-#             current=0,
-#             status_str="Starting again..."
-#         )
-# 
-#     async def update_data_task():
-#         await trio.sleep(3)  # Wait a bit, then update requests
-#         new_data = [{
-#             "id": 101,
-#             "model": "new-model/v1.0",
-#             "prompt": "Say hi to the world.",
-#             "user": "eve",
-#             "reward": "50.0000 GPU",
-#             "workers": ["workerFresh", "workerPower"],
-#         }]
-#         ui.update_requests(new_data)
-#         ui.set_header_text(new_worker_name="NewNodeName",
-#                             new_balance="balance: 12345.6789 GPU")
-# 
-#     try:
-#         async with trio.open_nursery() as nursery:
-#             # Run the TUI
-#             nursery.start_soon(ui.run_teadown_on_exit, nursery)
-# 
-#             ui.update_requests(example_requests)
-#             ui.set_header_text(
-#                 new_worker_name="worker1.scd",
-#                 new_balance="balance: 12345.6789 GPU"
-#             )
-#             # Start background tasks
-#             nursery.start_soon(progress_task)
-#             nursery.start_soon(update_data_task)
-# 
-#     except *KeyboardInterrupt as ex_group:
-#         ...
-# 
-# 
-# if __name__ == "__main__":
-#     trio.run(main)
+def setup_logging_for_tui(level):
+    warnings.filterwarnings("ignore")
+
+    logger = logging.getLogger()
+    logger.setLevel(level)
+
+    fh = logging.FileHandler('dgpu.log')
+    fh.setLevel(level)
+
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    fh.setFormatter(formatter)
+
+    logger.addHandler(fh)
+
+    for handler in logger.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            logger.removeHandler(handler)
+
+
+_tui = None
+def init_tui():
+    global _tui
+    assert not _tui
+    setup_logging_for_tui(logging.INFO)
+    _tui = WorkerMonitor()
+    return _tui
+
+
+def maybe_update_tui(fn):
+    global _tui
+    if _tui:
+        fn(_tui)
+
+
+async def maybe_update_tui_async(fn):
+    global _tui
+    if _tui:
+        await fn(_tui)
