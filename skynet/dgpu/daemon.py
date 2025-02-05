@@ -17,6 +17,7 @@ from skynet.constants import (
 from skynet.dgpu.errors import (
     DGPUComputeError,
 )
+from skynet.dgpu.tui import WorkerMonitor
 from skynet.dgpu.compute import ModelMngr
 from skynet.dgpu.network import NetConnector
 
@@ -41,10 +42,12 @@ class WorkerDaemon:
         self,
         mm: ModelMngr,
         conn: NetConnector,
-        config: dict
+        config: dict,
+        tui: WorkerMonitor | None = None
     ):
         self.mm: ModelMngr = mm
         self.conn: NetConnector = conn
+        self._tui = tui
         self.auto_withdraw = (
             config['auto_withdraw']
             if 'auto_withdraw' in config else False
@@ -150,6 +153,12 @@ class WorkerDaemon:
 
         return app
 
+    async def _update_balance(self):
+        if self._tui:
+            # update balance
+            balance = await self.conn.get_worker_balance()
+            self._tui.set_header_text(new_balance=f'balance: {balance}')
+
     # TODO? this func is kinda big and maybe is better at module
     # level to reduce indentation?
     # -[ ] just pass `daemon: WorkerDaemon` vs. `self`
@@ -238,6 +247,8 @@ class WorkerDaemon:
         request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
         logging.info(f'calculated request hash: {request_hash}')
 
+        total_step = body['params']['step']
+
         # TODO: validate request
 
         resp = await self.conn.begin_work(rid)
@@ -246,6 +257,9 @@ class WorkerDaemon:
 
         else:
             try:
+                if self._tui:
+                    self._tui.set_progress(0, done=total_step)
+
                 output_type = 'png'
                 if 'output_type' in body['params']:
                     output_type = body['params']['output_type']
@@ -269,6 +283,9 @@ class WorkerDaemon:
                             f'Unsupported backend {self.backend}'
                         )
 
+                if self._tui:
+                    self._tui.set_progress(total_step)
+
                 self._last_generation_ts: str = datetime.now().isoformat()
                 self._last_benchmark: list[float] = self._benchmark
                 self._benchmark: list[float] = []
@@ -276,6 +293,9 @@ class WorkerDaemon:
                 ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
 
                 await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
+
+                await self._update_balance()
+
 
             except BaseException as err:
                 if 'network cancel' not in str(err):
@@ -294,6 +314,7 @@ class WorkerDaemon:
     # -[ ] keeps tasks-as-funcs style prominent
     # -[ ] avoids so much indentation due to methods
     async def serve_forever(self):
+        await self._update_balance()
         try:
             while True:
                 if self.auto_withdraw:

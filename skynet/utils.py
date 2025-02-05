@@ -7,8 +7,10 @@ import logging
 import importlib
 
 from typing import Optional
+from contextlib import contextmanager
 
 import torch
+import diffusers
 import numpy as np
 
 from PIL import Image
@@ -74,12 +76,27 @@ def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
     return crop_image(convert_from_bytes_to_img(raw), max_w, max_h)
 
 
+class DummyPB:
+    def update(self):
+        ...
+
+@torch.compiler.disable
+@contextmanager
+def dummy_progress_bar(*args, **kwargs):
+    yield DummyPB()
+
+
+def monkey_patch_pipeline_disable_progress_bar(pipe):
+    pipe.progress_bar = dummy_progress_bar
+
+
 def pipeline_for(
     model: str,
     mode: str,
     mem_fraction: float = 1.0,
     cache_dir: str | None = None
 ) -> DiffusionPipeline:
+    diffusers.utils.logging.disable_progress_bar()
 
     logging.info(f'pipeline_for {model} {mode}')
     assert torch.cuda.is_available()
@@ -105,7 +122,9 @@ def pipeline_for(
         normalized_shortname = shortname.replace('-', '_')
         custom_pipeline = importlib.import_module(f'skynet.dgpu.pipes.{normalized_shortname}')
         assert custom_pipeline.__model['name'] == model
-        return custom_pipeline.pipeline_for(model, mode, mem_fraction=mem_fraction, cache_dir=cache_dir)
+        pipe = custom_pipeline.pipeline_for(model, mode, mem_fraction=mem_fraction, cache_dir=cache_dir)
+        monkey_patch_pipeline_disable_progress_bar(pipe)
+        return pipe
 
     except ImportError:
         # TODO, uhh why not warn/error log this?
@@ -121,7 +140,6 @@ def pipeline_for(
         logging.warn(f'model requires {req_mem} but card has {mem_gb}, model will run slower..')
 
     params = {
-        'safety_checker': None,
         'torch_dtype': torch.float16,
         'cache_dir': cache_dir,
         'variant': 'fp16',
@@ -130,6 +148,7 @@ def pipeline_for(
     match shortname:
         case 'stable':
             params['revision'] = 'fp16'
+            params['safety_checker'] = None
 
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
 
@@ -166,6 +185,8 @@ def pipeline_for(
         #         pipe.unet, mode='reduce-overhead', fullgraph=True)
 
         pipe = pipe.to('cuda')
+
+    monkey_patch_pipeline_disable_progress_bar(pipe)
 
     return pipe
 
