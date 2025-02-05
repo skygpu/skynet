@@ -1,34 +1,15 @@
 import logging
-import warnings
 
 import trio
+import urwid
 
 from hypercorn.config import Config
 from hypercorn.trio import serve
 from quart_trio import QuartTrio as Quart
 
-from skynet.dgpu.tui import WorkerMonitor
+from skynet.dgpu.tui import init_tui
 from skynet.dgpu.daemon import WorkerDaemon
 from skynet.dgpu.network import NetConnector
-
-
-def setup_logging_for_tui(level):
-    warnings.filterwarnings("ignore")
-
-    logger = logging.getLogger()
-    logger.setLevel(level)
-
-    fh = logging.FileHandler('dgpu.log')
-    fh.setLevel(level)
-
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    fh.setFormatter(formatter)
-
-    logger.addHandler(fh)
-
-    for handler in logger.handlers:
-        if isinstance(handler, logging.StreamHandler):
-            logger.removeHandler(handler)
 
 
 async def open_dgpu_node(config: dict) -> None:
@@ -43,11 +24,10 @@ async def open_dgpu_node(config: dict) -> None:
 
     tui = None
     if config['tui']:
-        setup_logging_for_tui(logging.INFO)
-        tui = WorkerMonitor()
+        tui = init_tui()
 
-    conn = NetConnector(config, tui=tui)
-    daemon = WorkerDaemon(conn, config, tui=tui)
+    conn = NetConnector(config)
+    daemon = WorkerDaemon(conn, config)
 
     api: Quart|None = None
     if 'api_bind' in config:
@@ -71,5 +51,5 @@ async def open_dgpu_node(config: dict) -> None:
             # block until cancelled
             await daemon.serve_forever()
 
-        except *urwid.ExitMainLoop in ex_group:
+        except *urwid.ExitMainLoop:
             ...

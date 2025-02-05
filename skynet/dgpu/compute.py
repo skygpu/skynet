@@ -12,7 +12,7 @@ from contextlib import contextmanager as cm
 import trio
 import torch
 
-from skynet.dgpu.tui import WorkerMonitor
+from skynet.dgpu.tui import maybe_update_tui
 from skynet.dgpu.errors import (
     DGPUComputeError,
     DGPUInferenceCancelled,
@@ -108,8 +108,7 @@ def compute_one(
     method: str,
     params: dict,
     inputs: list[bytes] = [],
-    should_cancel = None,
-    tui: WorkerMonitor | None = None
+    should_cancel = None
 ):
     if method == 'diffuse':
         method = 'txt2img'
@@ -130,8 +129,7 @@ def compute_one(
         if not isinstance(step, int):
             step = args[1]
 
-        if tui:
-            tui.set_progress(step, done=total_steps)
+        maybe_update_tui(lambda tui: tui.set_progress(step, done=total_steps))
 
         if should_cancel:
             should_raise = trio.from_thread.run(should_cancel, request_id)
@@ -142,8 +140,7 @@ def compute_one(
 
         return {}
 
-    if tui:
-        tui.set_status(f'Request #{request_id}')
+    maybe_update_tui(lambda tui: tui.set_status(f'Request #{request_id}'))
 
     inference_step_wakeup(0)
 
@@ -210,7 +207,6 @@ def compute_one(
     except BaseException as err:
         raise DGPUComputeError(str(err)) from err
 
-    if tui:
-        tui.set_status('')
+    maybe_update_tui(lambda tui: tui.set_status(''))
 
     return output_hash, output

@@ -13,7 +13,7 @@ import outcome
 from PIL import Image
 from leap.cleos import CLEOS
 from leap.protocol import Asset
-from skynet.dgpu.tui import WorkerMonitor
+from skynet.dgpu.tui import maybe_update_tui
 from skynet.constants import (
     DEFAULT_IPFS_DOMAIN,
     GPU_CONTRACT_ABI,
@@ -58,7 +58,7 @@ class NetConnector:
     - CLEOS client
 
     '''
-    def __init__(self, config: dict, tui: WorkerMonitor | None = None):
+    def __init__(self, config: dict):
         # TODO, why these extra instance vars for an (unsynced)
         # copy of the `config` state?
         self.account = config['account']
@@ -82,9 +82,8 @@ class NetConnector:
             self.ipfs_domain = config['ipfs_domain']
 
         self._wip_requests = {}
-        self._tui = tui
-        if self._tui:
-            self._tui.set_header_text(new_worker_name=self.account)
+
+        maybe_update_tui(lambda tui: tui.set_header_text(new_worker_name=self.account))
 
 
     # blockchain helpers
@@ -173,8 +172,8 @@ class NetConnector:
                 n.start_soon(
                     _run_and_save, snap['requests'], req['id'], self.get_status_by_request_id, req['id'])
 
-        if self._tui:
-            self._tui.network_update(snap)
+
+        maybe_update_tui(lambda tui: tui.network_update(snap))
 
         return snap
 
