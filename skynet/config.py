@@ -11,24 +11,25 @@ class ConfigParsingError(BaseException):
 
 
 class DgpuConfig(msgspec.Struct):
-    account: str
-    permission: str
-    key: str
-    node_url: str
-    hyperion_url: str
-    ipfs_url: str
-    hf_token: str
-    ipfs_domain: str = DEFAULT_IPFS_DOMAIN
-    hf_home: str = 'hf_home'
-    non_compete: set[str] = set()
-    model_whitelist: set[str] = set() 
-    model_blacklist: set[str] = set() 
-    backend: str = 'sync-on-thread'
-    api_bind: str = False
-    tui: bool = False
-    poll_time: float = 0.5
+    account: str  # worker account name
+    permission: str  # account permission name associated with key
+    key: str  # private key
+    node_url: str  # antelope http api endpoint
+    ipfs_url: str  # IPFS node http rpc endpoint
+    hf_token: str  # hugging face token
+    ipfs_domain: str = DEFAULT_IPFS_DOMAIN  # IPFS Gateway domain
+    hf_home: str = 'hf_home'  # hugging face data cache location
+    non_compete: set[str] = set()  # set of worker names to not compete in requests
+    model_whitelist: set[str] = set()  # only run these models
+    model_blacklist: set[str] = set()  # don't run this models
+    backend: str = 'sync-on-thread'  # select inference backend
+    tui: bool = False  # enable TUI monitor
+    poll_time: float = 0.5  # wait time for polling updates from contract
+    log_level: str = 'info'
+    log_file: str = 'dgpu.log'  # log file path (only used when tui = true)
 
-class TelegramConfig(msgspec.Struct):
+
+class FrontendConfig(msgspec.Struct):
     account: str
     permission: str
     key: str
@@ -37,18 +38,11 @@ class TelegramConfig(msgspec.Struct):
     ipfs_url: str
     token: str
 
-class DiscordConfig(msgspec.Struct):
-    account: str
-    permission: str
-    key: str
-    node_url: str
-    hyperion_url: str
-    ipfs_url: str
-    token: str
 
 class PinnerConfig(msgspec.Struct):
     hyperion_url: str
     ipfs_url: str
+
 
 class UserConfig(msgspec.Struct):
     account: str
@@ -56,12 +50,14 @@ class UserConfig(msgspec.Struct):
     key: str
     node_url: str
 
+
 class Config(msgspec.Struct):
     dgpu: DgpuConfig | None = None
-    telegram: TelegramConfig | None = None
-    discord: DiscordConfig | None = None
+    telegram: FrontendConfig | None = None
+    discord: FrontendConfig | None = None
     pinner: PinnerConfig | None = None
     user: UserConfig | None = None
+
 
 def load_skynet_toml(file_path=DEFAULT_CONFIG_PATH) -> Config:
     with open(file_path, 'r') as file:

@@ -1730,8 +1730,8 @@ wheels = [
 
 [[package]]
 name = "py-leap"
-version = "0.1a32"
-source = { git = "https://github.com/guilledk/py-leap.git?rev=v0.1a32#c8137dec3d0a7d1e883cafe5212d58a8e9db9b84" }
+version = "0.1a34"
+source = { git = "https://github.com/guilledk/py-leap.git?rev=v0.1a34#6055ca7063c1eb32644e855c6726c29a1d7ac7e9" }
 dependencies = [
     { name = "base58" },
     { name = "cryptos" },
@@ -1830,6 +1830,16 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/80/1f/9d8e98e4133ffb16c90f3b405c43e38d3abb715bb5d7a63a5a684f7e46a3/pytest-7.4.4.tar.gz", hash = "sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280", size = 1357116 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/51/ff/f6e8b8f39e08547faece4bd80f89d5a8de68a38b2d179cc1c4490ffa3286/pytest-7.4.4-py3-none-any.whl", hash = "sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8", size = 325287 },
+]
+
+[[package]]
+name = "pytest-dockerctl"
+version = "0.2a0"
+source = { git = "https://github.com/pikers/pytest-dockerctl.git?branch=g_update#d58e9317b55954f05f139730a62d55e1acb5f5d1" }
+dependencies = [
+    { name = "docker" },
+    { name = "pytest" },
+    { name = "pytest-trio" },
 ]
 
 [[package]]
@@ -2268,6 +2278,7 @@ cuda = [
 dev = [
     { name = "pdbpp" },
     { name = "pytest" },
+    { name = "pytest-dockerctl" },
     { name = "pytest-trio" },
 ]
 frontend = [
@@ -2288,7 +2299,7 @@ requires-dist = [
     { name = "outcome", specifier = ">=1.3.0.post0" },
     { name = "pillow", specifier = ">=10.0.1,<11" },
     { name = "protobuf", specifier = ">=5.29.3,<6" },
-    { name = "py-leap", git = "https://github.com/guilledk/py-leap.git?rev=v0.1a32" },
+    { name = "py-leap", git = "https://github.com/guilledk/py-leap.git?rev=v0.1a34" },
     { name = "pytz", specifier = "~=2023.3.post1" },
     { name = "toml", specifier = ">=0.10.2,<0.11" },
     { name = "trio", specifier = ">=0.22.2,<0.23" },
@@ -2320,6 +2331,7 @@ cuda = [
 dev = [
     { name = "pdbpp", specifier = ">=0.10.3,<0.11" },
     { name = "pytest", specifier = ">=7.4.2,<8" },
+    { name = "pytest-dockerctl", git = "https://github.com/pikers/pytest-dockerctl.git?branch=g_update" },
     { name = "pytest-trio", specifier = ">=0.8.0,<0.9" },
 ]
 frontend = [

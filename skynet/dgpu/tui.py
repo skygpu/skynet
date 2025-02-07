@@ -5,6 +5,8 @@ import warnings
 import trio
 import urwid
 
+from skynet.config import DgpuConfig as Config
+
 
 class WorkerMonitor:
     def __init__(self):
@@ -166,13 +168,15 @@ class WorkerMonitor:
         self.update_requests(queue)
 
 
-def setup_logging_for_tui(level):
+def setup_logging_for_tui(config: Config):
     warnings.filterwarnings("ignore")
+
+    level = getattr(logging, config.log_level.upper(), logging.WARNING)
 
     logger = logging.getLogger()
     logger.setLevel(level)
 
-    fh = logging.FileHandler('dgpu.log')
+    fh = logging.FileHandler(config.log_file)
     fh.setLevel(level)
 
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -185,11 +189,11 @@ def setup_logging_for_tui(level):
             logger.removeHandler(handler)
 
 
-_tui = None
-def init_tui():
+_tui: WorkerMonitor | None = None
+def init_tui(config: Config):
     global _tui
     assert not _tui
-    setup_logging_for_tui(logging.INFO)
+    setup_logging_for_tui(config)
     _tui = WorkerMonitor()
     return _tui
 
