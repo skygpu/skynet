@@ -20,6 +20,7 @@ from skynet.dgpu.errors import (
 
 from skynet.utils import crop_image, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
 
+
 def prepare_params_for_diffuse(
     params: dict,
     mode: str,

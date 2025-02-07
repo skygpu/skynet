@@ -193,14 +193,14 @@ def dgpu(
     config_path: str
 ):
     import trio
-    from .dgpu import open_dgpu_node
+    from .dgpu import _dgpu_main
 
     logging.basicConfig(level=loglevel)
 
     config = load_skynet_toml(file_path=config_path)
     set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
 
-    trio.run(open_dgpu_node, config.dgpu)
+    trio.run(_dgpu_main, config.dgpu)
 
 
 @run.command()

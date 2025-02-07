@@ -26,6 +26,7 @@ class DgpuConfig(msgspec.Struct):
     backend: str = 'sync-on-thread'
     api_bind: str = False
     tui: bool = False
+    poll_time: float = 0.5
 
 class TelegramConfig(msgspec.Struct):
     account: str

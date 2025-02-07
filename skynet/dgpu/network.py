@@ -3,6 +3,7 @@ import json
 import time
 import logging
 from pathlib import Path
+from typing import AsyncGenerator
 from functools import partial
 
 import trio
@@ -66,7 +67,11 @@ class NetConnector:
 
         self.ipfs_client = AsyncIPFSHTTP(config.ipfs_url)
 
-        self._wip_requests = {}
+        self._tables = {
+            'queue': [],
+            'requests': {},
+            'results': []
+        }
 
         maybe_update_tui(lambda tui: tui.set_header_text(new_worker_name=self.config.account))
 
@@ -132,9 +137,6 @@ class NetConnector:
             logging.info('no balance info found')
             return None
 
-    # TODO, considery making this a NON-method and instead
-    # handing in the `snap['queue']` output beforehand?
-    # -> since that call is the only usage of `self`?
     async def get_full_queue_snapshot(self):
         '''
         Keep in-sync with latest (telos chain's smart-contract) table
@@ -161,6 +163,34 @@ class NetConnector:
         maybe_update_tui(lambda tui: tui.network_update(snap))
 
         return snap
+
+    async def iter_poll_update(self, poll_time: float) -> AsyncGenerator[dict, None]:
+        '''
+        Long running task, olls gpu contract tables yields latest table rows
+
+        '''
+        while True:
+            start_time = time.time()
+            self._tables = await self.get_full_queue_snapshot()
+            elapsed = time.time() - start_time
+            yield self._tables
+            await trio.sleep(max(poll_time - elapsed, 0.1))
+
+    async def should_cancel_work(self, request_id: int) -> bool:
+        logging.info('should cancel work?')
+        if request_id not in self._tables['requests']:
+            logging.info(f'request #{request_id} no longer in queue, likely its been filled by another worker, cancelling work...')
+            return True
+
+        competitors = set([
+            status['worker']
+            for status in self._tables['requests'][request_id]
+            if status['worker'] != self.config.account
+        ])
+        logging.info(f'competitors: {competitors}')
+        should_cancel = bool(self.config.non_compete & competitors)
+        logging.info(f'cancel: {should_cancel}')
+        return should_cancel
 
     async def begin_work(self, request_id: int):
         '''
@@ -244,7 +274,7 @@ class NetConnector:
         result_hash: str,
         ipfs_hash: str
     ):
-        logging.info('submit_work #{request_id}')
+        logging.info(f'submit_work #{request_id}')
         return await failable(
             partial(
                 self.cleos.a_push_action,
