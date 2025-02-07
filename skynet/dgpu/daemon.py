@@ -183,7 +183,7 @@ async def maybe_serve_one(
                 await conn.cancel_work(rid, 'reason not provided')
 
 
-async def serve_forever(config: Config, conn: NetConnector):
+async def dgpu_serve_forever(config: Config, conn: NetConnector):
     await maybe_update_tui_balance(conn)
     try:
         async for tables in conn.iter_poll_update(config.poll_time):

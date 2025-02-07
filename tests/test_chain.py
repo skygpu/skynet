@@ -1,0 +1,3 @@
+def test_dev(skynet_cleos):
+    cleos = skynet_cleos
+    ...
