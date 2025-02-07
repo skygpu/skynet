@@ -10,6 +10,7 @@ import trio
 from quart import jsonify
 from quart_trio import QuartTrio as Quart
 
+from skynet.config import DgpuConfig as Config
 from skynet.constants import (
     MODELS,
     VERSION,
@@ -41,31 +42,10 @@ class WorkerDaemon:
     def __init__(
         self,
         conn: NetConnector,
-        config: dict
+        config: Config
     ):
+        self.config = config
         self.conn: NetConnector = conn
-        self.auto_withdraw = (
-            config['auto_withdraw']
-            if 'auto_withdraw' in config else False
-        )
-
-        self.account: str = config['account']
-
-        self.non_compete = set()
-        if 'non_compete' in config:
-            self.non_compete = set(config['non_compete'])
-
-        self.model_whitelist = set()
-        if 'model_whitelist' in config:
-            self.model_whitelist = set(config['model_whitelist'])
-
-        self.model_blacklist = set()
-        if 'model_blacklist' in config:
-            self.model_blacklist = set(config['model_blacklist'])
-
-        self.backend = 'sync-on-thread'
-        if 'backend' in config:
-            self.backend = config['backend']
 
         self._snap = {
             'queue': [],
@@ -107,10 +87,10 @@ class WorkerDaemon:
         competitors = set([
             status['worker']
             for status in self._snap['requests'][request_id]
-            if status['worker'] != self.account
+            if status['worker'] != self.config.account
         ])
         logging.info(f'competitors: {competitors}')
-        should_cancel = bool(self.non_compete & competitors)
+        should_cancel = bool(self.config.non_compete & competitors)
         logging.info(f'cancel: {should_cancel}')
         return should_cancel
 
@@ -141,7 +121,7 @@ class WorkerDaemon:
         @app.route('/')
         async def health():
             return jsonify(
-                account=self.account,
+                account=self.config.account,
                 version=VERSION,
                 last_generation_ts=self._last_generation_ts,
                 last_generation_speed=self._get_benchmark_speed()
@@ -182,15 +162,19 @@ class WorkerDaemon:
 
         # only handle whitelisted models
         if (
-            len(self.model_whitelist) > 0
+            len(self.config.model_whitelist) > 0
             and
-            model not in self.model_whitelist
+            model not in self.config.model_whitelist
         ):
             logging.warning('model not whitelisted!, skip...')
             return False
 
         # if blacklist contains model skip
-        if model in self.model_blacklist:
+        if (
+            len(self.config.model_blacklist) > 0
+            and
+            model in self.config.model_blacklist
+        ):
             logging.warning('model not blacklisted!, skip...')
             return False
 
@@ -205,7 +189,7 @@ class WorkerDaemon:
 
         # skip if workers in non_compete already on it
         competitors = set((status['worker'] for status in statuses))
-        if bool(self.non_compete & competitors):
+        if bool(self.config.non_compete & competitors):
             logging.info('worker in configured non_compete list already working on request, skip...')
             return False
 
@@ -266,7 +250,7 @@ class WorkerDaemon:
 
                 output = None
                 output_hash = None
-                match self.backend:
+                match self.config.backend:
                     case 'sync-on-thread':
                         output_hash, output = await trio.to_thread.run_sync(
                             partial(
@@ -280,7 +264,7 @@ class WorkerDaemon:
 
                     case _:
                         raise DGPUComputeError(
-                            f'Unsupported backend {self.backend}'
+                            f'Unsupported backend {self.config.backend}'
                         )
 
                 maybe_update_tui(lambda tui: tui.set_progress(total_step))
@@ -316,9 +300,6 @@ class WorkerDaemon:
         await self._update_balance()
         try:
             while True:
-                if self.auto_withdraw:
-                    await self.conn.maybe_withdraw_all()
-
                 queue = self._snap['queue']
 
                 random.shuffle(queue)

@@ -14,6 +14,7 @@ from PIL import Image
 from leap.cleos import CLEOS
 from leap.protocol import Asset
 from skynet.dgpu.tui import maybe_update_tui
+from skynet.config import DgpuConfig as Config
 from skynet.constants import (
     DEFAULT_IPFS_DOMAIN,
     GPU_CONTRACT_ABI,
@@ -58,32 +59,16 @@ class NetConnector:
     - CLEOS client
 
     '''
-    def __init__(self, config: dict):
-        # TODO, why these extra instance vars for an (unsynced)
-        # copy of the `config` state?
-        self.account = config['account']
-        self.permission = config['permission']
-        self.key = config['key']
-
-        # TODO, neither of these instance vars are used anywhere in
-        # methods? so why are they set on this type?
-        self.node_url = config['node_url']
-        self.hyperion_url = config['hyperion_url']
-
-        self.cleos = CLEOS(endpoint=self.node_url)
+    def __init__(self, config: Config):
+        self.config = config
+        self.cleos = CLEOS(endpoint=config.node_url)
         self.cleos.load_abi('gpu.scd', GPU_CONTRACT_ABI)
 
-        self.ipfs_url = config['ipfs_url']
-
-        self.ipfs_client = AsyncIPFSHTTP(self.ipfs_url)
-
-        self.ipfs_domain = DEFAULT_IPFS_DOMAIN
-        if 'ipfs_domain' in config:
-            self.ipfs_domain = config['ipfs_domain']
+        self.ipfs_client = AsyncIPFSHTTP(config.ipfs_url)
 
         self._wip_requests = {}
 
-        maybe_update_tui(lambda tui: tui.set_header_text(new_worker_name=self.account))
+        maybe_update_tui(lambda tui: tui.set_header_text(new_worker_name=self.config.account))
 
 
     # blockchain helpers
@@ -135,8 +120,8 @@ class NetConnector:
                 'gpu.scd', 'gpu.scd', 'users',
                 index_position=1,
                 key_type='name',
-                lower_bound=self.account,
-                upper_bound=self.account
+                lower_bound=self.config.account,
+                upper_bound=self.config.account
             ))
 
         if rows:
@@ -190,12 +175,12 @@ class NetConnector:
                 'gpu.scd',
                 'workbegin',
                 list({
-                    'worker': self.account,
+                    'worker': self.config.account,
                     'request_id': request_id,
                     'max_workers': 2
                 }.values()),
-                self.account, self.key,
-                permission=self.permission
+                self.config.account, self.config.key,
+                permission=self.config.permission
             )
         )
 
@@ -207,12 +192,12 @@ class NetConnector:
                 'gpu.scd',
                 'workcancel',
                 list({
-                    'worker': self.account,
+                    'worker': self.config.account,
                     'request_id': request_id,
                     'reason': reason
                 }.values()),
-                self.account, self.key,
-                permission=self.permission
+                self.config.account, self.config.key,
+                permission=self.config.permission
             )
         )
 
@@ -230,11 +215,11 @@ class NetConnector:
                     'gpu.scd',
                     'withdraw',
                     list({
-                        'user': self.account,
+                        'user': self.config.account,
                         'quantity': Asset.from_str(balance)
                     }.values()),
-                    self.account, self.key,
-                    permission=self.permission
+                    self.config.account, self.config.key,
+                    permission=self.config.permission
                 )
             )
 
@@ -246,8 +231,8 @@ class NetConnector:
                 'gpu.scd', 'gpu.scd', 'results',
                 index_position=4,
                 key_type='name',
-                lower_bound=self.account,
-                upper_bound=self.account
+                lower_bound=self.config.account,
+                upper_bound=self.config.account
             )
         )
         return rows
@@ -266,14 +251,14 @@ class NetConnector:
                 'gpu.scd',
                 'submit',
                 list({
-                    'worker': self.account,
+                    'worker': self.config.account,
                     'request_id': request_id,
                     'request_hash': request_hash,
                     'result_hash': result_hash,
                     'ipfs_hash': ipfs_hash
                 }.values()),
-                self.account, self.key,
-                permission=self.permission
+                self.config.account, self.config.key,
+                permission=self.config.permission
             )
         )
 
@@ -310,7 +295,7 @@ class NetConnector:
         consuming AI model.
 
         '''
-        link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
+        link = f'https://{self.config.ipfs_domain}/ipfs/{ipfs_hash}'
 
         res = await get_ipfs_file(link, timeout=1)
         if not res or res.status_code != 200:

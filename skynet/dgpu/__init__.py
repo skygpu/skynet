@@ -3,16 +3,17 @@ import logging
 import trio
 import urwid
 
-from hypercorn.config import Config
+from hypercorn.config import Config as HCConfig
 from hypercorn.trio import serve
 from quart_trio import QuartTrio as Quart
 
+from skynet.config import Config
 from skynet.dgpu.tui import init_tui
 from skynet.dgpu.daemon import WorkerDaemon
 from skynet.dgpu.network import NetConnector
 
 
-async def open_dgpu_node(config: dict) -> None:
+async def open_dgpu_node(config: Config) -> None:
     '''
     Open a top level "GPU mgmt daemon", keep the
     `WorkerDaemon._snap: dict[str, list|dict]` table
@@ -23,16 +24,16 @@ async def open_dgpu_node(config: dict) -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     tui = None
-    if config['tui']:
+    if config.tui:
         tui = init_tui()
 
     conn = NetConnector(config)
     daemon = WorkerDaemon(conn, config)
 
     api: Quart|None = None
-    if 'api_bind' in config:
-        api_conf = Config()
-        api_conf.bind = [config['api_bind']]
+    if config.api_bind:
+        api_conf = HCConfig()
+        api_conf.bind = [config.api_bind]
         api: Quart = await daemon.generate_api()
 
     tn: trio.Nursery
