@@ -23,7 +23,7 @@ from diffusers import (
 )
 from huggingface_hub import login
 
-from .constants import MODELS
+from skynet.constants import MODELS
 
 # Hack to fix a changed import in torchvision 0.17+, which otherwise breaks
 # basicsr; see https://github.com/AUTOMATIC1111/stable-diffusion-webui/issues/13985
