@@ -1,6 +1,4 @@
 import logging
-import traceback
-
 from datetime import datetime, timedelta
 
 import trio
@@ -117,8 +115,7 @@ class SkynetPinner:
                         n.start_soon(self.task_pin, cid)
 
                 except OSError:
-                    # TODO, use `logging.exception()` here instead ??
-                    traceback.print_exc()
+                    logging.exception('OSError while trying to pin?')
 
                 except KeyboardInterrupt:
                     break
