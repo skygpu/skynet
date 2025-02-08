@@ -21,8 +21,9 @@ from diffusers import (
     AutoPipelineForInpainting,
     EulerAncestralDiscreteScheduler,
 )
-from huggingface_hub import login
+from huggingface_hub import login, hf_hub_download
 
+from skynet.config import load_skynet_toml
 from skynet.constants import MODELS
 
 # Hack to fix a changed import in torchvision 0.17+, which otherwise breaks
@@ -38,7 +39,6 @@ except ImportError:
 
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
-
 
 
 def convert_from_cv2_to_image(img: np.ndarray) -> Image:
@@ -285,7 +285,14 @@ def inpaint(
     image.save(output)
 
 
-def init_upscaler(model_path: str = 'hf_home/RealESRGAN_x4plus.pth'):
+def init_upscaler():
+    config = load_skynet_toml().dgpu
+    model_path = hf_hub_download(
+        'leonelhs/realesrgan',
+        'RealESRGAN_x4plus.pth',
+        token=config.hf_token,
+        cache_dir=config.hf_home
+    )
     return RealESRGANer(
         scale=4,
         model_path=model_path,
@@ -303,12 +310,11 @@ def init_upscaler(model_path: str = 'hf_home/RealESRGAN_x4plus.pth'):
 
 def upscale(
     img_path: str = 'input.png',
-    output: str = 'output.png',
-    model_path: str = 'hf_home/RealESRGAN_x4plus.pth'
+    output: str = 'output.png'
 ):
     input_img = Image.open(img_path).convert('RGB')
 
-    upscaler = init_upscaler(model_path=model_path)
+    upscaler = init_upscaler()
 
     up_img, _ = upscaler.enhance(
         convert_from_image_to_cv2(input_img), outscale=4)
