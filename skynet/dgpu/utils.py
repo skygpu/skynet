@@ -123,8 +123,7 @@ def pipeline_for(
         return pipe
 
     except ImportError:
-        # TODO, uhh why not warn/error log this?
-        ...
+        logging.info(f'didn\'t find a custom pipeline file for {shortname}')
 
 
     req_mem = model_info.mem
