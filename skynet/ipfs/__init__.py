@@ -24,7 +24,7 @@ class AsyncIPFSHTTP:
             raise IPFSClientException(resp.text)
 
         return resp.json()
-#!/usr/bin/python
+
     async def add(self, file_path: Path, **kwargs):
         files = {
             'file': (file_path.name, file_path.open('rb'))
