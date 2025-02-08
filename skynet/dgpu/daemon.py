@@ -51,11 +51,7 @@ async def maybe_serve_one(
     model = body['params']['model']
 
     # if model not known, ignore.
-    if (
-        model != 'RealESRGAN_x4plus'
-        and
-        model not in MODELS
-    ):
+    if model not in MODELS:
         logging.warning(f'unknown model {model}!, skip...')
         return
 
@@ -139,7 +135,7 @@ async def maybe_serve_one(
         logging.info('begin_work error, probably being worked on already... skip.')
         return
 
-    with maybe_load_model(model, mode):
+    with maybe_load_model(model, mode) as model:
         try:
             maybe_update_tui(lambda tui: tui.set_progress(0, done=total_step))
 
@@ -154,6 +150,7 @@ async def maybe_serve_one(
                     output_hash, output = await trio.to_thread.run_sync(
                         partial(
                             compute_one,
+                            model,
                             rid,
                             mode, body['params'],
                             inputs=inputs,

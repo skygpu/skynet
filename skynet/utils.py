@@ -99,7 +99,7 @@ def pipeline_for(
     diffusers.utils.logging.disable_progress_bar()
 
     logging.info(f'pipeline_for {model} {mode}')
-    assert torch.cuda.is_available()
+    # assert torch.cuda.is_available()
     torch.cuda.empty_cache()
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
