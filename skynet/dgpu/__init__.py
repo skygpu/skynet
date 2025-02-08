@@ -27,6 +27,8 @@ async def open_worker(config: Config):
             if tui:
                 n.start_soon(tui.run)
 
+            n.start_soon(conn.iter_poll_update, config.poll_time)
+
             yield conn
 
     except *urwid.ExitMainLoop:
