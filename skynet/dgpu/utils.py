@@ -41,10 +41,6 @@ from realesrgan import RealESRGANer
 
 
 
-def time_ms():
-    return int(time.time() * 1000)
-
-
 def convert_from_cv2_to_image(img: np.ndarray) -> Image:
     # return Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     return Image.fromarray(img)
