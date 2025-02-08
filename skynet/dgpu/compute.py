@@ -114,7 +114,7 @@ def compute_one(
     inputs: list[bytes] = [],
     should_cancel = None
 ):
-    total_steps = params['step']
+    total_steps = params['step'] if 'step' in params else 1
     def inference_step_wakeup(*args, **kwargs):
         '''This is a callback function that gets invoked every inference step,
         we need to raise an exception here if we need to cancel work

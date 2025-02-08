@@ -124,7 +124,8 @@ async def maybe_serve_one(
     request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
     logging.info(f'calculated request hash: {request_hash}')
 
-    total_step = body['params']['step']
+    params = body['params']
+    total_step = params['step'] if 'step' in params else 1
     model = body['params']['model']
     mode = body['method']
 
@@ -152,7 +153,7 @@ async def maybe_serve_one(
                             compute_one,
                             model,
                             rid,
-                            mode, body['params'],
+                            mode, params,
                             inputs=inputs,
                             should_cancel=conn.should_cancel_work,
                         )

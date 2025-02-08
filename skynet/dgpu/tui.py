@@ -81,10 +81,11 @@ class WorkerMonitor:
 
         for req in requests:
             # Build a columns widget for the request row
+            prompt = req['prompt'] if 'prompt' in req else 'UPSCALE'
             columns = urwid.Columns([
                 ('fixed', 5,  urwid.Text(f"#{req['id']}")),   # e.g. "#12"
                 ('weight', 3, urwid.Text(req['model'])),
-                ('weight', 3, urwid.Text(req['prompt'])),
+                ('weight', 3, urwid.Text(prompt)),
                 ('fixed', 13, urwid.Text(req['user'])),
                 ('fixed', 13, urwid.Text(req['reward'])),
             ], dividechars=1)
