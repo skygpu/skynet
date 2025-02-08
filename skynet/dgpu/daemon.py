@@ -183,9 +183,16 @@ async def maybe_serve_one(
 async def dgpu_serve_forever(config: Config, conn: NetConnector):
     await maybe_update_tui_balance(conn)
 
+    last_poll_idx = -1
     try:
         while True:
             await conn.wait_data_update()
+            if conn.poll_index == last_poll_idx:
+                await trio.sleep(config.poll_time)
+                continue
+
+            last_poll_idx = conn.poll_index
+
             queue = conn._tables['queue']
 
             random.shuffle(queue)

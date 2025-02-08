@@ -67,6 +67,8 @@ class NetConnector:
 
         self.ipfs_client = AsyncIPFSHTTP(config.ipfs_url)
 
+        # poll_index is used to detect stale data
+        self.poll_index = 0
         self._tables = {
             'queue': [],
             'requests': {},
@@ -180,6 +182,7 @@ class NetConnector:
             self._data_event.set()
             await trio.sleep(max(poll_time - elapsed, 0.1))
             self._data_event = trio.Event()
+            self.poll_index += 1
 
     async def should_cancel_work(self, request_id: int) -> bool:
         logging.info('should cancel work?')
