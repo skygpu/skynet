@@ -40,19 +40,15 @@ def skynet_cleos(cleos_bs):
     yield cleos
 
 
-@pytest.fixture(scope='session')
-def dgpu():
-    from skynet.dgpu.network import NetConnector
-    from skynet.dgpu.compute import ModelMngr
-    from skynet.dgpu.daemon import WorkerDaemon
+@pytest.fixture
+def inject_mockers():
+    from skynet.constants import MODELS, ModelDesc
 
-    config = load_skynet_toml(file_path='skynet.toml')
-    hf_token = load_key(config, 'skynet.dgpu.hf_token')
-    hf_home = load_key(config, 'skynet.dgpu.hf_home')
-    set_hf_vars(hf_token, hf_home)
-    config = config['skynet']['dgpu']
-    conn = NetConnector(config)
-    mm = ModelMngr(config)
-    daemon = WorkerDaemon(mm, conn, config)
+    MODELS['skygpu/txt2img-mocker'] = ModelDesc(
+        short='tester',
+        mem=0.01,
+        attrs={},
+        tags=['txt2img']
+    )
 
-    yield conn, mm, daemon
+    yield

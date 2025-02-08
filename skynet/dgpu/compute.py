@@ -12,6 +12,7 @@ from contextlib import contextmanager as cm
 import trio
 import torch
 
+from skynet.config import load_skynet_toml
 from skynet.dgpu.tui import maybe_update_tui
 from skynet.dgpu.errors import (
     DGPUComputeError,
@@ -78,6 +79,7 @@ def maybe_load_model(name: str, mode: str):
         mode = 'txt2img'
 
     global _model_name, _model_mode, _model
+    config = load_skynet_toml().dgpu
 
     if _model_name != name or _model_mode != mode:
         # unload model
@@ -93,7 +95,7 @@ def maybe_load_model(name: str, mode: str):
 
         else:
             _model = pipeline_for(
-                name, mode, cache_dir='hf_home')
+                name, mode, cache_dir=config.hf_home)
 
         _model_name = name
         _model_mode = mode
@@ -101,25 +103,17 @@ def maybe_load_model(name: str, mode: str):
         logging.debug('memory summary:')
         logging.debug('\n' + torch.cuda.memory_summary())
 
-    yield
+    yield _model
 
 
 def compute_one(
+    model,
     request_id: int,
     method: str,
     params: dict,
     inputs: list[bytes] = [],
     should_cancel = None
 ):
-    if method == 'diffuse':
-        method = 'txt2img'
-
-    global _model, _model_name, _model_mode
-
-    # validate correct model is loaded
-    assert params['model'] == _model_name
-    assert method == _model_mode
-
     total_steps = params['step']
     def inference_step_wakeup(*args, **kwargs):
         '''This is a callback function that gets invoked every inference step,
@@ -132,6 +126,7 @@ def compute_one(
 
         maybe_update_tui(lambda tui: tui.set_progress(step, done=total_steps))
 
+        should_raise = False
         if should_cancel:
             should_raise = trio.from_thread.run(should_cancel, request_id)
 
@@ -155,7 +150,7 @@ def compute_one(
         name = params['model']
 
         match method:
-            case 'txt2img' | 'img2img' | 'inpaint':
+            case 'diffuse' | 'txt2img' | 'img2img' | 'inpaint':
                 arguments = prepare_params_for_diffuse(
                     params, method, inputs)
                 prompt, guidance, step, seed, upscaler, extra_params = arguments
@@ -167,7 +162,7 @@ def compute_one(
                     extra_params['callback'] = inference_step_wakeup
                     extra_params['callback_steps'] = 1
 
-                output = _model(
+                output = model(
                     prompt,
                     guidance_scale=guidance,
                     num_inference_steps=step,
@@ -194,7 +189,7 @@ def compute_one(
 
             case 'upscale':
                 input_img = inputs[0].convert('RGB')
-                up_img, _ = _model.enhance(
+                up_img, _ = model.enhance(
                     convert_from_image_to_cv2(input_img), outscale=4)
 
                 output = convert_from_cv2_to_image(up_img)
