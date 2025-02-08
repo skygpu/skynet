@@ -45,7 +45,7 @@ def skynet(*args, **kwargs):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def txt2img(*args, **kwargs):
-    from . import utils  # TODO? why here, import cycle?
+    from skynet.dgpu import utils
 
     config = load_skynet_toml()
     set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
@@ -70,7 +70,7 @@ def txt2img(*args, **kwargs):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def img2img(model, prompt, input, output, strength, guidance, steps, seed):
-    from . import utils
+    from skynet.dgpu import utils
     config = load_skynet_toml()
     set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
     utils.img2img(
@@ -98,7 +98,7 @@ def img2img(model, prompt, input, output, strength, guidance, steps, seed):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def inpaint(model, prompt, input, mask, output, strength, guidance, steps, seed):
-    from . import utils
+    from skynet.dgpu import utils
     config = load_skynet_toml()
     set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
     utils.inpaint(
@@ -119,7 +119,7 @@ def inpaint(model, prompt, input, mask, output, strength, guidance, steps, seed)
 @click.option('--output', '-o', default='output.png')
 @click.option('--model', '-m', default='weights/RealESRGAN_x4plus.pth')
 def upscale(input, output, model):
-    from . import utils
+    from skynet.dgpu import utils
     utils.upscale(
         img_path=input,
         output=output,
@@ -128,7 +128,7 @@ def upscale(input, output, model):
 
 @skynet.command()
 def download():
-    from . import utils
+    from skynet.dgpu import utils
     config = load_skynet_toml()
     set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
     utils.download_all_models(config.dgpu.hf_token, config.dgpu.hf_home)
