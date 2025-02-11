@@ -79,10 +79,10 @@ class BodyV0Params(Struct):
     model: str
     seed: int
     step: int = 1
-    guidance: float | None = None
+    guidance: str | float | None = None
     width: int | None = None
     height: int | None = None
-    strength: float | None = None
+    strength: str | float | None = None
     output_type: str | None = 'png'
     upscaler: str | None = None
 

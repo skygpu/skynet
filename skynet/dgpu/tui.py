@@ -78,6 +78,11 @@ class WorkerMonitor:
         """
         row_widgets = []
 
+        requests = sorted(
+            requests,
+            key=lambda r: r['id']
+        )
+
         for req in requests:
             # Build a columns widget for the request row
             prompt = req['prompt'] if 'prompt' in req else 'UPSCALE'
@@ -159,11 +164,13 @@ class WorkerMonitor:
     def network_update(self, state_mngr):
         queue = [
             {
-                **r,
+                'id': r.id,
+                'user': r.user,
+                'reward': r.reward,
                 **(json.loads(r.body)['params']),
                 'workers': [s.worker for s in state_mngr._status_by_rid[r.id]]
             }
-            for r in state_mngr.queue
+            for r in state_mngr._queue
         ]
         self.update_requests(queue)
 

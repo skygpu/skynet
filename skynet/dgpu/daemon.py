@@ -33,13 +33,12 @@ async def maybe_serve_one(
     conn: NetConnector,
     state_mngr: ContractState,
 ):
+    logging.info(f'maybe serve request pi: {state_mngr.poll_index}')
     req = state_mngr.first
 
     # no requests in queue
     if not req:
         return
-
-    logging.info(f'maybe serve request #{req.id}')
 
     # parse request
     body = msgspec.json.decode(req.body, type=BodyV0)

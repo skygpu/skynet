@@ -43,14 +43,14 @@ def prepare_params_for_diffuse(
             if 'flux' in params.model.lower():
                 _params['max_sequence_length'] = 512
             else:
-                _params['strength'] = params.strength
+                _params['strength'] = float(params.strength)
 
         case ModelMode.IMG2IMG:
             image = crop_image(
                 inputs[0], params.width, params.height)
 
             _params['image'] = image
-            _params['strength'] = params.strength
+            _params['strength'] = float(params.strength)
 
         case ModelMode.TXT2IMG | ModelMode.DIFFUSE:
             ...
@@ -60,7 +60,7 @@ def prepare_params_for_diffuse(
 
     return (
         params.prompt,
-        params.guidance,
+        float(params.guidance),
         params.step,
         torch.manual_seed(int(params.seed)),
         _params

@@ -20,6 +20,7 @@ from skynet.dgpu.tui import maybe_update_tui
 from skynet.config import DgpuConfig as Config, load_skynet_toml
 from skynet.types import (
     ConfigV0,
+    AccountV0,
     BodyV0,
     RequestV0,
     WorkerStatusV0,
@@ -128,7 +129,8 @@ class NetConnector:
                 index_position=1,
                 key_type='name',
                 lower_bound=self.config.account,
-                upper_bound=self.config.account
+                upper_bound=self.config.account,
+                resp_cls=AccountV0
             ))
 
         if rows:
@@ -334,6 +336,7 @@ class ContractState:
                 self._queue.append(req)
 
             except msgspec.ValidationError:
+                logging.exception(f'dropping req {req.id} due to:')
                 ...
 
         random.shuffle(self._queue)
