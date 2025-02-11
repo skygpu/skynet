@@ -25,7 +25,8 @@ async def test_pipeline_mocker(inject_mockers, mode, model):
         width=1024,
         height=1024,
         seed=168402949,
-        guidance="7.5"
+        guidance="7.5",
+        strength="0.65"
     )
 
     with maybe_load_model(model, mode) as model:
