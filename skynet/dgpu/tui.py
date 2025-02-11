@@ -2,7 +2,6 @@ import json
 import logging
 import warnings
 
-import trio
 import urwid
 
 from skynet.config import DgpuConfig as Config
@@ -157,14 +156,14 @@ class WorkerMonitor:
         if new_balance is not None:
             self.balance_widget.set_text(new_balance)
 
-    def network_update(self, snapshot: dict):
+    def network_update(self, state_mngr):
         queue = [
             {
                 **r,
-                **(json.loads(r['body'])['params']),
-                'workers': [s['worker'] for s in snapshot['requests'][r['id']]]
+                **(json.loads(r.body)['params']),
+                'workers': [s.worker for s in state_mngr._status_by_rid[r.id]]
             }
-            for r in snapshot['queue']
+            for r in state_mngr.queue
         ]
         self.update_requests(queue)
 

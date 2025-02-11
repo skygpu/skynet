@@ -19,9 +19,9 @@ def postgres_db():
 def skynet_cleos(cleos_bs):
     cleos = cleos_bs
 
-    priv, pub = cleos.create_key_pair()
-    cleos.import_key('gpu.scd', priv)
-    cleos.new_account('gpu.scd', ram=4200000, key=pub)
+    # priv, pub = cleos.create_key_pair()
+    # cleos.import_key('gpu.scd', priv)
+    cleos.new_account('gpu.scd', ram=4200000)
 
     cleos.deploy_contract_from_path(
         'gpu.scd',
@@ -35,6 +35,8 @@ def skynet_cleos(cleos_bs):
         ['eosio.token', '4,TLOS'],
         'gpu.scd'
     )
+
+    cleos.new_account('testworker')
 
     yield cleos
 
@@ -52,3 +54,18 @@ def inject_mockers():
     )
 
     yield
+
+
+@pytest.fixture(scope='session')
+def ipfs_node(dockerctl):
+    rpc_port = 15001
+    with dockerctl.run(
+        'ipfs/go-ipfs:latest',
+        name='skynet-ipfs',
+        ports={
+            '8080/tcp': 18080,
+            '4001/tcp': 14001,
+            '5001/tcp': ('127.0.0.1', rpc_port)
+        }
+    ) as cntr:
+        yield cntr, AsyncIPFSHTTP(f'http://127.0.0.1:{rpc_port}')

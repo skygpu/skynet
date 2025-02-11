@@ -13,7 +13,7 @@ import trio
 import torch
 
 from skynet.config import load_skynet_toml
-from skynet.types import ModelMode, BodyV0, BodyV0Params
+from skynet.types import ModelMode, BodyV0Params
 from skynet.dgpu.tui import maybe_update_tui
 from skynet.dgpu.errors import (
     DGPUComputeError,

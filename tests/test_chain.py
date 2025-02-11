@@ -1,12 +1,12 @@
+import trio
 from msgspec import json
 
 from skynet.types import BodyV0, BodyV0Params
-from skynet.dgpu.network import NetConnector
 
-from skynet._testing import override_dgpu_config
+from skynet._testing import open_test_worker
 
 
-async def test_enqueue(skynet_cleos):
+async def test_full_flow(inject_mockers, skynet_cleos, ipfs_node):
     cleos = skynet_cleos
 
     # create account and deposit tokens into gpu
@@ -46,20 +46,7 @@ async def test_enqueue(skynet_cleos):
         key=cleos.private_keys[account]
     )
 
-    config = override_dgpu_config(
-        account='testworker1',
-        permission='active',
-        key='',
-        node_url=cleos.endpoint,
-        ipfs_url='http://127.0.0.1:5001',
-        hf_token=''
-    )
-    net = NetConnector(config)
-    queue = await net.get_work_requests_last_hour()
-
-    assert len(queue) == 1
-
-    req = queue[0]
-    body = json.decode(req.body, type=BodyV0)
-
-    assert og_body == body
+    # open worker and fill request
+    async with open_test_worker(cleos, ipfs_node) as (_conn, state_mngr):
+        while state_mngr.queue_len > 0:
+            await trio.sleep(1)

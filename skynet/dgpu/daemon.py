@@ -1,5 +1,4 @@
 import logging
-import random
 from functools import partial
 from hashlib import sha256
 
@@ -8,22 +7,16 @@ import msgspec
 
 from skynet.config import DgpuConfig as Config
 from skynet.types import (
-    RequestV0,
     BodyV0
 )
 from skynet.constants import MODELS
 from skynet.dgpu.errors import DGPUComputeError
 from skynet.dgpu.tui import maybe_update_tui, maybe_update_tui_async
 from skynet.dgpu.compute import maybe_load_model, compute_one
-from skynet.dgpu.network import NetConnector
-
-
-def convert_reward_to_int(reward_str):
-    int_part, decimal_part = (
-        reward_str.split('.')[0],
-        reward_str.split('.')[1].split(' ')[0]
-    )
-    return int(int_part + decimal_part)
+from skynet.dgpu.network import (
+    NetConnector,
+    ContractState,
+)
 
 
 async def maybe_update_tui_balance(conn: NetConnector):
@@ -38,8 +31,14 @@ async def maybe_update_tui_balance(conn: NetConnector):
 async def maybe_serve_one(
     config: Config,
     conn: NetConnector,
-    req: RequestV0,
+    state_mngr: ContractState,
 ):
+    req = state_mngr.first
+
+    # no requests in queue
+    if not req:
+        return
+
     logging.info(f'maybe serve request #{req.id}')
 
     # parse request
@@ -69,18 +68,13 @@ async def maybe_serve_one(
         logging.warning('model not blacklisted!, skip...')
         return
 
-    results = [res['request_id'] for res in conn._tables['results']]
-
     # if worker already produced a result for this request
-    if req.id in results:
+    if state_mngr.is_request_filled(req.id):
         logging.info(f'worker already submitted a result for request #{req.id}, skip...')
         return
 
-    statuses = conn._tables['requests'][req.id]
-
     # skip if workers in non_compete already on it
-    competitors = set((status['worker'] for status in statuses))
-    if bool(config.non_compete & competitors):
+    if state_mngr.should_compete_for_id(req.id):
         logging.info('worker in configured non_compete list already working on request, skip...')
         return
 
@@ -146,7 +140,7 @@ async def maybe_serve_one(
                             req.id,
                             mode, body.params,
                             inputs=inputs,
-                            should_cancel=conn.should_cancel_work,
+                            should_cancel=state_mngr.should_cancel_work,
                         )
                     )
 
@@ -168,34 +162,28 @@ async def maybe_serve_one(
             if 'network cancel' not in str(err):
                 logging.exception('Failed to serve model request !?\n')
 
-            if req.id in conn._tables['requests']:
+            if state_mngr.is_request_in_progress(req.id):
                 await conn.cancel_work(req.id, 'reason not provided')
 
 
-async def dgpu_serve_forever(config: Config, conn: NetConnector):
+async def dgpu_serve_forever(
+    config: Config,
+    conn: NetConnector,
+    state_mngr: ContractState
+):
     await maybe_update_tui_balance(conn)
 
     last_poll_idx = -1
     try:
         while True:
-            await conn.wait_data_update()
-            if conn.poll_index == last_poll_idx:
+            await state_mngr.wait_data_update()
+            if state_mngr.poll_index == last_poll_idx:
                 await trio.sleep(config.poll_time)
                 continue
 
-            last_poll_idx = conn.poll_index
+            last_poll_idx = state_mngr.poll_index
 
-            queue = conn._tables['queue']
-
-            random.shuffle(queue)
-            queue = sorted(
-                queue,
-                key=lambda req: convert_reward_to_int(req['reward']),
-                reverse=True
-            )
-
-            if len(queue) > 0:
-                await maybe_serve_one(config, conn, queue[0])
+            await maybe_serve_one(config, conn, state_mngr)
 
     except KeyboardInterrupt:
         ...
