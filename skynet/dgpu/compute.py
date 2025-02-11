@@ -13,6 +13,7 @@ import trio
 import torch
 
 from skynet.config import load_skynet_toml
+from skynet.types import ModelMode, BodyV0, BodyV0Params
 from skynet.dgpu.tui import maybe_update_tui
 from skynet.dgpu.errors import (
     DGPUComputeError,
@@ -23,13 +24,13 @@ from skynet.dgpu.utils import crop_image, convert_from_cv2_to_image, convert_fro
 
 
 def prepare_params_for_diffuse(
-    params: dict,
-    mode: str,
+    params: BodyV0Params,
+    mode: ModelMode,
     inputs: list[bytes]
 ):
     _params = {}
     match mode:
-        case 'inpaint':
+        case ModelMode.INPAINT:
             image = crop_image(
                 inputs[0], params['width'], params['height'])
 
@@ -44,28 +45,25 @@ def prepare_params_for_diffuse(
             else:
                 _params['strength'] = float(params['strength'])
 
-        case 'img2img':
+        case ModelMode.IMG2IMG:
             image = crop_image(
                 inputs[0], params['width'], params['height'])
 
             _params['image'] = image
             _params['strength'] = float(params['strength'])
 
-        case 'txt2img' | 'diffuse':
+        case ModelMode.TXT2IMG | ModelMode.DIFFUSE:
             ...
 
         case _:
             raise DGPUComputeError(f'Unknown mode {mode}')
 
-    # _params['width'] = int(params['width'])
-    # _params['height'] = int(params['height'])
-
     return (
-        params['prompt'],
-        float(params['guidance']),
-        int(params['step']),
-        torch.manual_seed(int(params['seed'])),
-        params['upscaler'] if 'upscaler' in params else None,
+        params.prompt,
+        params.guidance,
+        params.step,
+        torch.manual_seed(int(params.seed)),
+        params.upscaler,
         _params
     )
 
@@ -74,9 +72,9 @@ _model_mode: str = ''
 _model = None
 
 @cm
-def maybe_load_model(name: str, mode: str):
-    if mode == 'diffuse':
-        mode = 'txt2img'
+def maybe_load_model(name: str, mode: ModelMode):
+    if mode == ModelMode.DIFFUSE:
+        mode = ModelMode.TXT2IMG
 
     global _model_name, _model_mode, _model
     config = load_skynet_toml().dgpu
@@ -90,7 +88,7 @@ def maybe_load_model(name: str, mode: str):
         _model_name = _model_mode = ''
 
         # load model
-        if mode == 'upscale':
+        if mode == ModelMode.UPSCALE:
             _model = init_upscaler()
 
         else:
@@ -100,8 +98,9 @@ def maybe_load_model(name: str, mode: str):
         _model_name = name
         _model_mode = mode
 
-        logging.debug('memory summary:')
-        logging.debug('\n' + torch.cuda.memory_summary())
+        if torch.cuda.is_available():
+            logging.debug('memory summary:')
+            logging.debug('\n' + torch.cuda.memory_summary())
 
     yield _model
 
@@ -109,12 +108,12 @@ def maybe_load_model(name: str, mode: str):
 def compute_one(
     model,
     request_id: int,
-    method: str,
-    params: dict,
+    method: ModelMode,
+    params: BodyV0Params,
     inputs: list[bytes] = [],
     should_cancel = None
 ):
-    total_steps = params['step'] if 'step' in params else 1
+    total_steps = params.step
     def inference_step_wakeup(*args, **kwargs):
         '''This is a callback function that gets invoked every inference step,
         we need to raise an exception here if we need to cancel work
@@ -140,17 +139,19 @@ def compute_one(
 
     inference_step_wakeup(0)
 
-    output_type = 'png'
-    if 'output_type' in params:
-        output_type = params['output_type']
-
+    output_type = params.output_type
     output = None
     output_hash = None
     try:
-        name = params['model']
+        name = params.model
 
         match method:
-            case 'diffuse' | 'txt2img' | 'img2img' | 'inpaint':
+            case (
+                ModelMode.DIFFUSE |
+                ModelMode.TXT2IMG |
+                ModelMode.IMG2IMG |
+                ModelMode.INPAINT
+            ):
                 arguments = prepare_params_for_diffuse(
                     params, method, inputs)
                 prompt, guidance, step, seed, upscaler, extra_params = arguments

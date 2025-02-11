@@ -1,6 +1,5 @@
 import pytest
 
-from skynet.config import *
 from skynet.ipfs import AsyncIPFSHTTP
 
 
@@ -21,20 +20,20 @@ def skynet_cleos(cleos_bs):
     cleos = cleos_bs
 
     priv, pub = cleos.create_key_pair()
-    cleos.import_key('telos.gpu', priv)
-    cleos.new_account('telos.gpu', ram=4200000, key=pub)
+    cleos.import_key('gpu.scd', priv)
+    cleos.new_account('gpu.scd', ram=4200000, key=pub)
 
     cleos.deploy_contract_from_path(
-        'telos.gpu',
-        'tests/contracts/telos.gpu',
+        'gpu.scd',
+        'tests/contracts/gpu.scd',
         create_account=False
     )
 
     cleos.push_action(
-        'telos.gpu',
+        'gpu.scd',
         'config',
-        ['eosio.token', '4,GPU'],
-        'telos.gpu'
+        ['eosio.token', '4,TLOS'],
+        'gpu.scd'
     )
 
     yield cleos
@@ -42,7 +41,8 @@ def skynet_cleos(cleos_bs):
 
 @pytest.fixture
 def inject_mockers():
-    from skynet.constants import MODELS, ModelDesc
+    from skynet.constants import MODELS
+    from skynet.types import ModelDesc
 
     MODELS['skygpu/txt2img-mocker'] = ModelDesc(
         short='tester',

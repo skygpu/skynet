@@ -1,21 +1,18 @@
-import json
 import logging
 import random
-import time
-from datetime import datetime
 from functools import partial
 from hashlib import sha256
 
 import trio
+import msgspec
 
 from skynet.config import DgpuConfig as Config
-from skynet.constants import (
-    MODELS,
-    VERSION,
+from skynet.types import (
+    RequestV0,
+    BodyV0
 )
-from skynet.dgpu.errors import (
-    DGPUComputeError,
-)
+from skynet.constants import MODELS
+from skynet.dgpu.errors import DGPUComputeError
 from skynet.dgpu.tui import maybe_update_tui, maybe_update_tui_async
 from skynet.dgpu.compute import maybe_load_model, compute_one
 from skynet.dgpu.network import NetConnector
@@ -41,14 +38,13 @@ async def maybe_update_tui_balance(conn: NetConnector):
 async def maybe_serve_one(
     config: Config,
     conn: NetConnector,
-    req: dict,
+    req: RequestV0,
 ):
-    rid = req['id']
-    logging.info(f'maybe serve request #{rid}')
+    logging.info(f'maybe serve request #{req.id}')
 
     # parse request
-    body = json.loads(req['body'])
-    model = body['params']['model']
+    body = msgspec.json.decode(req.body, type=BodyV0)
+    model = body.params.model
 
     # if model not known, ignore.
     if model not in MODELS:
@@ -76,11 +72,11 @@ async def maybe_serve_one(
     results = [res['request_id'] for res in conn._tables['results']]
 
     # if worker already produced a result for this request
-    if rid in results:
-        logging.info(f'worker already submitted a result for request #{rid}, skip...')
+    if req.id in results:
+        logging.info(f'worker already submitted a result for request #{req.id}, skip...')
         return
 
-    statuses = conn._tables['requests'][rid]
+    statuses = conn._tables['requests'][req.id]
 
     # skip if workers in non_compete already on it
     competitors = set((status['worker'] for status in statuses))
@@ -90,12 +86,12 @@ async def maybe_serve_one(
 
     # resolve the ipfs hashes into the actual data behind them
     inputs = []
-    raw_inputs = req['binary_data'].split(',')
+    raw_inputs = req.binary_data.split(',')
     if raw_inputs:
         logging.info(f'fetching IPFS inputs: {raw_inputs}')
 
     retry = 3
-    for _input in req['binary_data'].split(','):
+    for _input in raw_inputs:
         if _input:
             for r in range(retry):
                 try:
@@ -114,24 +110,22 @@ async def maybe_serve_one(
 
     # compute unique request hash used on submit
     hash_str = (
-        str(req['nonce'])
+        str(req.nonce)
         +
-        req['body']
+        req.body
         +
-        req['binary_data']
+        req.binary_data
     )
     logging.debug(f'hashing: {hash_str}')
     request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
     logging.info(f'calculated request hash: {request_hash}')
 
-    params = body['params']
-    total_step = params['step'] if 'step' in params else 1
-    model = body['params']['model']
-    mode = body['method']
+    total_step = body.params.step
+    mode = body.method
 
     # TODO: validate request
 
-    resp = await conn.begin_work(rid)
+    resp = await conn.begin_work(req.id)
     if not resp or 'code' in resp:
         logging.info('begin_work error, probably being worked on already... skip.')
         return
@@ -140,10 +134,7 @@ async def maybe_serve_one(
         try:
             maybe_update_tui(lambda tui: tui.set_progress(0, done=total_step))
 
-            output_type = 'png'
-            if 'output_type' in body['params']:
-                output_type = body['params']['output_type']
-
+            output_type = body.params.output_type
             output = None
             output_hash = None
             match config.backend:
@@ -152,8 +143,8 @@ async def maybe_serve_one(
                         partial(
                             compute_one,
                             model,
-                            rid,
-                            mode, params,
+                            req.id,
+                            mode, body.params,
                             inputs=inputs,
                             should_cancel=conn.should_cancel_work,
                         )
@@ -168,7 +159,7 @@ async def maybe_serve_one(
 
             ipfs_hash = await conn.publish_on_ipfs(output, typ=output_type)
 
-            await conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
+            await conn.submit_work(req.id, request_hash, output_hash, ipfs_hash)
 
             await maybe_update_tui_balance(conn)
 
@@ -177,8 +168,8 @@ async def maybe_serve_one(
             if 'network cancel' not in str(err):
                 logging.exception('Failed to serve model request !?\n')
 
-            if rid in conn._tables['requests']:
-                await conn.cancel_work(rid, 'reason not provided')
+            if req.id in conn._tables['requests']:
+                await conn.cancel_work(req.id, 'reason not provided')
 
 
 async def dgpu_serve_forever(config: Config, conn: NetConnector):

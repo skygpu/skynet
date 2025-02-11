@@ -3,7 +3,6 @@ import json
 import time
 import logging
 from pathlib import Path
-from typing import AsyncGenerator
 from functools import partial
 
 import trio
@@ -16,10 +15,8 @@ from leap.cleos import CLEOS
 from leap.protocol import Asset
 from skynet.dgpu.tui import maybe_update_tui
 from skynet.config import DgpuConfig as Config
-from skynet.constants import (
-    DEFAULT_IPFS_DOMAIN,
-    GPU_CONTRACT_ABI,
-)
+from skynet.types import RequestV0
+from skynet.constants import GPU_CONTRACT_ABI
 
 from skynet.ipfs import (
     AsyncIPFSHTTP,
@@ -81,7 +78,7 @@ class NetConnector:
 
     # blockchain helpers
 
-    async def get_work_requests_last_hour(self):
+    async def get_work_requests_last_hour(self) -> list[RequestV0]:
         logging.info('get_work_requests_last_hour')
         rows = await failable(
             partial(
@@ -89,7 +86,8 @@ class NetConnector:
                 'gpu.scd', 'gpu.scd', 'queue',
                 index_position=2,
                 key_type='i64',
-                lower_bound=int(time.time()) - 3600
+                lower_bound=int(time.time()) - 3600,
+                resp_cls=RequestV0
             ), ret_fail=[])
 
         logging.info(f'found {len(rows)} requests on queue')

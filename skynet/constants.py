@@ -1,19 +1,8 @@
-import msgspec
+from skynet.types import ModelDesc
 
-from enum import Enum
-from typing import Literal
-
-VERSION = '0.1a12'
+VERSION = '0.1a13'
 
 DOCKER_RUNTIME_CUDA = 'skynet:runtime-cuda'
-
-
-class ModelDesc(msgspec.Struct):
-    short: str  # short unique name
-    mem: float  # recomended mem
-    attrs: dict  # additional mode specific attrs
-    tags: list[Literal['txt2img', 'img2img', 'inpaint', 'upscale']]
-
 
 MODELS: dict[str, ModelDesc] = {
     'RealESRGAN_x4plus': ModelDesc(
