@@ -19,7 +19,7 @@ async def test_full_flow(inject_mockers, skynet_cleos, ipfs_node):
         method='txt2img',
         params=BodyV0Params(
             prompt='cyberpunk hacker travis bickle dystopic alley graffiti',
-            model='skygpu/txt2img-mocker',
+            model='skygpu/mocker',
             step=4,
             seed=0,
             guidance=10.0

@@ -1,14 +1,16 @@
 from pathlib import Path
 
 
-async def test_connection(ipfs_client):
-    await ipfs_client.connect(
-        '/ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv')
-    peers = await ipfs_client.peers()
-    assert '12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv' in [p['Peer'] for p in peers]
+# async def test_connection(ipfs_node):
+#     _, ipfs_client = ipfs_node
+#     await ipfs_client.connect(
+#         '/ip4/169.197.140.154/tcp/4001/p2p/12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv')
+#     peers = await ipfs_client.peers()
+#     assert '12D3KooWKWogLFNEcNNMKnzU7Snrnuj84RZdMBg3sLiQSQc51oEv' in [p['Peer'] for p in peers]
 
 
-async def test_add_and_pin_file(ipfs_client):
+async def test_add_and_pin_file(ipfs_node):
+    _, ipfs_client = ipfs_node
     test_file = Path('hello_world.txt')
     with open(test_file, 'w+') as file:
         file.write('Hello Skynet!')

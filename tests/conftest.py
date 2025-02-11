@@ -1,6 +1,7 @@
 import pytest
 
 from skynet.ipfs import AsyncIPFSHTTP
+from skynet._testing import override_dgpu_config
 
 
 @pytest.fixture(scope='session')
@@ -44,13 +45,35 @@ def skynet_cleos(cleos_bs):
 @pytest.fixture
 def inject_mockers():
     from skynet.constants import MODELS
-    from skynet.types import ModelDesc
+    from skynet.types import ModelDesc, ModelMode
 
-    MODELS['skygpu/txt2img-mocker'] = ModelDesc(
+    MODELS['skygpu/mocker'] = ModelDesc(
         short='tester',
         mem=0.01,
         attrs={},
-        tags=['txt2img']
+        tags=[
+            ModelMode.TXT2IMG,
+            ModelMode.IMG2IMG,
+            ModelMode.INPAINT
+        ]
+    )
+
+    MODELS['skygpu/mocker-upscale'] = ModelDesc(
+        short='tester-upscale',
+        mem=0.01,
+        attrs={},
+        tags=[
+            ModelMode.UPSCALE
+        ]
+    )
+
+    override_dgpu_config(
+        account='testworker1',
+        permission='active',
+        key='',
+        node_url='',
+        ipfs_url='http://127.0.0.1:5001',
+        hf_token=''
     )
 
     yield

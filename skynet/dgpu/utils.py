@@ -124,6 +124,9 @@ def pipeline_for(
     except ImportError:
         logging.info(f'didn\'t find a custom pipeline file for {shortname}')
 
+    # for now, upscaler special case...
+    if mode == 'upscale':
+        return init_upscaler()
 
     req_mem = model_info.mem
 

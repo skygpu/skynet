@@ -32,25 +32,25 @@ def prepare_params_for_diffuse(
     match mode:
         case ModelMode.INPAINT:
             image = crop_image(
-                inputs[0], params['width'], params['height'])
+                inputs[0], params.width, params.height)
 
             mask = crop_image(
-                inputs[1], params['width'], params['height'])
+                inputs[1], params.width, params.height)
 
             _params['image'] = image
             _params['mask_image'] = mask
 
-            if 'flux' in params['model'].lower():
+            if 'flux' in params.model.lower():
                 _params['max_sequence_length'] = 512
             else:
-                _params['strength'] = float(params['strength'])
+                _params['strength'] = params.strength
 
         case ModelMode.IMG2IMG:
             image = crop_image(
-                inputs[0], params['width'], params['height'])
+                inputs[0], params.width, params.height)
 
             _params['image'] = image
-            _params['strength'] = float(params['strength'])
+            _params['strength'] = params.strength
 
         case ModelMode.TXT2IMG | ModelMode.DIFFUSE:
             ...
@@ -63,7 +63,6 @@ def prepare_params_for_diffuse(
         params.guidance,
         params.step,
         torch.manual_seed(int(params.seed)),
-        params.upscaler,
         _params
     )
 
@@ -88,12 +87,8 @@ def maybe_load_model(name: str, mode: ModelMode):
         _model_name = _model_mode = ''
 
         # load model
-        if mode == ModelMode.UPSCALE:
-            _model = init_upscaler()
-
-        else:
-            _model = pipeline_for(
-                name, mode, cache_dir=config.hf_home)
+        _model = pipeline_for(
+            name, mode, cache_dir=config.hf_home)
 
         _model_name = name
         _model_mode = mode
@@ -154,7 +149,7 @@ def compute_one(
             ):
                 arguments = prepare_params_for_diffuse(
                     params, method, inputs)
-                prompt, guidance, step, seed, upscaler, extra_params = arguments
+                prompt, guidance, step, seed, extra_params = arguments
 
                 if 'flux' in name.lower():
                     extra_params['callback_on_step_end'] = inference_step_wakeup
@@ -174,13 +169,6 @@ def compute_one(
                 output_binary = b''
                 match output_type:
                     case 'png':
-                        if upscaler == 'x4':
-                            input_img = output.convert('RGB')
-                            up_img, _ = init_upscaler().enhance(
-                                convert_from_image_to_cv2(input_img), outscale=4)
-
-                            output = convert_from_cv2_to_image(up_img)
-
                         output_binary = convert_from_img_to_bytes(output)
 
                     case _:
