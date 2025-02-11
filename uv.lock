@@ -1598,7 +1598,7 @@ wheels = [
 [[package]]
 name = "py-leap"
 version = "0.1a35"
-source = { git = "https://github.com/guilledk/py-leap.git?branch=struct_unwrap#9c60e0b63f4583bd958c4fa06c14757e758f4a2c" }
+source = { git = "https://github.com/guilledk/py-leap.git?branch=struct_unwrap#18b3c73e724922a060db5f8ea2b9d9727b6152cc" }
 dependencies = [
     { name = "base58" },
     { name = "cryptos" },
@@ -1703,7 +1703,7 @@ wheels = [
 [[package]]
 name = "pytest-dockerctl"
 version = "0.2a0"
-source = { git = "https://github.com/pikers/pytest-dockerctl.git?branch=g_update#d58e9317b55954f05f139730a62d55e1acb5f5d1" }
+source = { git = "https://github.com/pikers/pytest-dockerctl.git?branch=g_update#9b0f3296cd5e4a5e8a7ef280b1aafafc6cc22880" }
 dependencies = [
     { name = "docker" },
     { name = "pytest" },

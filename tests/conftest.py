@@ -66,6 +66,7 @@ def ipfs_node(dockerctl):
             '8080/tcp': 18080,
             '4001/tcp': 14001,
             '5001/tcp': ('127.0.0.1', rpc_port)
-        }
+        },
+        timeout=60
     ) as cntr:
         yield cntr, AsyncIPFSHTTP(f'http://127.0.0.1:{rpc_port}')
