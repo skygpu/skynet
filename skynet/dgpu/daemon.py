@@ -1,6 +1,5 @@
 import logging
 from functools import partial
-from hashlib import sha256
 
 import trio
 import msgspec
@@ -22,7 +21,7 @@ from skynet.dgpu.network import (
 async def maybe_update_tui_balance(conn: NetConnector):
     async def _fn(tui):
         # update balance
-        balance = await conn.get_worker_balance()
+        balance = await conn.contract.get_user(tui.config.account).balance
         tui.set_header_text(new_balance=f'balance: {balance}')
 
     await maybe_update_tui_async(_fn)
@@ -101,24 +100,12 @@ async def maybe_serve_one(
                         f'IPFS fetch input error !?! retries left {retry - r - 1}\n'
                     )
 
-    # compute unique request hash used on submit
-    hash_str = (
-        str(req.nonce)
-        +
-        req.body
-        +
-        req.binary_data
-    )
-    logging.debug(f'hashing: {hash_str}')
-    request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
-    logging.info(f'calculated request hash: {request_hash}')
-
     total_step = body.params.step
     mode = body.method
 
     # TODO: validate request
 
-    resp = await conn.begin_work(req.id)
+    resp = await conn.contract.accept_work(config.account, req.id)
     if not resp or 'code' in resp:
         logging.info('begin_work error, probably being worked on already... skip.')
         return
@@ -157,7 +144,9 @@ async def maybe_serve_one(
 
             ipfs_hash = await conn.publish_on_ipfs(output, typ=output_type)
 
-            await conn.submit_work(req.id, request_hash, output_hash, ipfs_hash)
+            await conn.contract.submit_work(config.account, req.id, output_hash, ipfs_hash)
+
+            await state_mngr.update_state()
 
             await maybe_update_tui_balance(conn)
 
@@ -168,8 +157,10 @@ async def maybe_serve_one(
             if 'network cancel' not in str(err):
                 logging.exception('Failed to serve model request !?\n')
 
+            await state_mngr.update_state()
+
             if state_mngr.is_request_in_progress(req.id):
-                await conn.cancel_work(req.id, 'reason not provided')
+                await conn.contract.cancel_work(config.account, req.id, 'reason not provided')
 
 
 async def dgpu_serve_forever(

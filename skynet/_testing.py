@@ -16,13 +16,14 @@ async def open_test_worker(
     cleos, ipfs_node,
     account: str = 'testworker',
     permission: str = 'active',
+    key: str = '5KRPFxF4RJebqPXqRzwStmCaEWeRfp3pR7XUNoA3zCHt5fnPu3s',
     hf_token: str = '',
     **kwargs
 ):
     config = override_dgpu_config(
         account=account,
         permission=permission,
-        key=cleos.private_keys[account],
+        key=key,
         node_url=cleos.endpoint,
         ipfs_url=ipfs_node[1].endpoint,
         hf_token=hf_token,

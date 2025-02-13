@@ -1599,7 +1599,7 @@ wheels = [
 [[package]]
 name = "py-leap"
 version = "0.1a35"
-source = { editable = "../py-leap" }
+source = { git = "https://github.com/guilledk/py-leap.git?branch=struct_unwrap#20f2e1f74e98e3d75984e8e1eee13c3100c17652" }
 dependencies = [
     { name = "base58" },
     { name = "cryptos" },
@@ -1607,33 +1607,6 @@ dependencies = [
     { name = "msgspec" },
     { name = "requests" },
     { name = "ripemd-hash" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "base58", specifier = ">=2.1.1,<3" },
-    { name = "cryptos", specifier = ">=2.0.9,<3" },
-    { name = "httpx", specifier = ">=0.28.1,<0.29" },
-    { name = "msgspec", specifier = ">=0.19.0" },
-    { name = "requests", specifier = "<2.32.0" },
-    { name = "ripemd-hash", specifier = ">=1.0.1,<2" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "docker", specifier = ">=6.1.3,<7" },
-    { name = "pdbpp", specifier = ">=0.10.3,<0.11" },
-    { name = "pytest", specifier = ">=8.3.4,<9" },
-    { name = "pytest-trio", specifier = ">=0.8.0,<0.9" },
-]
-docs = [
-    { name = "sphinx", specifier = "==7.1.2" },
-    { name = "sphinx-rtd-theme", specifier = "==1.3.0" },
-]
-snaps = [
-    { name = "bs4", specifier = ">=0.0.2,<0.0.3" },
-    { name = "tdqm", specifier = ">=0.0.1,<0.0.2" },
-    { name = "zstandard", specifier = ">=0.21.0,<0.22" },
 ]
 
 [[package]]
@@ -2152,7 +2125,7 @@ requires-dist = [
     { name = "outcome", specifier = ">=1.3.0.post0" },
     { name = "pillow", specifier = ">=10.0.1,<11" },
     { name = "protobuf", specifier = ">=5.29.3,<6" },
-    { name = "py-leap", editable = "../py-leap" },
+    { name = "py-leap", git = "https://github.com/guilledk/py-leap.git?branch=struct_unwrap" },
     { name = "pytz", specifier = "~=2023.3.post1" },
     { name = "toml", specifier = ">=0.10.2,<0.11" },
     { name = "trio", specifier = ">=0.22.2,<0.23" },

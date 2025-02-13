@@ -1,6 +1,7 @@
 import pytest
 
 from skynet.ipfs import AsyncIPFSHTTP
+from skynet.contract import GPUContractAPI
 from skynet._testing import override_dgpu_config
 
 
@@ -24,9 +25,11 @@ def skynet_cleos(cleos_bs):
     # cleos.import_key('gpu.scd', priv)
     cleos.new_account('gpu.scd', ram=4200000)
 
+    contract_path = 'tests/contracts/skygpu-contract/target'
     cleos.deploy_contract_from_path(
         'gpu.scd',
-        'tests/contracts/gpu.scd',
+        contract_path,
+        contract_name='skygpu',
         create_account=False
     )
 
@@ -37,9 +40,13 @@ def skynet_cleos(cleos_bs):
         'gpu.scd'
     )
 
-    cleos.new_account('testworker')
+    testworker_key = '5KRPFxF4RJebqPXqRzwStmCaEWeRfp3pR7XUNoA3zCHt5fnPu3s'
+    pub_key = cleos.import_key('testworker', testworker_key)
+    cleos.new_account('testworker', key=pub_key)
 
-    yield cleos
+    cleos.wait_blocks(1)
+
+    yield GPUContractAPI(cleos), cleos
 
 
 @pytest.fixture

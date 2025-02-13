@@ -15,18 +15,15 @@ import outcome
 import msgspec
 from PIL import Image
 from leap.cleos import CLEOS
-from leap.protocol import Asset
 from skynet.dgpu.tui import maybe_update_tui
 from skynet.config import DgpuConfig as Config, load_skynet_toml
 from skynet.types import (
-    ConfigV0,
-    AccountV0,
     BodyV0,
-    RequestV0,
+    RequestV1,
     WorkerStatusV0,
     ResultV0
 )
-from skynet.constants import GPU_CONTRACT_ABI
+from skynet.contract import GPUContractAPI
 
 from skynet.ipfs import (
     AsyncIPFSHTTP,
@@ -70,177 +67,15 @@ class NetConnector:
     def __init__(self, config: Config):
         self.config = config
         self.cleos = CLEOS(endpoint=config.node_url)
-        self.cleos.load_abi('gpu.scd', GPU_CONTRACT_ABI)
+        self.cleos.import_key(config.account, config.key)
+        abi = self.cleos.get_abi('gpu.scd')
+        self.cleos.load_abi('gpu.scd', abi)
+
+        self.contract = GPUContractAPI(self.cleos)
 
         self.ipfs_client = AsyncIPFSHTTP(config.ipfs_url)
 
         maybe_update_tui(lambda tui: tui.set_header_text(new_worker_name=self.config.account))
-
-
-    # blockchain helpers
-
-    async def get_work_requests_last_hour(self) -> list[RequestV0]:
-        logging.info('get_work_requests_last_hour')
-        rows = await failable(
-            partial(
-                self.cleos.aget_table,
-                'gpu.scd', 'gpu.scd', 'queue',
-                index_position=2,
-                key_type='i64',
-                lower_bound=int(time.time()) - 3600,
-                resp_cls=RequestV0
-            ), ret_fail=[])
-
-        logging.info(f'found {len(rows)} requests on queue')
-        return rows
-
-    async def get_status_by_request_id(self, request_id: int) -> list[WorkerStatusV0]:
-        logging.info('get_status_by_request_id')
-        rows = await failable(
-            partial(
-                self.cleos.aget_table,
-                'gpu.scd', request_id, 'status', resp_cls=WorkerStatusV0), ret_fail=[])
-
-        logging.info(f'found status for workers: {[r.worker for r in rows]}')
-        return rows
-
-    async def get_global_config(self) -> ConfigV0:
-        logging.info('get_global_config')
-        rows = await failable(
-            partial(
-                self.cleos.aget_table,
-                'gpu.scd', 'gpu.scd', 'config',
-                resp_cls=ConfigV0))
-
-        if rows:
-            cfg = rows[0]
-            logging.info(f'config found: {cfg}')
-            return cfg
-        else:
-            logging.error('global config not found, is the contract initialized?')
-            return None
-
-    async def get_worker_balance(self) -> str:
-        logging.info('get_worker_balance')
-        rows = await failable(
-            partial(
-                self.cleos.aget_table,
-                'gpu.scd', 'gpu.scd', 'users',
-                index_position=1,
-                key_type='name',
-                lower_bound=self.config.account,
-                upper_bound=self.config.account,
-                resp_cls=AccountV0
-            ))
-
-        if rows:
-            b = rows[0].balance
-            logging.info(f'balance: {b}')
-            return b
-        else:
-            logging.info('no balance info found')
-            return None
-
-    async def begin_work(self, request_id: int):
-        '''
-        Publish to the bc that the worker is beginning a model-computation
-        step.
-
-        '''
-        logging.info(f'begin_work on #{request_id}')
-        return await failable(
-            partial(
-                self.cleos.a_push_action,
-                'gpu.scd',
-                'workbegin',
-                list({
-                    'worker': self.config.account,
-                    'request_id': request_id,
-                    'max_workers': 2
-                }.values()),
-                self.config.account, self.config.key,
-                permission=self.config.permission
-            )
-        )
-
-    async def cancel_work(self, request_id: int, reason: str):
-        logging.info(f'cancel_work on #{request_id}')
-        return await failable(
-            partial(
-                self.cleos.a_push_action,
-                'gpu.scd',
-                'workcancel',
-                list({
-                    'worker': self.config.account,
-                    'request_id': request_id,
-                    'reason': reason
-                }.values()),
-                self.config.account, self.config.key,
-                permission=self.config.permission
-            )
-        )
-
-    async def maybe_withdraw_all(self):
-        logging.info('maybe_withdraw_all')
-        balance = await self.get_worker_balance()
-        if not balance:
-            return
-
-        balance_amount = float(balance.split(' ')[0])
-        if balance_amount > 0:
-            await failable(
-                partial(
-                    self.cleos.a_push_action,
-                    'gpu.scd',
-                    'withdraw',
-                    list({
-                        'user': self.config.account,
-                        'quantity': Asset.from_str(balance)
-                    }.values()),
-                    self.config.account, self.config.key,
-                    permission=self.config.permission
-                )
-            )
-
-    async def find_results(self) -> list[ResultV0]:
-        logging.info('find_results')
-        rows = await failable(
-            partial(
-                self.cleos.aget_table,
-                'gpu.scd', 'gpu.scd', 'results',
-                index_position=4,
-                key_type='name',
-                lower_bound=self.config.account,
-                upper_bound=self.config.account,
-                resp_cls=ResultV0
-            )
-        )
-        return rows
-
-    async def submit_work(
-        self,
-        request_id: int,
-        request_hash: str,
-        result_hash: str,
-        ipfs_hash: str
-    ):
-        logging.info(f'submit_work #{request_id}')
-        return await failable(
-            partial(
-                self.cleos.a_push_action,
-                'gpu.scd',
-                'submit',
-                list({
-                    'worker': self.config.account,
-                    'request_id': request_id,
-                    'request_hash': request_hash,
-                    'result_hash': result_hash,
-                    'ipfs_hash': ipfs_hash
-                }.values()),
-                self.config.account, self.config.key,
-                permission=self.config.permission
-            )
-        )
 
     # IPFS helpers
     async def publish_on_ipfs(self, raw, typ: str = 'png'):
@@ -302,9 +137,10 @@ class ContractState:
     def __init__(self, conn: NetConnector):
         self._conn = conn
 
+        self._config = load_skynet_toml().dgpu
         self._poll_index = 0
 
-        self._queue: list[RequestV0] = []
+        self._queue: list[RequestV1] = []
         self._status_by_rid: dict[int, list[WorkerStatusV0]] = {}
         self._results: list[ResultV0] = []
 
@@ -315,10 +151,10 @@ class ContractState:
         return self._poll_index
 
     async def _fetch_results(self):
-        self._results = await self._conn.find_results()
+        self._results = await self._conn.contract.get_worker_results(self._config.account)
 
     async def _fetch_statuses_for_id(self, rid: int):
-        self._status_by_rid[rid] = await self._conn.get_status_by_request_id(rid)
+        self._status_by_rid[rid] = await self._conn.contract.get_statuses_for_request(rid)
 
     async def update_state(self):
         '''
@@ -326,7 +162,7 @@ class ContractState:
 
         '''
         # raw queue from chain
-        _queue = await self._conn.get_work_requests_last_hour()
+        _queue = await self._conn.contract.get_requests_since(3600)
 
         # filter out invalids
         self._queue = []
@@ -380,7 +216,7 @@ class ContractState:
         return len(self._queue)
 
     @property
-    def first(self) -> RequestV0 | None:
+    def first(self) -> RequestV1 | None:
         if len(self._queue) > 0:
             return self._queue[0]
 
@@ -391,7 +227,7 @@ class ContractState:
         return set((
             status.worker
             for status in self._status_by_rid[request_id]
-            if status.worker != self._conn.config.account
+            if status.worker != self._config.account
         ))
 
     # predicates

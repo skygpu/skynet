@@ -40,6 +40,25 @@ class ConfigV0:
     token_symbol: str
 
 '''
+ConfigV1
+
+singleton containing global info about system, definition:
+```rust
+#[chain(table="config", singleton)]
+pub struct Config {
+    token_account: Name,
+    token_symbol: Symbol,
+    global_nonce: u64
+}
+```
+'''
+
+class ConfigV1(Struct):
+    token_account: str
+    token_symbol: str
+    global_nonce: int
+
+'''
 RequestV0
 
 a request placed on the queue, definition:
@@ -103,6 +122,38 @@ class RequestV0(Struct):
     binary_data: str
     timestamp: str
 
+'''
+RequestV1
+
+a request placed on the queue, definition:
+NEW: nonce field removed
+
+scope: self.receiver
+
+```rust
+#[chain(table="queue")]
+pub struct Request {
+    #[chain(primary)]
+    id: u64,
+    user: Name,
+    reward: Asset,
+    min_verification: u32,
+    body: String,
+    binary_data: String,
+    #[chain(secondary)]
+    timestamp: TimePointSec
+}
+```
+'''
+class RequestV1(Struct):
+    id: int
+    user: str
+    reward: str
+    min_verification: int
+    body: str
+    binary_data: str
+    timestamp: str
+
 
 '''
 AccountV0
@@ -127,6 +178,27 @@ class AccountV0(Struct):
     user: str
     balance: str
     nonce: int
+
+'''
+AccountV1
+
+a user account, users must deposit tokens in order to enqueue requests, definition:
+
+scope: self.receiver
+
+```rust
+#[chain(table="users")]
+pub struct Account {
+    #[chain(primary)]
+    user: Name,
+    balance: Asset
+}
+```
+'''
+
+class AccountV1(Struct):
+    user: str
+    balance: str
 
 
 '''

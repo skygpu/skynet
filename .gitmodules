@@ -1,0 +1,3 @@
+[submodule "tests/contracts/skygpu-contract"]
+	path = tests/contracts/skygpu-contract
+	url = https://github.com/skygpu/skygpu-contract.git

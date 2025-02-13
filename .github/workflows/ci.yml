@@ -7,13 +7,56 @@ jobs:
     name: Pytest Tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
+      - name: Install system dependencies (Rust + Python)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            clang \
+            lld \
+            protobuf-compiler \
+            make \
+            wget
+
+      - name: Install binaryen 120
+        run: |
+          wget https://github.com/WebAssembly/binaryen/releases/download/version_120/binaryen-version_120-x86_64-linux.tar.gz
+          tar xvf binaryen-version_120-x86_64-linux.tar.gz
+          echo "$(pwd)/binaryen-version_120/bin" >> $GITHUB_PATH
+
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v5
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          rustup install stable
+          rustup component add rust-src --toolchain stable
+          rustup target add wasm32-wasip1
+
+      - name: Set up Python environment and dependencies
+        run: |
+          uv venv .venv --python=3.12
+          uv pip install -U rust-contracts-builder
+          echo "$(pwd)/.venv/bin" >> $GITHUB_PATH
+
+      - name: Apply required modifications for rust-contracts-builder
+        run: |
+          sed -i "s/wasm32-wasi /wasm32-wasip1 /g" .venv/lib/python3.12/site-packages/rust_contracts_builder/__init__.py
+          sed -i "s/wasm32-wasi\//wasm32-wasip1\//g" .venv/lib/python3.12/site-packages/rust_contracts_builder/__init__.py
+
+      - name: Build Rust project
+        run: rust-contract build
+        working-directory: tests/contracts/skygpu-contract
 
       - uses: actions/cache@v3
         name: Cache venv
