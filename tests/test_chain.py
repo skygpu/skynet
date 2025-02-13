@@ -265,6 +265,6 @@ async def test_full_flow(inject_mockers, skynet_cleos, ipfs_node):
     )
 
     # open worker and fill request
-    async with open_test_worker(cleos, ipfs_node) as (_conn, state_mngr):
+    async with open_test_worker(cleos, ipfs_node) as (_contract, _ipfs_api, state_mngr):
         while state_mngr.queue_len > 0:
             await trio.sleep(1)

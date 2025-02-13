@@ -1,8 +1,9 @@
+import io
 import logging
 from pathlib import Path
 
 import httpx
-
+from PIL import Image
 
 class IPFSClientException(Exception):
     ...
@@ -53,14 +54,37 @@ class AsyncIPFSHTTP:
             params=kwargs
         ))['Peers']
 
+    async def publish(self, raw, type: str = 'png'):
+        stage = Path('/tmp/ipfs-staging')
+        stage.mkdir(exist_ok=True)
+        logging.info('publish_on_ipfs')
 
-async def get_ipfs_file(ipfs_link: str, timeout: int = 60 * 5):
+        target_file = ''
+        match type:
+            case 'png':
+                raw: Image
+                target_file = stage / 'image.png'
+                raw.save(target_file)
+
+            case _:
+                raise ValueError(f'Unsupported output type: {type}')
+
+        file_info = await self.add(Path(target_file))
+        file_cid = file_info['Hash']
+        logging.info(f'added file to ipfs, CID: {file_cid}')
+
+        await self.pin(file_cid)
+        logging.info(f'pinned {file_cid}')
+
+        return file_cid
+
+async def get_ipfs_img(ipfs_link: str, timeout: int = 3) -> Image:
     logging.info(f'attempting to get image at {ipfs_link}')
     resp = None
     for _ in range(timeout):
         try:
             async with httpx.AsyncClient() as client:
-                resp = await client.get(ipfs_link, timeout=3)
+                resp = await client.get(ipfs_link, timeout=timeout)
 
         except httpx.RequestError as e:
             logging.warning(f'Request error: {e}')
@@ -71,6 +95,14 @@ async def get_ipfs_file(ipfs_link: str, timeout: int = 60 * 5):
     if resp:
         logging.info(f'status_code: {resp.status_code}')
     else:
-        logging.error(f'timeout')
+        logging.error('timeout')
+        return None
 
-    return resp
+    if resp.status_code != 200:
+        logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link}!')
+        return resp
+
+    img = Image.open(io.BytesIO(resp.read()))
+    logging.info('decoded img successfully')
+
+    return img

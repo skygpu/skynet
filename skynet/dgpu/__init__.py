@@ -4,10 +4,14 @@ from contextlib import asynccontextmanager as acm
 import trio
 import urwid
 
+from leap import CLEOS
+
 from skynet.config import Config
+from skynet.ipfs import AsyncIPFSHTTP
+from skynet.contract import GPUContractAPI
 from skynet.dgpu.tui import init_tui, WorkerMonitor
 from skynet.dgpu.daemon import dgpu_serve_forever
-from skynet.dgpu.network import NetConnector, maybe_open_contract_state_mngr
+from skynet.dgpu.network import maybe_open_contract_state_mngr
 
 
 @acm
@@ -19,17 +23,24 @@ async def open_worker(config: Config):
     if config.tui:
         tui = init_tui(config)
 
-    conn = NetConnector(config)
+    cleos = CLEOS(endpoint=config.node_url)
+    cleos.import_key(config.account, config.key)
+    abi = cleos.get_abi('gpu.scd')
+    cleos.load_abi('gpu.scd', abi)
+
+    ipfs_api = AsyncIPFSHTTP(config.ipfs_url)
+
+    contract = GPUContractAPI(cleos)
     try:
-        async with maybe_open_contract_state_mngr(conn) as state_mngr:
+        async with maybe_open_contract_state_mngr(contract) as state_mngr:
             n: trio.Nursery
             async with trio.open_nursery() as n:
                 if tui:
                     n.start_soon(tui.run)
 
-                n.start_soon(dgpu_serve_forever, config, conn, state_mngr)
+                n.start_soon(dgpu_serve_forever, config, contract, ipfs_api, state_mngr)
 
-                yield conn, state_mngr
+                yield contract, ipfs_api, state_mngr
 
                 n.cancel_scope.cancel()
 

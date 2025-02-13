@@ -8,20 +8,21 @@ from skynet.config import DgpuConfig as Config
 from skynet.types import (
     BodyV0
 )
+from skynet.contract import GPUContractAPI
 from skynet.constants import MODELS
+from skynet.ipfs import AsyncIPFSHTTP, get_ipfs_img
 from skynet.dgpu.errors import DGPUComputeError
 from skynet.dgpu.tui import maybe_update_tui, maybe_update_tui_async
 from skynet.dgpu.compute import maybe_load_model, compute_one
 from skynet.dgpu.network import (
-    NetConnector,
     ContractState,
 )
 
 
-async def maybe_update_tui_balance(conn: NetConnector):
+async def maybe_update_tui_balance(contract: GPUContractAPI):
     async def _fn(tui):
         # update balance
-        balance = await conn.contract.get_user(tui.config.account).balance
+        balance = await contract.get_user(tui.config.account).balance
         tui.set_header_text(new_balance=f'balance: {balance}')
 
     await maybe_update_tui_async(_fn)
@@ -29,7 +30,8 @@ async def maybe_update_tui_balance(conn: NetConnector):
 
 async def maybe_serve_one(
     config: Config,
-    conn: NetConnector,
+    contract: GPUContractAPI,
+    ipfs_api: AsyncIPFSHTTP,
     state_mngr: ContractState,
 ):
     logging.info(f'maybe serve request pi: {state_mngr.poll_index}')
@@ -90,7 +92,7 @@ async def maybe_serve_one(
                     # user `GPUConnector` to IO with
                     # storage layer to seed the compute
                     # task.
-                    img = await conn.get_input_data(_input)
+                    img = await get_ipfs_img(f'https://{config.ipfs_domain}/ipfs/{_input}')
                     inputs.append(img)
                     logging.info(f'retrieved {_input}!')
                     break
@@ -105,7 +107,7 @@ async def maybe_serve_one(
 
     # TODO: validate request
 
-    resp = await conn.contract.accept_work(config.account, req.id)
+    resp = await contract.accept_work(config.account, req.id)
     if not resp or 'code' in resp:
         logging.info('begin_work error, probably being worked on already... skip.')
         return
@@ -142,13 +144,13 @@ async def maybe_serve_one(
 
             maybe_update_tui(lambda tui: tui.set_progress(total_step))
 
-            ipfs_hash = await conn.publish_on_ipfs(output, typ=output_type)
+            ipfs_hash = await ipfs_api.publish(output, type=output_type)
 
-            await conn.contract.submit_work(config.account, req.id, output_hash, ipfs_hash)
+            await contract.submit_work(config.account, req.id, output_hash, ipfs_hash)
 
             await state_mngr.update_state()
 
-            await maybe_update_tui_balance(conn)
+            await maybe_update_tui_balance(contract)
 
             await state_mngr.update_state()
 
@@ -160,15 +162,17 @@ async def maybe_serve_one(
             await state_mngr.update_state()
 
             if state_mngr.is_request_in_progress(req.id):
-                await conn.contract.cancel_work(config.account, req.id, 'reason not provided')
+                await contract.cancel_work(config.account, req.id, 'reason not provided')
 
 
 async def dgpu_serve_forever(
     config: Config,
-    conn: NetConnector,
+    contract: GPUContractAPI,
+    ipfs_api: AsyncIPFSHTTP,
     state_mngr: ContractState
 ):
-    await maybe_update_tui_balance(conn)
+    await maybe_update_tui_balance(contract)
+    maybe_update_tui(lambda tui: tui.set_header_text(new_worker_name=config.account))
 
     last_poll_idx = -1
     try:
@@ -180,7 +184,7 @@ async def dgpu_serve_forever(
 
             last_poll_idx = state_mngr.poll_index
 
-            await maybe_serve_one(config, conn, state_mngr)
+            await maybe_serve_one(config, contract, ipfs_api, state_mngr)
 
     except KeyboardInterrupt:
         ...

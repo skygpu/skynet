@@ -1,9 +1,7 @@
-import io
 import json
 import time
 import random
 import logging
-from pathlib import Path
 from contextlib import asynccontextmanager as acm
 from functools import partial
 
@@ -13,21 +11,14 @@ import anyio
 import httpx
 import outcome
 import msgspec
-from PIL import Image
-from leap.cleos import CLEOS
 from skynet.dgpu.tui import maybe_update_tui
-from skynet.config import DgpuConfig as Config, load_skynet_toml
+from skynet.config import load_skynet_toml
+from skynet.contract import GPUContractAPI
 from skynet.types import (
     BodyV0,
     RequestV1,
     WorkerStatusV0,
     ResultV0
-)
-from skynet.contract import GPUContractAPI
-
-from skynet.ipfs import (
-    AsyncIPFSHTTP,
-    get_ipfs_file,
 )
 
 
@@ -53,77 +44,6 @@ async def failable(fn: partial, ret_fail=None):
             return o.unwrap()
 
 
-class NetConnector:
-    '''
-    An API for connecting to and conducting various "high level"
-    network-service operations in the skynet.
-
-    - skynet user account creds
-    - hyperion API
-    - IPFs client
-    - CLEOS client
-
-    '''
-    def __init__(self, config: Config):
-        self.config = config
-        self.cleos = CLEOS(endpoint=config.node_url)
-        self.cleos.import_key(config.account, config.key)
-        abi = self.cleos.get_abi('gpu.scd')
-        self.cleos.load_abi('gpu.scd', abi)
-
-        self.contract = GPUContractAPI(self.cleos)
-
-        self.ipfs_client = AsyncIPFSHTTP(config.ipfs_url)
-
-        maybe_update_tui(lambda tui: tui.set_header_text(new_worker_name=self.config.account))
-
-    # IPFS helpers
-    async def publish_on_ipfs(self, raw, typ: str = 'png'):
-        Path('ipfs-staging').mkdir(exist_ok=True)
-        logging.info('publish_on_ipfs')
-
-        target_file = ''
-        match typ:
-            case 'png':
-                raw: Image
-                target_file = 'ipfs-staging/image.png'
-                raw.save(target_file)
-
-            case _:
-                raise ValueError(f'Unsupported output type: {typ}')
-
-        file_info = await self.ipfs_client.add(Path(target_file))
-        file_cid = file_info['Hash']
-        logging.info(f'added file to ipfs, CID: {file_cid}')
-
-        await self.ipfs_client.pin(file_cid)
-        logging.info(f'pinned {file_cid}')
-
-        return file_cid
-
-    async def get_input_data(self, ipfs_hash: str) -> Image:
-        '''
-        Retrieve an input (image) from the IPFs layer.
-
-        Normally used to retreive seed (visual) content previously
-        generated/validated by the network to be fed to some
-        consuming AI model.
-
-        '''
-        link = f'https://{self.config.ipfs_domain}/ipfs/{ipfs_hash}'
-
-        res = await get_ipfs_file(link, timeout=1)
-        if not res or res.status_code != 200:
-            logging.warning(f'couldn\'t get ipfs binary data at {link}!')
-
-        # attempt to decode as image
-        input_data = Image.open(io.BytesIO(res.read()))
-        logging.info('decoded as image successfully')
-
-        return input_data
-
-
-
 def convert_reward_to_int(reward_str):
     int_part, decimal_part = (
         reward_str.split('.')[0],
@@ -134,8 +54,11 @@ def convert_reward_to_int(reward_str):
 
 class ContractState:
 
-    def __init__(self, conn: NetConnector):
-        self._conn = conn
+    def __init__(
+        self,
+        contract: GPUContractAPI
+    ):
+        self.contract = contract
 
         self._config = load_skynet_toml().dgpu
         self._poll_index = 0
@@ -151,10 +74,10 @@ class ContractState:
         return self._poll_index
 
     async def _fetch_results(self):
-        self._results = await self._conn.contract.get_worker_results(self._config.account)
+        self._results = await self.contract.get_worker_results(self._config.account)
 
     async def _fetch_statuses_for_id(self, rid: int):
-        self._status_by_rid[rid] = await self._conn.contract.get_statuses_for_request(rid)
+        self._status_by_rid[rid] = await self.contract.get_statuses_for_request(rid)
 
     async def update_state(self):
         '''
@@ -162,7 +85,7 @@ class ContractState:
 
         '''
         # raw queue from chain
-        _queue = await self._conn.contract.get_requests_since(3600)
+        _queue = await self.contract.get_requests_since(3600)
 
         # filter out invalids
         self._queue = []
@@ -261,7 +184,7 @@ class ContractState:
 __state_mngr = None
 
 @acm
-async def maybe_open_contract_state_mngr(conn: NetConnector):
+async def maybe_open_contract_state_mngr(contract: GPUContractAPI):
     global __state_mngr
 
     if __state_mngr:
@@ -270,7 +193,7 @@ async def maybe_open_contract_state_mngr(conn: NetConnector):
 
     config = load_skynet_toml().dgpu
 
-    mngr = ContractState(conn)
+    mngr = ContractState(contract)
     async with trio.open_nursery() as n:
         await mngr.update_state()
         n.start_soon(mngr._state_update_task, config.poll_time)
