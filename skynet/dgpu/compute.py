@@ -1,22 +1,26 @@
-#!/usr/bin/python
+'''
+Skynet Memory Manager
 
-# Skynet Memory Manager
+'''
 
 import gc
 import logging
 
 from hashlib import sha256
-import zipfile
-from PIL import Image
-from diffusers import DiffusionPipeline
+from contextlib import contextmanager as cm
 
 import trio
 import torch
 
-from skynet.constants import DEFAULT_INITAL_MODEL, MODELS
-from skynet.dgpu.errors import DGPUComputeError, DGPUInferenceCancelled
+from skynet.config import load_skynet_toml
+from skynet.dgpu.tui import maybe_update_tui
+from skynet.dgpu.errors import (
+    DGPUComputeError,
+    DGPUInferenceCancelled,
+)
 
-from skynet.utils import crop_image, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
+from skynet.dgpu.utils import crop_image, convert_from_cv2_to_image, convert_from_image_to_cv2, convert_from_img_to_bytes, init_upscaler, pipeline_for
+
 
 def prepare_params_for_diffuse(
     params: dict,
@@ -65,145 +69,140 @@ def prepare_params_for_diffuse(
         _params
     )
 
+_model_name: str = ''
+_model_mode: str = ''
+_model = None
 
-class SkynetMM:
+@cm
+def maybe_load_model(name: str, mode: str):
+    if mode == 'diffuse':
+        mode = 'txt2img'
 
-    def __init__(self, config: dict):
-        self.cache_dir = None
-        if 'hf_home' in config:
-            self.cache_dir = config['hf_home']
+    global _model_name, _model_mode, _model
+    config = load_skynet_toml().dgpu
 
-        self._model_name = ''
-        self._model_mode = ''
-
-        # self.load_model(DEFAULT_INITAL_MODEL, 'txt2img')
-
-    def log_debug_info(self):
-        logging.info('memory summary:')
-        logging.info('\n' + torch.cuda.memory_summary())
-
-    def is_model_loaded(self, name: str, mode: str):
-        if (name == self._model_name and
-            mode == self._model_mode):
-            return True
-
-        return False
-
-    def unload_model(self):
-        if getattr(self, '_model', None):
-            del self._model
-
+    if _model_name != name or _model_mode != mode:
+        # unload model
+        _model = None
         gc.collect()
         torch.cuda.empty_cache()
 
-        self._model_name = ''
-        self._model_mode = ''
+        _model_name = _model_mode = ''
 
-    def load_model(
-        self,
-        name: str,
-        mode: str
-    ):
-        logging.info(f'loading model {name}...')
-        self.unload_model()
-        self._model = pipeline_for(
-            name, mode, cache_dir=self.cache_dir)
-        self._model_mode = mode
-        self._model_name = name
+        # load model
+        if mode == 'upscale':
+            _model = init_upscaler()
+
+        else:
+            _model = pipeline_for(
+                name, mode, cache_dir=config.hf_home)
+
+        _model_name = name
+        _model_mode = mode
+
+        logging.debug('memory summary:')
+        logging.debug('\n' + torch.cuda.memory_summary())
+
+    yield _model
 
 
-    def compute_one(
-        self,
-        request_id: int,
-        method: str,
-        params: dict,
-        inputs: list[bytes] = []
-    ):
-        def maybe_cancel_work(step, *args, **kwargs):
-            if self._should_cancel:
-                should_raise = trio.from_thread.run(self._should_cancel, request_id)
-                if should_raise:
-                    logging.warn(f'cancelling work at step {step}')
-                    raise DGPUInferenceCancelled()
+def compute_one(
+    model,
+    request_id: int,
+    method: str,
+    params: dict,
+    inputs: list[bytes] = [],
+    should_cancel = None
+):
+    total_steps = params['step'] if 'step' in params else 1
+    def inference_step_wakeup(*args, **kwargs):
+        '''This is a callback function that gets invoked every inference step,
+        we need to raise an exception here if we need to cancel work
+        '''
+        step = args[0]
+        # compat with callback_on_step_end
+        if not isinstance(step, int):
+            step = args[1]
 
-            return {}
+        maybe_update_tui(lambda tui: tui.set_progress(step, done=total_steps))
 
-        maybe_cancel_work(0)
+        should_raise = False
+        if should_cancel:
+            should_raise = trio.from_thread.run(should_cancel, request_id)
 
-        output_type = 'png'
-        if 'output_type' in params:
-            output_type = params['output_type']
+        if should_raise:
+            logging.warning(f'CANCELLING work at step {step}')
+            raise DGPUInferenceCancelled('network cancel')
 
-        output = None
-        output_hash = None
-        try:
-            name = params['model']
+        return {}
 
-            match method:
-                case 'diffuse' | 'txt2img' | 'img2img' | 'inpaint':
-                    if not self.is_model_loaded(name, method):
-                        self.load_model(name, method)
+    maybe_update_tui(lambda tui: tui.set_status(f'Request #{request_id}'))
 
-                    arguments = prepare_params_for_diffuse(
-                        params, method, inputs)
-                    prompt, guidance, step, seed, upscaler, extra_params = arguments
+    inference_step_wakeup(0)
 
-                    if 'flux' in name.lower():
-                        extra_params['callback_on_step_end'] = maybe_cancel_work
+    output_type = 'png'
+    if 'output_type' in params:
+        output_type = params['output_type']
 
-                    else:
-                        extra_params['callback'] = maybe_cancel_work
-                        extra_params['callback_steps'] = 1
+    output = None
+    output_hash = None
+    try:
+        name = params['model']
 
-                    output = self._model(
-                        prompt,
-                        guidance_scale=guidance,
-                        num_inference_steps=step,
-                        generator=seed,
-                        **extra_params
-                    ).images[0]
+        match method:
+            case 'diffuse' | 'txt2img' | 'img2img' | 'inpaint':
+                arguments = prepare_params_for_diffuse(
+                    params, method, inputs)
+                prompt, guidance, step, seed, upscaler, extra_params = arguments
 
-                    output_binary = b''
-                    match output_type:
-                        case 'png':
-                            if upscaler == 'x4':
-                                input_img = output.convert('RGB')
-                                up_img, _ = init_upscaler().enhance(
-                                    convert_from_image_to_cv2(input_img), outscale=4)
+                if 'flux' in name.lower():
+                    extra_params['callback_on_step_end'] = inference_step_wakeup
 
-                                output = convert_from_cv2_to_image(up_img)
+                else:
+                    extra_params['callback'] = inference_step_wakeup
+                    extra_params['callback_steps'] = 1
 
-                            output_binary = convert_from_img_to_bytes(output)
+                output = model(
+                    prompt,
+                    guidance_scale=guidance,
+                    num_inference_steps=step,
+                    generator=seed,
+                    **extra_params
+                ).images[0]
 
-                        case _:
-                            raise DGPUComputeError(f'Unsupported output type: {output_type}')
+                output_binary = b''
+                match output_type:
+                    case 'png':
+                        if upscaler == 'x4':
+                            input_img = output.convert('RGB')
+                            up_img, _ = init_upscaler().enhance(
+                                convert_from_image_to_cv2(input_img), outscale=4)
 
-                    output_hash = sha256(output_binary).hexdigest()
+                            output = convert_from_cv2_to_image(up_img)
 
-                case 'upscale':
-                    if self._model_mode != 'upscale':
-                        self.unload_model()
-                        self._model = init_upscaler()
-                        self._model_mode = 'upscale'
-                        self._model_name = 'realesrgan'
+                        output_binary = convert_from_img_to_bytes(output)
 
-                    input_img = inputs[0].convert('RGB')
-                    up_img, _ = self._model.enhance(
-                        convert_from_image_to_cv2(input_img), outscale=4)
+                    case _:
+                        raise DGPUComputeError(f'Unsupported output type: {output_type}')
 
-                    output = convert_from_cv2_to_image(up_img)
+                output_hash = sha256(output_binary).hexdigest()
 
-                    output_binary = convert_from_img_to_bytes(output)
-                    output_hash = sha256(output_binary).hexdigest()
+            case 'upscale':
+                input_img = inputs[0].convert('RGB')
+                up_img, _ = model.enhance(
+                    convert_from_image_to_cv2(input_img), outscale=4)
 
-                case _:
-                    raise DGPUComputeError('Unsupported compute method')
+                output = convert_from_cv2_to_image(up_img)
 
-        except BaseException as e:
-            logging.error(e)
-            raise DGPUComputeError(str(e))
+                output_binary = convert_from_img_to_bytes(output)
+                output_hash = sha256(output_binary).hexdigest()
 
-        finally:
-            torch.cuda.empty_cache()
+            case _:
+                raise DGPUComputeError('Unsupported compute method')
 
-        return output_hash, output
+    except BaseException as err:
+        raise DGPUComputeError(str(err)) from err
+
+    maybe_update_tui(lambda tui: tui.set_status(''))
+
+    return output_hash, output

@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import json
 import logging
 import random
@@ -8,10 +6,24 @@ from functools import partial
 
 import click
 
-from leap.protocol import Name, Asset
+from leap.protocol import (
+    Name,
+    Asset,
+)
 
-from .config import *
-from .constants import *
+from .config import (
+    load_skynet_toml,
+    set_hf_vars,
+    ConfigParsingError,
+)
+from .constants import (
+    # TODO, more conventional to make these private i'm pretty
+    # sure according to pep8?
+    DEFAULT_IPFS_DOMAIN,
+    DEFAULT_EXPLORER_DOMAIN,
+    DEFAULT_CONFIG_PATH,
+    MODELS,
+)
 
 
 @click.group()
@@ -22,7 +34,10 @@ def skynet(*args, **kwargs):
 @click.command()
 @click.option('--model', '-m', default=list(MODELS.keys())[-1])
 @click.option(
-    '--prompt', '-p', default='a red old tractor in a sunny wheat field')
+    '--prompt',
+    '-p',
+    default='a red old tractor in a sunny wheat field',
+)
 @click.option('--output', '-o', default='output.png')
 @click.option('--width', '-w', default=512)
 @click.option('--height', '-h', default=512)
@@ -30,18 +45,24 @@ def skynet(*args, **kwargs):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def txt2img(*args, **kwargs):
-    from . import utils
+    from skynet.dgpu import utils
 
     config = load_skynet_toml()
-    hf_token = load_key(config, 'skynet.dgpu.hf_token')
-    hf_home = load_key(config, 'skynet.dgpu.hf_home')
-    set_hf_vars(hf_token, hf_home)
+    set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
     utils.txt2img(hf_token, **kwargs)
 
+
 @click.command()
-@click.option('--model', '-m', default=list(MODELS.keys())[-2])
 @click.option(
-    '--prompt', '-p', default='a red old tractor in a sunny wheat field')
+    '--model',
+    '-m',
+    default=list(MODELS.keys())[-2]
+)
+@click.option(
+    '--prompt',
+    '-p',
+    default='a red old tractor in a sunny wheat field',
+)
 @click.option('--input', '-i', default='input.png')
 @click.option('--output', '-o', default='output.png')
 @click.option('--strength', '-Z', default=1.0)
@@ -49,11 +70,9 @@ def txt2img(*args, **kwargs):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def img2img(model, prompt, input, output, strength, guidance, steps, seed):
-    from . import utils
+    from skynet.dgpu import utils
     config = load_skynet_toml()
-    hf_token = load_key(config, 'skynet.dgpu.hf_token')
-    hf_home = load_key(config, 'skynet.dgpu.hf_home')
-    set_hf_vars(hf_token, hf_home)
+    set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
     utils.img2img(
         hf_token,
         model=model,
@@ -79,11 +98,9 @@ def img2img(model, prompt, input, output, strength, guidance, steps, seed):
 @click.option('--steps', '-s', default=26)
 @click.option('--seed', '-S', default=None)
 def inpaint(model, prompt, input, mask, output, strength, guidance, steps, seed):
-    from . import utils
+    from skynet.dgpu import utils
     config = load_skynet_toml()
-    hf_token = load_key(config, 'skynet.dgpu.hf_token')
-    hf_home = load_key(config, 'skynet.dgpu.hf_home')
-    set_hf_vars(hf_token, hf_home)
+    set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
     utils.inpaint(
         hf_token,
         model=model,
@@ -102,7 +119,7 @@ def inpaint(model, prompt, input, mask, output, strength, guidance, steps, seed)
 @click.option('--output', '-o', default='output.png')
 @click.option('--model', '-m', default='weights/RealESRGAN_x4plus.pth')
 def upscale(input, output, model):
-    from . import utils
+    from skynet.dgpu import utils
     utils.upscale(
         img_path=input,
         output=output,
@@ -111,114 +128,17 @@ def upscale(input, output, model):
 
 @skynet.command()
 def download():
-    from . import utils
+    from skynet.dgpu import utils
     config = load_skynet_toml()
-    hf_token = load_key(config, 'skynet.dgpu.hf_token')
-    hf_home = load_key(config, 'skynet.dgpu.hf_home')
-    set_hf_vars(hf_token, hf_home)
-    utils.download_all_models(hf_token, hf_home)
+    set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
+    utils.download_all_models(config.dgpu.hf_token, config.dgpu.hf_home)
 
-@skynet.command()
-@click.option(
-    '--reward', '-r', default='20.0000 GPU')
-@click.option('--jobs', '-j', default=1)
-@click.option('--model', '-m', default='stabilityai/stable-diffusion-xl-base-1.0')
-@click.option(
-    '--prompt', '-p', default='a red old tractor in a sunny wheat field')
-@click.option('--output', '-o', default='output.png')
-@click.option('--width', '-w', default=1024)
-@click.option('--height', '-h', default=1024)
-@click.option('--guidance', '-g', default=10)
-@click.option('--step', '-s', default=26)
-@click.option('--seed', '-S', default=None)
-@click.option('--upscaler', '-U', default='x4')
-@click.option('--binary_data', '-b', default='')
-@click.option('--strength', '-Z', default=None)
-def enqueue(
-    reward: str,
-    jobs: int,
-    **kwargs
-):
-    import trio
-    from leap.cleos import CLEOS
-
-    config = load_skynet_toml()
-
-    key = load_key(config, 'skynet.user.key')
-    account = load_key(config, 'skynet.user.account')
-    permission = load_key(config, 'skynet.user.permission')
-    node_url = load_key(config, 'skynet.user.node_url')
-
-    cleos = CLEOS(None, None, url=node_url, remote=node_url)
-
-    binary = kwargs['binary_data']
-    if not kwargs['strength']:
-        if binary:
-            raise ValueError('strength -Z param required if binary data passed')
-
-        del kwargs['strength']
-
-    else:
-        kwargs['strength'] = float(kwargs['strength'])
-
-    async def enqueue_n_jobs():
-        for i in range(jobs):
-            if not kwargs['seed']:
-                kwargs['seed'] = random.randint(0, 10e9)
-
-            req = json.dumps({
-                'method': 'diffuse',
-                'params': kwargs
-            })
-
-            res = await cleos.a_push_action(
-                'gpu.scd',
-                'enqueue',
-                {
-                    'user': Name(account),
-                    'request_body': req,
-                    'binary_data': binary,
-                    'reward': Asset.from_str(reward),
-                    'min_verification': 1
-                },
-                account, key, permission,
-            )
-            print(res)
-
-    trio.run(enqueue_n_jobs)
-
-
-@skynet.command()
-@click.option('--loglevel', '-l', default='INFO', help='Logging level')
-def clean(
-    loglevel: str,
-):
-    import trio
-    from leap.cleos import CLEOS
-
-    config = load_skynet_toml()
-    key = load_key(config, 'skynet.user.key')
-    account = load_key(config, 'skynet.user.account')
-    permission = load_key(config, 'skynet.user.permission')
-    node_url = load_key(config, 'skynet.user.node_url')
-
-    logging.basicConfig(level=loglevel)
-    cleos = CLEOS(None, None, url=node_url, remote=node_url)
-    trio.run(
-        partial(
-            cleos.a_push_action,
-            'gpu.scd',
-            'clean',
-            {},
-            account, key, permission=permission
-        )
-    )
 
 @skynet.command()
 def queue():
     import requests
     config = load_skynet_toml()
-    node_url = load_key(config, 'skynet.user.node_url')
+    node_url = config.user.node_url
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
         json={
@@ -235,7 +155,7 @@ def queue():
 def status(request_id: int):
     import requests
     config = load_skynet_toml()
-    node_url = load_key(config, 'skynet.user.node_url')
+    node_url = config.user.node_url
     resp = requests.post(
         f'{node_url}/v1/chain/get_table_rows',
         json={
@@ -246,100 +166,6 @@ def status(request_id: int):
         }
     )
     print(json.dumps(resp.json(), indent=4))
-
-@skynet.command()
-@click.argument('request-id')
-def dequeue(request_id: int):
-    import trio
-    from leap.cleos import CLEOS
-
-    config = load_skynet_toml()
-    key = load_key(config, 'skynet.user.key')
-    account = load_key(config, 'skynet.user.account')
-    permission = load_key(config, 'skynet.user.permission')
-    node_url = load_key(config, 'skynet.user.node_url')
-
-    cleos = CLEOS(None, None, url=node_url, remote=node_url)
-    res = trio.run(
-        partial(
-            cleos.a_push_action,
-            'gpu.scd',
-            'dequeue',
-            {
-                'user': Name(account),
-                'request_id': int(request_id),
-            },
-            account, key, permission=permission
-        )
-    )
-    print(res)
-
-
-@skynet.command()
-@click.option(
-    '--token-contract', '-c', default='eosio.token')
-@click.option(
-    '--token-symbol', '-S', default='4,GPU')
-def config(
-    token_contract: str,
-    token_symbol: str
-):
-    import trio
-    from leap.cleos import CLEOS
-
-    config = load_skynet_toml()
-
-    key = load_key(config, 'skynet.user.key')
-    account = load_key(config, 'skynet.user.account')
-    permission = load_key(config, 'skynet.user.permission')
-    node_url = load_key(config, 'skynet.user.node_url')
-
-    cleos = CLEOS(None, None, url=node_url, remote=node_url)
-    res = trio.run(
-        partial(
-            cleos.a_push_action,
-            'gpu.scd',
-            'config',
-            {
-                'token_contract': token_contract,
-                'token_symbol': token_symbol,
-            },
-            account, key, permission=permission
-        )
-    )
-    print(res)
-
-
-@skynet.command()
-@click.argument('quantity')
-def deposit(quantity: str):
-    import trio
-    from leap.cleos import CLEOS
-
-    config = load_skynet_toml()
-
-    key = load_key(config, 'skynet.user.key')
-    account = load_key(config, 'skynet.user.account')
-    permission = load_key(config, 'skynet.user.permission')
-    node_url = load_key(config, 'skynet.user.node_url')
-    cleos = CLEOS(None, None, url=node_url, remote=node_url)
-
-    res = trio.run(
-        partial(
-            cleos.a_push_action,
-            'gpu.scd',
-            'transfer',
-            {
-                'sender': Name(account),
-                'recipient': Name('gpu.scd'),
-                'amount': asset_from_str(quantity),
-                'memo': f'{account} transferred {quantity} to gpu.scd'
-            },
-            account, key, permission=permission
-        )
-    )
-    print(res)
-
 
 @skynet.group()
 def run(*args, **kwargs):
@@ -354,36 +180,27 @@ def db():
         container, passwd, host = db_params
         logging.info(('skynet', passwd, host))
 
-@run.command()
-def nodeos():
-    from .nodeos import open_nodeos
-
-    logging.basicConfig(filename='skynet-nodeos.log', level=logging.INFO)
-    with open_nodeos(cleanup=False):
-        ...
 
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='Logging level')
 @click.option(
-    '--config-path', '-c', default=DEFAULT_CONFIG_PATH)
+    '--config-path',
+    '-c',
+    default=DEFAULT_CONFIG_PATH,
+)
 def dgpu(
     loglevel: str,
     config_path: str
 ):
     import trio
-    from .dgpu import open_dgpu_node
+    from .dgpu import _dgpu_main
 
     logging.basicConfig(level=loglevel)
 
-    config = load_skynet_toml(file_path=config_path)
-    hf_token = load_key(config, 'skynet.dgpu.hf_token')
-    hf_home = load_key(config, 'skynet.dgpu.hf_home')
-    set_hf_vars(hf_token, hf_home)
+    config = load_skynet_toml(file_path=config_path).dgpu
+    set_hf_vars(config.hf_token, config.hf_home)
 
-    assert 'skynet' in config
-    assert 'dgpu' in config['skynet']
-
-    trio.run(open_dgpu_node, config['skynet']['dgpu'])
+    trio.run(_dgpu_main, config)
 
 
 @run.command()
@@ -406,24 +223,24 @@ def telegram(
     logging.basicConfig(level=loglevel)
 
     config = load_skynet_toml()
-    tg_token = load_key(config, 'skynet.telegram.tg_token')
+    tg_token = config.telegram.tg_token
 
-    key = load_key(config, 'skynet.telegram.key')
-    account = load_key(config, 'skynet.telegram.account')
-    permission = load_key(config, 'skynet.telegram.permission')
-    node_url = load_key(config, 'skynet.telegram.node_url')
-    hyperion_url = load_key(config, 'skynet.telegram.hyperion_url')
+    key = config.telegram.key
+    account = config.telegram.account
+    permission = config.telegram.permission
+    node_url = config.telegram.node_url
+    hyperion_url = config.telegram.hyperion_url
 
-    ipfs_url = load_key(config, 'skynet.telegram.ipfs_url')
+    ipfs_url = config.telegram.ipfs_url
 
     try:
-        explorer_domain = load_key(config, 'skynet.telegram.explorer_domain')
+        explorer_domain = config.telegram.explorer_domain
 
     except ConfigParsingError:
         explorer_domain = DEFAULT_EXPLORER_DOMAIN
 
     try:
-        ipfs_domain = load_key(config, 'skynet.telegram.ipfs_domain')
+        ipfs_domain = config.telegram.ipfs_domain
 
     except ConfigParsingError:
         ipfs_domain = DEFAULT_IPFS_DOMAIN
@@ -469,24 +286,24 @@ def discord(
     logging.basicConfig(level=loglevel)
 
     config = load_skynet_toml()
-    dc_token = load_key(config, 'skynet.discord.dc_token')
+    dc_token = config.discord.dc_token
 
-    key = load_key(config, 'skynet.discord.key')
-    account = load_key(config, 'skynet.discord.account')
-    permission = load_key(config, 'skynet.discord.permission')
-    node_url = load_key(config, 'skynet.discord.node_url')
-    hyperion_url = load_key(config, 'skynet.discord.hyperion_url')
+    key = config.discord.key
+    account = config.discord.account
+    permission = config.discord.permission
+    node_url = config.discord.node_url
+    hyperion_url = config.discord.hyperion_url
 
-    ipfs_url = load_key(config, 'skynet.discord.ipfs_url')
+    ipfs_url = config.discord.ipfs_url
 
     try:
-        explorer_domain = load_key(config, 'skynet.discord.explorer_domain')
+        explorer_domain = config.discord.explorer_domain
 
     except ConfigParsingError:
         explorer_domain = DEFAULT_EXPLORER_DOMAIN
 
     try:
-        ipfs_domain = load_key(config, 'skynet.discord.ipfs_domain')
+        ipfs_domain = config.discord.ipfs_domain
 
     except ConfigParsingError:
         ipfs_domain = DEFAULT_IPFS_DOMAIN
@@ -520,8 +337,8 @@ def pinner(loglevel):
     from .ipfs.pinner import SkynetPinner
 
     config = load_skynet_toml()
-    hyperion_url = load_key(config, 'skynet.pinner.hyperion_url')
-    ipfs_url = load_key(config, 'skynet.pinner.ipfs_url')
+    hyperion_url = config.pinner.hyperion_url
+    ipfs_url = config.pinner.ipfs_url
 
     logging.basicConfig(level=loglevel)
     ipfs_node = AsyncIPFSHTTP(ipfs_url)

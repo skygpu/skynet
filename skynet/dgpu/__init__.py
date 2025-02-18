@@ -1,30 +1,40 @@
-#!/usr/bin/python
+import logging
+from contextlib import asynccontextmanager as acm
 
 import trio
+import urwid
 
-from hypercorn.config import Config
-from hypercorn.trio import serve
-
-from skynet.dgpu.compute import SkynetMM
-from skynet.dgpu.daemon import SkynetDGPUDaemon
-from skynet.dgpu.network import SkynetGPUConnector
+from skynet.config import Config
+from skynet.dgpu.tui import init_tui
+from skynet.dgpu.daemon import dgpu_serve_forever
+from skynet.dgpu.network import NetConnector
 
 
-async def open_dgpu_node(config: dict):
-    conn = SkynetGPUConnector(config)
-    mm = SkynetMM(config)
-    daemon = SkynetDGPUDaemon(mm, conn, config)
+@acm
+async def open_worker(config: Config):
+    # suppress logs from httpx (logs url + status after every query)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    api = None
-    if 'api_bind' in config:
-        api_conf = Config()
-        api_conf.bind = [config['api_bind']]
-        api = await daemon.generate_api()
+    tui = None
+    if config.tui:
+        tui = init_tui(config)
 
-    async with trio.open_nursery() as n:
-        n.start_soon(daemon.snap_updater_task)
+    conn = NetConnector(config)
 
-        if api:
-            n.start_soon(serve, api, api_conf)
+    try:
+        n: trio.Nursery
+        async with trio.open_nursery() as n:
+            if tui:
+                n.start_soon(tui.run)
 
-        await daemon.serve_forever()
+            n.start_soon(conn.iter_poll_update, config.poll_time)
+
+            yield conn
+
+    except *urwid.ExitMainLoop:
+        ...
+
+
+async def _dgpu_main(config: Config):
+    async with open_worker(config) as conn:
+        await dgpu_serve_forever(config, conn)

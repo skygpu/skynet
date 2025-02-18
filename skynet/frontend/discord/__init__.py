@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from json import JSONDecodeError
 import random
 import logging
@@ -8,11 +6,18 @@ import asyncio
 from decimal import Decimal
 from hashlib import sha256
 from datetime import datetime
-from contextlib import ExitStack, AsyncExitStack
+from contextlib import (
+    ExitStack,
+    AsyncExitStack,
+)
 from contextlib import asynccontextmanager as acm
 
 from leap.cleos import CLEOS
-from leap.sugar import Name, asset_from_str, collect_stdout
+from leap.sugar import (
+    Name,
+    asset_from_str,
+    collect_stdout,
+)
 from leap.hyperion import HyperionAPI
 # from telebot.types import InputMediaPhoto
 

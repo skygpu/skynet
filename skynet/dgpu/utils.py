@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import io
 import os
 import sys
@@ -9,10 +7,10 @@ import logging
 import importlib
 
 from typing import Optional
-from pathlib import Path
+from contextlib import contextmanager
 
-import trio
 import torch
+import diffusers
 import numpy as np
 
 from PIL import Image
@@ -23,9 +21,10 @@ from diffusers import (
     AutoPipelineForInpainting,
     EulerAncestralDiscreteScheduler,
 )
-from huggingface_hub import login
+from huggingface_hub import login, hf_hub_download
 
-from .constants import MODELS
+from skynet.config import load_skynet_toml
+from skynet.constants import MODELS
 
 # Hack to fix a changed import in torchvision 0.17+, which otherwise breaks
 # basicsr; see https://github.com/AUTOMATIC1111/stable-diffusion-webui/issues/13985
@@ -40,11 +39,6 @@ except ImportError:
 
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
-
-
-
-def time_ms():
-    return int(time.time() * 1000)
 
 
 def convert_from_cv2_to_image(img: np.ndarray) -> Image:
@@ -78,15 +72,30 @@ def convert_from_bytes_and_crop(raw: bytes, max_w: int, max_h: int) -> Image:
     return crop_image(convert_from_bytes_to_img(raw), max_w, max_h)
 
 
+class DummyPB:
+    def update(self):
+        ...
+
+@torch.compiler.disable
+@contextmanager
+def dummy_progress_bar(*args, **kwargs):
+    yield DummyPB()
+
+
+def monkey_patch_pipeline_disable_progress_bar(pipe):
+    pipe.progress_bar = dummy_progress_bar
+
+
 def pipeline_for(
     model: str,
     mode: str,
     mem_fraction: float = 1.0,
     cache_dir: str | None = None
 ) -> DiffusionPipeline:
+    diffusers.utils.logging.disable_progress_bar()
 
     logging.info(f'pipeline_for {model} {mode}')
-    assert torch.cuda.is_available()
+    # assert torch.cuda.is_available()
     torch.cuda.empty_cache()
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
@@ -109,10 +118,12 @@ def pipeline_for(
         normalized_shortname = shortname.replace('-', '_')
         custom_pipeline = importlib.import_module(f'skynet.dgpu.pipes.{normalized_shortname}')
         assert custom_pipeline.__model['name'] == model
-        return custom_pipeline.pipeline_for(model, mode, mem_fraction=mem_fraction, cache_dir=cache_dir)
+        pipe = custom_pipeline.pipeline_for(model, mode, mem_fraction=mem_fraction, cache_dir=cache_dir)
+        monkey_patch_pipeline_disable_progress_bar(pipe)
+        return pipe
 
     except ImportError:
-        ...
+        logging.info(f'didn\'t find a custom pipeline file for {shortname}')
 
 
     req_mem = model_info.mem
@@ -124,7 +135,6 @@ def pipeline_for(
         logging.warn(f'model requires {req_mem} but card has {mem_gb}, model will run slower..')
 
     params = {
-        'safety_checker': None,
         'torch_dtype': torch.float16,
         'cache_dir': cache_dir,
         'variant': 'fp16',
@@ -133,6 +143,7 @@ def pipeline_for(
     match shortname:
         case 'stable':
             params['revision'] = 'fp16'
+            params['safety_checker'] = None
 
     torch.cuda.set_per_process_memory_fraction(mem_fraction)
 
@@ -159,7 +170,7 @@ def pipeline_for(
         if mode == 'txt2img':
             pipe.vae.enable_tiling()
             pipe.vae.enable_slicing()
-        
+
         pipe.enable_model_cpu_offload()
 
     else:
@@ -169,6 +180,8 @@ def pipeline_for(
         #         pipe.unet, mode='reduce-overhead', fullgraph=True)
 
         pipe = pipe.to('cuda')
+
+    monkey_patch_pipeline_disable_progress_bar(pipe)
 
     return pipe
 
@@ -272,7 +285,14 @@ def inpaint(
     image.save(output)
 
 
-def init_upscaler(model_path: str = 'hf_home/RealESRGAN_x4plus.pth'):
+def init_upscaler():
+    config = load_skynet_toml().dgpu
+    model_path = hf_hub_download(
+        'leonelhs/realesrgan',
+        'RealESRGAN_x4plus.pth',
+        token=config.hf_token,
+        cache_dir=config.hf_home
+    )
     return RealESRGANer(
         scale=4,
         model_path=model_path,
@@ -290,12 +310,11 @@ def init_upscaler(model_path: str = 'hf_home/RealESRGAN_x4plus.pth'):
 
 def upscale(
     img_path: str = 'input.png',
-    output: str = 'output.png',
-    model_path: str = 'hf_home/RealESRGAN_x4plus.pth'
+    output: str = 'output.png'
 ):
     input_img = Image.open(img_path).convert('RGB')
 
-    upscaler = init_upscaler(model_path=model_path)
+    upscaler = init_upscaler()
 
     up_img, _ = upscaler.enhance(
         convert_from_image_to_cv2(input_img), outscale=4)
