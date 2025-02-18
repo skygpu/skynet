@@ -75,6 +75,9 @@ class DummyPB:
     def update(self):
         ...
 
+
+type Pipeline = DiffusionPipeline | RealESRGANer
+
 @torch.compiler.disable
 @contextmanager
 def dummy_progress_bar(*args, **kwargs):
@@ -90,7 +93,7 @@ def pipeline_for(
     mode: str,
     mem_fraction: float = 1.0,
     cache_dir: str | None = None
-) -> DiffusionPipeline:
+) -> Pipeline:
     diffusers.utils.logging.disable_progress_bar()
 
     logging.info(f'pipeline_for {model} {mode}')

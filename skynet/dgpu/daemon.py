@@ -132,6 +132,11 @@ async def maybe_serve_one(
             output_hash = None
             match config.backend:
                 case 'sync-on-thread':
+                    '''Block this task until inference completes, pass
+                    state_mngr.should_cancel_work predicate as the inference_step_wakeup cb
+                    used by torch each step of the inference, it will use a
+                    trio.from_thread to unblock the main thread and pump the event loop
+                    '''
                     output_hash, output = await trio.to_thread.run_sync(
                         partial(
                             compute_one,

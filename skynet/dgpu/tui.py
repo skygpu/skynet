@@ -141,10 +141,6 @@ class WorkerMonitor:
 
         self.progress_bar.current = current
 
-        pct = 0
-        if self.progress_bar.done != 0:
-            pct = int((self.progress_bar.current / self.progress_bar.done) * 100)
-
     def update_requests(self, new_requests):
         """
         Replace the data in the existing ListBox with new request widgets.

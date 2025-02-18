@@ -13,7 +13,7 @@ class ModelMode(StrEnum):
 
 class ModelDesc(Struct):
     short: str  # short unique name
-    mem: float  # recomended mem
+    mem: float  # recomended mem in gb
     attrs: dict  # additional mode specific attrs
     tags: list[ModelMode]
 

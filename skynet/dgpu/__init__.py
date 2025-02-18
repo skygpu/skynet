@@ -5,7 +5,7 @@ import trio
 import urwid
 
 from skynet.config import Config
-from skynet.dgpu.tui import init_tui
+from skynet.dgpu.tui import init_tui, WorkerMonitor
 from skynet.dgpu.daemon import dgpu_serve_forever
 from skynet.dgpu.network import NetConnector, maybe_open_contract_state_mngr
 
@@ -15,7 +15,7 @@ async def open_worker(config: Config):
     # suppress logs from httpx (logs url + status after every query)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    tui = None
+    tui: WorkerMonitor | None = None
     if config.tui:
         tui = init_tui(config)
 
