@@ -77,7 +77,8 @@ explicit = true
 torch = { index = "torch" }
 triton = { index = "torch" }
 torchvision = { index = "torch" }
-py-leap = { git = "https://github.com/guilledk/py-leap.git", rev = "v0.1a35" }
+# py-leap = { git = "https://github.com/guilledk/py-leap.git", branch = "struct_unwrap" }
+py-leap = { path = "../py-leap", editable = true }
 pytest-dockerctl = { git = "https://github.com/pikers/pytest-dockerctl.git", branch = "g_update" }
 
 [build-system]

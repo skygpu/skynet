@@ -14,91 +14,91 @@ MODELS: dict[str, ModelDesc] = {
     'runwayml/stable-diffusion-v1-5': ModelDesc(
         short='stable',
         mem=6,
-        attrs={'size': {'w': 512, 'h': 512}},
+        attrs={'size': {'w': 512, 'h': 512}, 'step': 28},
         tags=['txt2img']
     ),
     'stabilityai/stable-diffusion-2-1-base': ModelDesc(
         short='stable2',
         mem=6,
-        attrs={'size': {'w': 512, 'h': 512}},
+        attrs={'size': {'w': 512, 'h': 512}, 'step': 28},
         tags=['txt2img']
     ),
     'snowkidy/stable-diffusion-xl-base-0.9': ModelDesc(
         short='stablexl0.9',
         mem=8.3,
-        attrs={'size': {'w': 1024, 'h': 1024}},
+        attrs={'size': {'w': 1024, 'h': 1024}, 'step': 28},
         tags=['txt2img']
     ),
     'Linaqruf/anything-v3.0': ModelDesc(
         short='hdanime',
         mem=6,
-        attrs={'size': {'w': 512, 'h': 512}},
+        attrs={'size': {'w': 512, 'h': 512}, 'step': 28},
         tags=['txt2img']
     ),
     'hakurei/waifu-diffusion': ModelDesc(
         short='waifu',
         mem=6,
-        attrs={'size': {'w': 512, 'h': 512}},
+        attrs={'size': {'w': 512, 'h': 512}, 'step': 28},
         tags=['txt2img']
     ),
     'nitrosocke/Ghibli-Diffusion': ModelDesc(
         short='ghibli',
         mem=6,
-        attrs={'size': {'w': 512, 'h': 512}},
+        attrs={'size': {'w': 512, 'h': 512}, 'step': 28},
         tags=['txt2img']
     ),
     'dallinmackay/Van-Gogh-diffusion': ModelDesc(
         short='van-gogh',
         mem=6,
-        attrs={'size': {'w': 512, 'h': 512}},
+        attrs={'size': {'w': 512, 'h': 512}, 'step': 28},
         tags=['txt2img']
     ),
     'lambdalabs/sd-pokemon-diffusers': ModelDesc(
         short='pokemon',
         mem=6,
-        attrs={'size': {'w': 512, 'h': 512}},
+        attrs={'size': {'w': 512, 'h': 512}, 'step': 28},
         tags=['txt2img']
     ),
     'Envvi/Inkpunk-Diffusion': ModelDesc(
         short='ink',
         mem=6,
-        attrs={'size': {'w': 512, 'h': 512}},
+        attrs={'size': {'w': 512, 'h': 512}, 'step': 28},
         tags=['txt2img']
     ),
     'nousr/robo-diffusion': ModelDesc(
         short='robot',
         mem=6,
-        attrs={'size': {'w': 512, 'h': 512}},
+        attrs={'size': {'w': 512, 'h': 512}, 'step': 28},
         tags=['txt2img']
     ),
     'black-forest-labs/FLUX.1-schnell': ModelDesc(
         short='flux',
         mem=24,
-        attrs={'size': {'w': 1024, 'h': 1024}},
+        attrs={'size': {'w': 1024, 'h': 1024}, 'step': 4},
         tags=['txt2img']
     ),
     'black-forest-labs/FLUX.1-Fill-dev': ModelDesc(
         short='flux-inpaint',
         mem=24,
-        attrs={'size': {'w': 1024, 'h': 1024}},
+        attrs={'size': {'w': 1024, 'h': 1024}, 'step': 28},
         tags=['inpaint']
     ),
     'diffusers/stable-diffusion-xl-1.0-inpainting-0.1': ModelDesc(
         short='stablexl-inpaint',
         mem=8.3,
-        attrs={'size': {'w': 1024, 'h': 1024}},
+        attrs={'size': {'w': 1024, 'h': 1024}, 'step': 28},
         tags=['inpaint']
     ),
     'prompthero/openjourney': ModelDesc(
         short='midj',
         mem=6,
-        attrs={'size': {'w': 512, 'h': 512}},
+        attrs={'size': {'w': 512, 'h': 512}, 'step': 28},
         tags=['txt2img', 'img2img']
     ),
     'stabilityai/stable-diffusion-xl-base-1.0': ModelDesc(
         short='stablexl',
         mem=8.3,
-        attrs={'size': {'w': 1024, 'h': 1024}},
+        attrs={'size': {'w': 1024, 'h': 1024}, 'step': 28},
         tags=['txt2img']
     ),
 }
@@ -224,8 +224,6 @@ Noise is added to the image you use as an init image for img2img, and then the\
 }
 
 HELP_UNKWNOWN_PARAM = 'don\'t have any info on that.'
-
-GROUP_ID = -1001541979235
 
 MP_ENABLED_ROLES = ['god']
 

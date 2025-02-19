@@ -1,6 +1,10 @@
 import random
 
-from ..constants import *
+from ..constants import (
+    MODELS,
+    get_model_by_shortname,
+    MAX_STEP, MIN_STEP, MAX_WIDTH, MAX_HEIGHT, MAX_GUIDANCE
+)
 
 
 class ConfigRequestFormatError(BaseException):
@@ -26,17 +30,17 @@ class ConfigSizeDivisionByEight(BaseException):
 def validate_user_config_request(req: str):
     params = req.split(' ')
 
-    if len(params) < 3:
+    if len(params) < 2:
         raise ConfigRequestFormatError('config request format incorrect')
 
     else:
         try:
-            attr = params[1]
+            attr = params[0]
 
             match attr:
                 case 'model' | 'algo':
                     attr = 'model'
-                    val = params[2]
+                    val = params[1]
                     shorts = [model_info.short for model_info in MODELS.values()]
                     if val not in shorts:
                         raise ConfigUnknownAlgorithm(f'no model named {val}')
@@ -44,38 +48,38 @@ def validate_user_config_request(req: str):
                     val = get_model_by_shortname(val)
 
                 case 'step':
-                    val = int(params[2])
+                    val = int(params[1])
                     val = max(min(val, MAX_STEP), MIN_STEP)
 
                 case 'width':
-                    val = max(min(int(params[2]), MAX_WIDTH), 16)
+                    val = max(min(int(params[1]), MAX_WIDTH), 16)
                     if val % 8 != 0:
                         raise ConfigSizeDivisionByEight(
                             'size must be divisible by 8!')
 
                 case 'height':
-                    val = max(min(int(params[2]), MAX_HEIGHT), 16)
+                    val = max(min(int(params[1]), MAX_HEIGHT), 16)
                     if val % 8 != 0:
                         raise ConfigSizeDivisionByEight(
                             'size must be divisible by 8!')
 
                 case 'seed':
-                    val = params[2]
+                    val = params[1]
                     if val == 'auto':
                         val = None
                     else:
-                        val = int(params[2])
+                        val = int(params[1])
 
                 case 'guidance':
-                    val = float(params[2])
+                    val = float(params[1])
                     val = max(min(val, MAX_GUIDANCE), 0)
 
                 case 'strength':
-                    val = float(params[2])
+                    val = float(params[1])
                     val = max(min(val, 0.99), 0.01)
 
                 case 'upscaler':
-                    val = params[2]
+                    val = params[1]
                     if val == 'off':
                         val = None
                     elif val != 'x4':
@@ -83,7 +87,7 @@ def validate_user_config_request(req: str):
                             f'\"{val}\" is not a valid upscaler')
 
                 case 'autoconf':
-                    val = params[2]
+                    val = params[1]
                     if val == 'on':
                         val = True
 

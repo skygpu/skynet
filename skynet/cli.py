@@ -165,7 +165,7 @@ def run(*args, **kwargs):
 
 @run.command()
 def db():
-    from .db import open_new_database
+    from skynet.frontend.chatbot.db import open_new_database
 
     logging.basicConfig(level=logging.INFO)
     with open_new_database(cleanup=False) as db_params:
@@ -210,50 +210,22 @@ def telegram(
     db_pass: str
 ):
     import asyncio
-    from .frontend.telegram import SkynetTelegramFrontend
+    from skynet.frontend.chatbot.telegram import TelegramChatbot
+    from skynet.frontend.chatbot.db import FrontendUserDB
 
     logging.basicConfig(level=loglevel)
 
-    config = load_skynet_toml()
-    tg_token = config.telegram.tg_token
-
-    key = config.telegram.key
-    account = config.telegram.account
-    permission = config.telegram.permission
-    node_url = config.telegram.node_url
-    hyperion_url = config.telegram.hyperion_url
-
-    ipfs_url = config.telegram.ipfs_url
-
-    try:
-        explorer_domain = config.telegram.explorer_domain
-
-    except ConfigParsingError:
-        explorer_domain = DEFAULT_EXPLORER_DOMAIN
-
-    try:
-        ipfs_domain = config.telegram.ipfs_domain
-
-    except ConfigParsingError:
-        ipfs_domain = DEFAULT_IPFS_DOMAIN
+    config = load_skynet_toml().telegram
 
     async def _async_main():
-        frontend = SkynetTelegramFrontend(
-            tg_token,
-            account,
-            permission,
-            node_url,
-            hyperion_url,
-            db_host, db_user, db_pass,
-            ipfs_url,
-            key=key,
-            explorer_domain=explorer_domain,
-            ipfs_domain=ipfs_domain
-        )
-
-        async with frontend.open():
-            await frontend.bot.infinity_polling()
-
+        async with FrontendUserDB(
+            config.db_user,
+            config.db_pass,
+            config.db_host,
+            config.db_name
+        ) as db:
+            bot = TelegramChatbot(config, db)
+            await bot.run()
 
     asyncio.run(_async_main())
 

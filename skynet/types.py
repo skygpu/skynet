@@ -85,6 +85,7 @@ class BodyV0Params(Struct):
     strength: str | float | None = None
     output_type: str | None = 'png'
     upscaler: str | None = None
+    autoconf: bool | None = None
 
 
 class BodyV0(Struct):

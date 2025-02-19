@@ -32,10 +32,22 @@ class FrontendConfig(msgspec.Struct):
     account: str
     permission: str
     key: str
-    node_url: str
-    hyperion_url: str
     ipfs_url: str
     token: str
+    db_host: str
+    db_user: str
+    db_pass: str
+    db_name: str = 'skynet'
+    node_url: str = 'https://testnet.telos.net'
+    hyperion_url: str = 'https://testnet.skygpu.net'
+    ipfs_domain: str = 'ipfs.skygpu.net'
+    explorer_domain: str = 'explorer.skygpu.net'
+    request_timeout: int = 60 * 3
+    proto_version: int = 0
+    reward: str = '20.0000 GPU'
+    receiver: str = 'gpu.scd'
+    result_max_width: int = 1280
+    result_max_height: int = 1280
 
 
 class PinnerConfig(msgspec.Struct):
