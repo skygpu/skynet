@@ -1,3 +1,4 @@
+import json
 import logging
 import traceback
 
@@ -9,6 +10,7 @@ from telebot.types import (
     Chat as TGChat,
     PhotoSize as TGPhotoSize,
     Message as TGMessage,
+    CallbackQuery,
     InputMediaPhoto,
     InlineKeyboardButton,
     InlineKeyboardMarkup
@@ -118,6 +120,8 @@ class TelegramMessage(BaseMessage):
         self._chat = TelegramChatRoom(msg.chat)
         self._inputs: list[TelegramFileInput] | None = None
 
+        self._author = None
+
     @property
     def id(self) -> int:
         return self._msg.message_id
@@ -136,6 +140,9 @@ class TelegramMessage(BaseMessage):
 
     @property
     def author(self) -> TelegramUser:
+        if self._author:
+            return self._author
+
         return TelegramUser(self._msg.from_user)
 
     @property
@@ -269,6 +276,17 @@ class TelegramChatbot(BaseChatbot):
             if tg_msg.text[0] == '/':
                 msg = TelegramMessage(cmd='unknown', msg=tg_msg)
                 await self.echo_unknown(msg)
+
+        @bot.callback_query_handler(func=lambda _: True)
+        async def callback_query(call: CallbackQuery):
+            call_json = json.loads(call.data)
+            method = call_json.get('method')
+            match method:
+                case 'redo':
+                    msg = await self.new_msg(self.main_group, 'processing a redo request...')
+                    msg._cmd = 'redo'
+                    await self.handle_request(msg, force_user=TelegramUser(user=call.from_user))
+                    await bot.delete_message(chat_id=self.main_group.id, message_id=msg.id)
 
         self.bot = bot
 

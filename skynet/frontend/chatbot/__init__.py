@@ -123,9 +123,12 @@ class BaseChatbot(ABC):
         '''
         ...
 
-    async def create_status_msg(self, msg: BaseMessage, init_text: str) -> tuple[BaseUser, BaseMessage, dict]:
+    async def create_status_msg(self, msg: BaseMessage, init_text: str, force_user: BaseUser | None = None) -> tuple[BaseUser, BaseMessage, dict]:
         # maybe init user
         user = msg.author
+        if force_user:
+            user = force_user
+
         user_row = await self.db.get_or_create_user(user.id)
 
         # create status msg
@@ -202,7 +205,8 @@ class BaseChatbot(ABC):
 
     async def handle_request(
         self,
-        msg: BaseMessage
+        msg: BaseMessage,
+        force_user: BaseUser | None = None
     ):
         if msg.chat.is_private:
             return
@@ -218,7 +222,7 @@ class BaseChatbot(ABC):
         # maybe initialize user db row and send a new msg thats gonna
         # be updated throughout the request lifecycle
         user, status_msg, user_row = await self.create_status_msg(
-            msg, f'started processing a {msg.command} request...')
+            msg, f'started processing a {msg.command} request...', force_user=force_user)
 
         # if this is a redo msg, we attempt to get the input params from db
         # else use msg properties
