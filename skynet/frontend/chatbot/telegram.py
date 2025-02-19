@@ -101,6 +101,9 @@ class TelegramFileInput(BaseFileInput):
 
         raise ValueError
 
+    def set_cid(self, cid: str):
+        self._cid = cid
+
     async def download(self, bot: AsyncTeleBot) -> bytes:
         file_path = (await bot.get_file(self.id)).file_path
         self._raw = await bot.download_file(file_path)
@@ -113,6 +116,7 @@ class TelegramMessage(BaseMessage):
         self._msg = msg
         self._cmd = cmd
         self._chat = TelegramChatRoom(msg.chat)
+        self._inputs: list[TelegramFileInput] | None = None
 
     @property
     def id(self) -> int:
@@ -124,7 +128,11 @@ class TelegramMessage(BaseMessage):
 
     @property
     def text(self) -> str:
-        return self._msg.text[len(self._cmd) + 2:]  # remove command name, slash and first space
+        # remove command name, slash and first space
+        if self._msg.text:
+            return self._msg.text[len(self._cmd) + 2:]
+
+        return self._msg.caption[len(self._cmd) + 2:]
 
     @property
     def author(self) -> TelegramUser:
@@ -136,13 +144,15 @@ class TelegramMessage(BaseMessage):
 
     @property
     def inputs(self) -> list[TelegramFileInput]:
-        if self._msg.photo:
-            return [
-                TelegramFileInput(photo=p)
-                for p in self._msg.photo
-            ]
+        if self._inputs is None:
+            self._inputs = []
+            if self._msg.photo:
+                self._inputs = [
+                    TelegramFileInput(photo=p)
+                    for p in self._msg.photo
+                ]
 
-        return []
+        return self._inputs
 
 
 # generic tg utils
@@ -242,7 +252,16 @@ class TelegramChatbot(BaseChatbot):
         append_handler(bot, BaseCommands.SAY, self.say)
 
         append_handler(bot, BaseCommands.TXT2IMG, self.handle_request)
+
         append_handler(bot, BaseCommands.IMG2IMG, self.handle_request)
+
+        @bot.message_handler(func=lambda _: True, content_types=['photo', 'document'])
+        async def handle_img2img(tg_msg: TGMessage):
+            msg = TelegramMessage(cmd='img2img', msg=tg_msg)
+            for file in msg.inputs:
+                await file.download(bot)
+            await self.handle_request(msg)
+
         append_handler(bot, BaseCommands.REDO, self.handle_request)
 
         self.bot = bot
@@ -267,7 +286,7 @@ class TelegramChatbot(BaseChatbot):
         return TelegramMessage(cmd=None, msg=msg)
 
     async def reply_to(self, msg: TelegramMessage, text: str) -> TelegramMessage:
-        msg = await self.bot.reply_to(msg._msg, text)
+        msg = await self.bot.reply_to(msg._msg, text, parse_mode='HTML')
         return TelegramMessage(cmd=None, msg=msg)
 
     async def edit_msg(self, msg: TelegramMessage, text: str):
@@ -370,8 +389,8 @@ class TelegramChatbot(BaseChatbot):
                     parse_mode='HTML'
                 )
 
-            case 1:
-                _input = inputs.pop()
+            case _:
+                _input = inputs[-1]
                 await self.bot.send_media_group(
                     status_msg.chat.id,
                     media=[
@@ -379,6 +398,3 @@ class TelegramChatbot(BaseChatbot):
                         InputMediaPhoto(result_img, caption=caption, parse_mode='HTML')
                     ]
                 )
-
-            case _:
-                raise NotImplementedError

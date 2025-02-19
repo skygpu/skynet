@@ -240,6 +240,14 @@ class BaseChatbot(ABC):
                 await self.reply_to(msg, f'unknown request of type {msg.command}')
                 return
 
+        if (
+            msg.command == BaseCommands.IMG2IMG
+            and
+            len(inputs) == 0
+        ):
+            await self.edit_msg(status_msg, 'seems you tried to do an img2img command without sending image')
+            return
+
         # maybe apply recomended settings to this request
         del user_row['id']
         if user_row['autoconf']:
@@ -258,7 +266,7 @@ class BaseChatbot(ABC):
         # publish inputs to ipfs
         input_cids = []
         for i in inputs:
-            i.publish()
+            await i.publish(self.ipfs, user_row)
             input_cids.append(i.cid)
 
         inputs_str = ','.join((i for i in input_cids))

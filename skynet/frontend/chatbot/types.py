@@ -3,6 +3,7 @@ import io
 from abc import ABC, abstractproperty, abstractmethod
 from enum import StrEnum
 from typing import Self
+from pathlib import Path
 from PIL import Image
 
 from skynet.ipfs import AsyncIPFSHTTP
@@ -52,6 +53,10 @@ class BaseFileInput(ABC):
     async def download(self, *args) -> bytes:
         ...
 
+    @abstractmethod
+    def set_cid(self, cid: str):
+        ...
+
     async def publish(self, ipfs_api: AsyncIPFSHTTP, user_row: dict):
         with Image.open(io.BytesIO(self._raw)) as img:
             w, h = img.size
@@ -63,11 +68,12 @@ class BaseFileInput(ABC):
             ):
                 img.thumbnail((user_row['width'], user_row['height']))
 
-            img_path = '/tmp/ipfs-staging/img.png'
+            img_path = Path('/tmp/ipfs-staging/img.png')
             img.save(img_path, format='PNG')
 
             ipfs_info = await ipfs_api.add(img_path)
             ipfs_hash = ipfs_info['Hash']
+            self.set_cid(ipfs_hash)
             await ipfs_api.pin(ipfs_hash)
 
 
