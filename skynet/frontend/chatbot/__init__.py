@@ -193,6 +193,7 @@ class BaseChatbot(ABC):
         inputs: list[BaseFileInput],
         submit_tx_hash: str,
         worker: str,
+        result_url: str,
         result_img: bytes | None
     ):
         '''
@@ -414,7 +415,7 @@ class BaseChatbot(ABC):
                 logging.warning(f'couldn\'t get ipfs result at {result_link}!')
 
         await self.update_request_status_final(
-            msg, status_msg, user, body.params, inputs, submit_tx_hash, worker, result_img)
+            msg, status_msg, user, body.params, inputs, submit_tx_hash, worker, result_link, result_img)
 
         await self.db.increment_generated(user.id)
 

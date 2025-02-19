@@ -197,17 +197,8 @@ def dgpu(
 
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='logging level')
-@click.option(
-    '--db-host', '-h', default='localhost:5432')
-@click.option(
-    '--db-user', '-u', default='skynet')
-@click.option(
-    '--db-pass', '-u', default='password')
 def telegram(
     loglevel: str,
-    db_host: str,
-    db_user: str,
-    db_pass: str
 ):
     import asyncio
     from skynet.frontend.chatbot.telegram import TelegramChatbot
@@ -232,62 +223,26 @@ def telegram(
 
 @run.command()
 @click.option('--loglevel', '-l', default='INFO', help='logging level')
-@click.option(
-    '--db-host', '-h', default='localhost:5432')
-@click.option(
-    '--db-user', '-u', default='skynet')
-@click.option(
-    '--db-pass', '-u', default='password')
 def discord(
     loglevel: str,
-    db_host: str,
-    db_user: str,
-    db_pass: str
 ):
     import asyncio
-    from .frontend.discord import SkynetDiscordFrontend
+    from skynet.frontend.chatbot.discord import DiscordChatbot
+    from skynet.frontend.chatbot.db import FrontendUserDB
 
     logging.basicConfig(level=loglevel)
 
-    config = load_skynet_toml()
-    dc_token = config.discord.dc_token
-
-    key = config.discord.key
-    account = config.discord.account
-    permission = config.discord.permission
-    node_url = config.discord.node_url
-    hyperion_url = config.discord.hyperion_url
-
-    ipfs_url = config.discord.ipfs_url
-
-    try:
-        explorer_domain = config.discord.explorer_domain
-
-    except ConfigParsingError:
-        explorer_domain = DEFAULT_EXPLORER_DOMAIN
-
-    try:
-        ipfs_domain = config.discord.ipfs_domain
-
-    except ConfigParsingError:
-        ipfs_domain = DEFAULT_IPFS_DOMAIN
+    config = load_skynet_toml().discord
 
     async def _async_main():
-        frontend = SkynetDiscordFrontend(
-            # dc_token,
-            account,
-            permission,
-            node_url,
-            hyperion_url,
-            db_host, db_user, db_pass,
-            ipfs_url,
-            key=key,
-            explorer_domain=explorer_domain,
-            ipfs_domain=ipfs_domain
-        )
-
-        async with frontend.open():
-            await frontend.bot.start(dc_token)
+        async with FrontendUserDB(
+            config.db_user,
+            config.db_pass,
+            config.db_host,
+            config.db_name
+        ) as db:
+            bot = DiscordChatbot(config, db)
+            await bot.run()
 
     asyncio.run(_async_main())
 

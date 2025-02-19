@@ -383,6 +383,7 @@ class TelegramChatbot(BaseChatbot):
         inputs: list[TelegramFileInput],
         submit_tx_hash: str,
         worker: str,
+        result_url: str,
         result_img: bytes | None
     ):
         '''
