@@ -22,7 +22,8 @@ from skynet.constants import (
     HELP_TOPICS,
     HELP_UNKWNOWN_PARAM,
     COOL_WORDS,
-    DONATION_INFO
+    DONATION_INFO,
+    UNKNOWN_CMD_TEXT
 )
 from skynet.frontend import validate_user_config_request
 from skynet.frontend.chatbot.db import FrontendUserDB
@@ -473,3 +474,6 @@ class BaseChatbot(ABC):
             return
 
         await self.new_msg(self.main_group, msg.text)
+
+    async def echo_unknown(self, msg: BaseMessage):
+        await self.reply_to(msg, UNKNOWN_CMD_TEXT)

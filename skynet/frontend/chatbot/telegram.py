@@ -264,6 +264,12 @@ class TelegramChatbot(BaseChatbot):
 
         append_handler(bot, BaseCommands.REDO, self.handle_request)
 
+        @bot.message_handler(func=lambda _: True)
+        async def unknown_cmd(tg_msg: TGMessage):
+            if tg_msg.text[0] == '/':
+                msg = TelegramMessage(cmd='unknown', msg=tg_msg)
+                await self.echo_unknown(msg)
+
         self.bot = bot
 
         self._main_room: TelegramChatRoom | None = None
