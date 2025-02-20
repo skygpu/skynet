@@ -5,10 +5,10 @@ from leap import CLEOS
 from leap.protocol import Name
 
 from skynet.types import (
-    ConfigV1,
-    AccountV1,
+    Config, ConfigV0, ConfigV1,
+    Account, AccountV0, AccountV1,
     WorkerV0,
-    RequestV1,
+    Request, RequestV0, RequestV1,
     BodyV0,
     WorkerStatusV0,
     ResultV0
@@ -33,37 +33,39 @@ class WorkerStatusNotFound(BaseException):
 
 class GPUContractAPI:
 
-    def __init__(self, cleos: CLEOS):
+    def __init__(self, cleos: CLEOS, proto_version: int = 0):
         self.receiver = 'gpu.scd'
         self._cleos = cleos
+        self.proto_version = proto_version
 
     # views into data
 
-    async def get_config(self) -> ConfigV1:
+    async def get_config(self) -> Config:
         rows = await self._cleos.aget_table(
             self.receiver, self.receiver, 'config',
-            resp_cls=ConfigV1
+            resp_cls=ConfigV1 if self.proto_version > 1 else ConfigV0
         )
         if len(rows) == 0:
             raise ConfigNotFound()
 
         return rows[0]
 
-    async def get_user(self, user: str) -> AccountV1:
+    async def get_user(self, user: str) -> Account:
         rows = await self._cleos.aget_table(
             self.receiver, self.receiver, 'users',
             key_type='name',
             lower_bound=user,
             upper_bound=user,
-            resp_cls=AccountV1
+            resp_cls=AccountV1 if self.proto_version > 1 else AccountV0
         )
         if len(rows) == 0:
             raise AccountNotFound(user)
 
         return rows[0]
 
-    async def get_users(self) -> list[AccountV1]:
-        return await self._cleos.aget_table(self.receiver, self.receiver, 'users', resp_cls=AccountV1)
+    async def get_users(self) -> list[Account]:
+        return await self._cleos.aget_table(
+            self.receiver, self.receiver, 'users', resp_cls=AccountV1 if self.proto_version > 0 else AccountV0)
 
     async def get_worker(self, worker: str) -> WorkerV0:
         rows = await self._cleos.aget_table(
@@ -78,31 +80,32 @@ class GPUContractAPI:
 
         return rows[0]
 
-    async def get_workers(self) -> list[AccountV1]:
+    async def get_workers(self) -> list[WorkerV0]:
         return await self._cleos.aget_table(self.receiver, self.receiver, 'workers', resp_cls=WorkerV0)
 
-    async def get_queue(self) -> RequestV1:
-        return await self._cleos.aget_table(self.receiver, self.receiver, 'queue', resp_cls=RequestV1)
+    async def get_queue(self) -> Request:
+        return await self._cleos.aget_table(
+            self.receiver, self.receiver, 'queue', resp_cls=RequestV1 if self.proto_version > 0 else RequestV0)
 
-    async def get_request(self, request_id: int) -> RequestV1:
+    async def get_request(self, request_id: int) -> Request:
         rows = await self._cleos.aget_table(
             self.receiver, self.receiver, 'queue',
             lower_bound=request_id,
             upper_bound=request_id,
-            resp_cls=RequestV1
+            resp_cls=RequestV1 if self.proto_version > 0  else RequestV0
         )
         if len(rows) == 0:
             raise RequestNotFound(request_id)
 
         return rows[0]
 
-    async def get_requests_since(self, seconds: int) -> list[RequestV1]:
+    async def get_requests_since(self, seconds: int) -> list[Request]:
         return await self._cleos.aget_table(
             self.receiver, self.receiver, 'queue',
             index_position=2,
             key_type='i64',
             lower_bound=int(time.time()) - seconds,
-            resp_cls=RequestV1
+            resp_cls=RequestV1 if self.proto_version > 0  else RequestV0
         )
 
     async def get_statuses_for_request(self, request_id: int) -> list[WorkerStatusV0]:
@@ -242,12 +245,17 @@ class GPUContractAPI:
         worker: str,
         request_id: int,
         result_hash: str,
-        ipfs_hash: str
+        ipfs_hash: str,
+        request_hash: str | None = None
     ):
+        args = [worker, request_id, result_hash, ipfs_hash]
+        if request_hash:
+            args.insert(2, request_hash)
+
         return await self._cleos.a_push_action(
             self.receiver,
             'submit',
-            [worker, request_id, result_hash, ipfs_hash],
+            args,
             worker,
             key=self._cleos.private_keys[worker]
         )

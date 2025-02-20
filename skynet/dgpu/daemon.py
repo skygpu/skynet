@@ -1,4 +1,6 @@
+import os
 import logging
+import contextlib
 from functools import partial
 
 import trio
@@ -22,7 +24,7 @@ from skynet.dgpu.network import (
 async def maybe_update_tui_balance(contract: GPUContractAPI):
     async def _fn(tui):
         # update balance
-        balance = await contract.get_user(tui.config.account).balance
+        balance = (await contract.get_user(tui.config.account)).balance
         tui.set_header_text(new_balance=f'balance: {balance}')
 
     await maybe_update_tui_async(_fn)
@@ -126,16 +128,18 @@ async def maybe_serve_one(
                     used by torch each step of the inference, it will use a
                     trio.from_thread to unblock the main thread and pump the event loop
                     '''
-                    output_hash, output = await trio.to_thread.run_sync(
-                        partial(
-                            compute_one,
-                            model,
-                            req.id,
-                            mode, body.params,
-                            inputs=inputs,
-                            should_cancel=state_mngr.should_cancel_work,
-                        )
-                    )
+                    with open(os.devnull, 'w') as devnull:
+                        with contextlib.redirect_stdout(devnull):
+                            output_hash, output = await trio.to_thread.run_sync(
+                                partial(
+                                    compute_one,
+                                    model,
+                                    req.id,
+                                    mode, body.params,
+                                    inputs=inputs,
+                                    should_cancel=state_mngr.should_cancel_work,
+                                )
+                            )
 
                 case _:
                     raise DGPUComputeError(
@@ -146,7 +150,12 @@ async def maybe_serve_one(
 
             ipfs_hash = await ipfs_api.publish(output, type=output_type)
 
-            await contract.submit_work(config.account, req.id, output_hash, ipfs_hash)
+            maybe_request_hash = None
+            if config.proto_version == 0:
+                maybe_request_hash = req.hash_v0()
+
+            await contract.submit_work(
+                config.account, req.id, output_hash, ipfs_hash, request_hash=maybe_request_hash)
 
             await state_mngr.update_state()
 

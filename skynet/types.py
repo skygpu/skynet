@@ -1,4 +1,5 @@
 from enum import StrEnum
+from hashlib import sha256
 
 from msgspec import Struct
 
@@ -57,6 +58,8 @@ class ConfigV1(Struct):
     token_account: str
     token_symbol: str
     global_nonce: int
+
+type Config = ConfigV0 | ConfigV1
 
 '''
 RequestV0
@@ -122,6 +125,16 @@ class RequestV0(Struct):
     binary_data: str
     timestamp: str
 
+    def hash_v0(self) -> str:
+        hash_str = (
+            str(self.nonce)
+            +
+            self.body
+            +
+            self.binary_data
+        )
+        return sha256(hash_str.encode('utf-8')).hexdigest()
+
 '''
 RequestV1
 
@@ -153,6 +166,8 @@ class RequestV1(Struct):
     body: str
     binary_data: str
     timestamp: str
+
+type Request = RequestV0 | RequestV1
 
 
 '''
@@ -200,6 +215,7 @@ class AccountV1(Struct):
     user: str
     balance: str
 
+type Account = AccountV0 | AccountV1
 
 '''
 WorkerV0

@@ -16,7 +16,7 @@ from skynet.config import load_skynet_toml
 from skynet.contract import GPUContractAPI
 from skynet.types import (
     BodyV0,
-    RequestV1,
+    Request,
     WorkerStatusV0,
     ResultV0
 )
@@ -63,7 +63,7 @@ class ContractState:
         self._config = load_skynet_toml().dgpu
         self._poll_index = 0
 
-        self._queue: list[RequestV1] = []
+        self._queue: list[Request] = []
         self._status_by_rid: dict[int, list[WorkerStatusV0]] = {}
         self._results: list[ResultV0] = []
 
@@ -139,7 +139,7 @@ class ContractState:
         return len(self._queue)
 
     @property
-    def first(self) -> RequestV1 | None:
+    def first(self) -> Request | None:
         if len(self._queue) > 0:
             return self._queue[0]
 

@@ -26,6 +26,7 @@ class DgpuConfig(msgspec.Struct):
     poll_time: float = 0.5  # wait time for polling updates from contract
     log_level: str = 'info'
     log_file: str = 'dgpu.log'  # log file path (only used when tui = true)
+    proto_version: int = 0
 
 
 class FrontendConfig(msgspec.Struct):

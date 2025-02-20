@@ -8,7 +8,7 @@ from skynet.config import DgpuConfig as Config
 
 
 class WorkerMonitor:
-    def __init__(self):
+    def __init__(self, config: Config):
         self.requests = []
         self.header_info = {}
 
@@ -63,6 +63,7 @@ class WorkerMonitor:
             event_loop=self.event_loop,
             unhandled_input=self._exit_on_q
         )
+        self.config = config
 
     def _create_listbox_body(self, requests):
         """
@@ -197,7 +198,7 @@ def init_tui(config: Config):
     global _tui
     assert not _tui
     setup_logging_for_tui(config)
-    _tui = WorkerMonitor()
+    _tui = WorkerMonitor(config)
     return _tui
 
 
