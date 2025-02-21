@@ -405,7 +405,7 @@ class ContractState:
         return request_id in self._status_by_rid
 
     def should_compete_for_id(self, request_id: int) -> bool:
-        return bool(
+        return not bool(
             self._conn.config.non_compete &
             self.competitors_for_id(request_id)
         )
@@ -416,7 +416,7 @@ class ContractState:
             logging.info(f'request #{request_id} no longer in queue, likely its been filled by another worker, cancelling work...')
             return True
 
-        should_cancel = self.should_compete_for_id(request_id)
+        should_cancel = not self.should_compete_for_id(request_id)
         logging.info(f'cancel: {should_cancel}')
         return should_cancel
 

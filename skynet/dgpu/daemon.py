@@ -64,7 +64,7 @@ async def maybe_serve_one(
         and
         model in config.model_blacklist
     ):
-        logging.warning('model not blacklisted!, skip...')
+        logging.warning('model is blacklisted!, skip...')
         return
 
     # if worker already produced a result for this request
@@ -73,7 +73,7 @@ async def maybe_serve_one(
         return
 
     # skip if workers in non_compete already on it
-    if state_mngr.should_compete_for_id(req.id):
+    if not state_mngr.should_compete_for_id(req.id):
         logging.info('worker in configured non_compete list already working on request, skip...')
         return
 
@@ -160,6 +160,8 @@ async def maybe_serve_one(
             await conn.submit_work(req.id, request_hash, output_hash, ipfs_hash)
 
             await maybe_update_tui_balance(conn)
+
+            await state_mngr.update_state()
 
 
         except BaseException as err:
