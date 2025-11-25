@@ -1,9 +1,10 @@
-#!/usr/bin/python
-
 import io
 import random
 import logging
 import asyncio
+
+import time
+import httpx
 
 from PIL import Image, UnidentifiedImageError
 from json import JSONDecodeError
@@ -14,8 +15,8 @@ from contextlib import AsyncExitStack
 from contextlib import asynccontextmanager as acm
 
 from leap.cleos import CLEOS
-from leap.sugar import Name, asset_from_str, collect_stdout
-from leap.hyperion import HyperionAPI
+from leap.protocol import Name, Asset
+# from leap.hyperion import HyperionAPI
 
 from telebot.types import InputMediaPhoto
 from telebot.async_telebot import AsyncTeleBot
@@ -43,7 +44,6 @@ class SkynetTelegramFrontend:
         db_user: str,
         db_pass: str,
         ipfs_node: str,
-        remote_ipfs_node: str | None,
         key: str,
         explorer_domain: str,
         ipfs_domain: str
@@ -56,22 +56,19 @@ class SkynetTelegramFrontend:
         self.db_host = db_host
         self.db_user = db_user
         self.db_pass = db_pass
-        self.remote_ipfs_node = remote_ipfs_node
         self.key = key
         self.explorer_domain = explorer_domain
         self.ipfs_domain = ipfs_domain
 
         self.bot = AsyncTeleBot(token, exception_handler=SKYExceptionHandler)
-        self.cleos = CLEOS(None, None, url=node_url, remote=node_url)
-        self.hyperion = HyperionAPI(hyperion_url)
+        self.cleos = CLEOS(endpoint=node_url)
+        self.cleos.load_abi('gpu.scd', GPU_CONTRACT_ABI)
+        # self.hyperion = HyperionAPI(hyperion_url)
         self.ipfs_node = AsyncIPFSHTTP(ipfs_node)
 
         self._async_exit_stack = AsyncExitStack()
 
     async def start(self):
-        if self.remote_ipfs_node:
-            await self.ipfs_node.connect(self.remote_ipfs_node)
-
         self.db_call = await self._async_exit_stack.enter_async_context(
             open_database_connection(
                 self.db_user, self.db_pass, self.db_host))
@@ -109,6 +106,80 @@ class SkynetTelegramFrontend:
             **kwargs
         )
 
+    async def _wait_for_submit_in_blocks(
+        self,
+        request_hash: str,
+        start_block: int,
+        timeout_seconds: int = 60 * 3,
+    ):
+        """
+        Poll /v1/chain/get_block from start_block upwards until we see
+        gpu.scd::submit with the given request_hash, or we hit timeout.
+
+        Returns (tx_id, ipfs_hash, worker) or (None, None, None) on timeout.
+        """
+        endpoint = self.node_url.rstrip('/')
+
+        next_block = start_block             # inclusive
+        deadline = time.monotonic() + timeout_seconds
+
+        async with httpx.AsyncClient() as client:
+            while time.monotonic() < deadline:
+                # Get current head block
+                info = (await client.post(
+                    f'{endpoint}/v1/chain/get_info',
+                    json={}
+                )).json()
+                head = info['head_block_num']
+
+                # No new blocks yet, wait a bit
+                if next_block > head:
+                    await asyncio.sleep(0.5)
+                    continue
+
+                # Walk all blocks we haven't seen yet
+                while next_block <= head:
+                    try:
+                        block = (await client.post(
+                            f'{endpoint}/v1/chain/get_block',
+                            json={'block_num_or_id': next_block}
+                        )).json()
+                    except (httpx.RequestError, ValueError):
+                        logging.warning(f'failed to get block {next_block}, retrying...')
+                        break  # leave inner loop, re-fetch head
+
+                    for tx in block.get('transactions', []):
+                        trx = tx.get('trx')
+                        # Sometimes trx can be just a string (id) — skip those.
+                        if isinstance(trx, str):
+                            continue
+
+                        tx_id = trx.get('id')
+                        tx_obj = trx.get('transaction') or {}
+                        actions = tx_obj.get('actions', []) or []
+
+                        for act in actions:
+                            if (
+                                act.get('account') == 'gpu.scd'
+                                and act.get('name') == 'submit'
+                            ):
+                                data = act.get('data') or {}
+                                if data.get('request_hash') == request_hash:
+                                    ipfs_hash = data.get('ipfs_hash')
+                                    worker = data.get('worker')
+                                    logging.info(
+                                        f'Found matching submit in block {next_block}, '
+                                        f'tx {tx_id}'
+                                    )
+                                    return tx_id, ipfs_hash, worker
+
+                    next_block += 1
+
+                # Caught up with head and still nothing; wait for more blocks
+                await asyncio.sleep(0.5)
+
+        return None, None, None
+
     async def work_request(
         self,
         user,
@@ -116,7 +187,7 @@ class SkynetTelegramFrontend:
         method: str,
         params: dict,
         file_id: str | None = None,
-        binary_data: str = ''
+        inputs: list[str] = []
     ) -> bool:
         if params['seed'] == None:
             params['seed'] = random.randint(0, 0xFFFFFFFF)
@@ -143,15 +214,15 @@ class SkynetTelegramFrontend:
 
         reward = '20.0000 GPU'
         res = await self.cleos.a_push_action(
-            'telos.gpu',
+            'gpu.scd',
             'enqueue',
-            {
+            list({
                 'user': Name(self.account),
                 'request_body': body,
-                'binary_data': binary_data,
-                'reward': asset_from_str(reward),
+                'binary_data': ','.join(inputs),
+                'reward': Asset.from_str(reward),
                 'min_verification': 1
-            },
+            }.values()),
             self.account, self.key, permission=self.permission
         )
 
@@ -176,45 +247,36 @@ class SkynetTelegramFrontend:
             parse_mode='HTML'
         )
 
-        out = collect_stdout(res)
+        
+        out = res['processed']['action_traces'][0]['console']
 
         request_id, nonce = out.split(':')
 
         request_hash = sha256(
-            (nonce + body + binary_data).encode('utf-8')).hexdigest().upper()
+            (nonce + body + ','.join(inputs)).encode('utf-8')
+        ).hexdigest().upper()
 
         request_id = int(request_id)
 
         logging.info(f'{request_id} enqueued.')
 
-        tx_hash = None
-        ipfs_hash = None
-        for i in range(60):
-            try:
-                submits = await self.hyperion.aget_actions(
-                    account=self.account,
-                    filter='telos.gpu:submit',
-                    sort='desc',
-                    after=request_time
-                )
-                actions = [
-                    action
-                    for action in submits['actions']
-                    if action[
-                        'act']['data']['request_hash'] == request_hash
-                ]
-                if len(actions) > 0:
-                    tx_hash = actions[0]['trx_id']
-                    data = actions[0]['act']['data']
-                    ipfs_hash = data['ipfs_hash']
-                    worker = data['worker']
-                    logging.info('Found matching submit!')
-                    break
+        # Prefer the block number from the push_transaction response
+        enqueue_block_num = res.get('processed', {}).get('block_num')
+        if not enqueue_block_num:
+            # Fallback: start from current head if block_num is missing
+            async with httpx.AsyncClient() as client:
+                info = (await client.post(
+                    f'{self.node_url.rstrip("/")}/v1/chain/get_info',
+                    json={}
+                )).json()
+            enqueue_block_num = info['head_block_num']
 
-            except JSONDecodeError:
-                logging.error(f'network error while getting actions, retry..')
-
-            await asyncio.sleep(1)
+        # Wait for submit via block polling
+        tx_hash, ipfs_hash, worker = await self._wait_for_submit_in_blocks(
+            request_hash=request_hash,
+            start_block=enqueue_block_num,
+            timeout_seconds=60 * 3,
+        )
 
         if not ipfs_hash:
             await self.update_status_message(
@@ -223,6 +285,7 @@ class SkynetTelegramFrontend:
                 parse_mode='HTML'
             )
             return False
+
 
         tx_link = hlink(
             'Your result on Skynet Explorer',
@@ -241,46 +304,28 @@ class SkynetTelegramFrontend:
             user, params, tx_hash, worker, reward, self.explorer_domain)
 
         # attempt to get the image and send it
-        results = {}
         ipfs_link = f'https://{self.ipfs_domain}/ipfs/{ipfs_hash}'
-        ipfs_link_legacy = ipfs_link + '/image.png'
 
-        async def get_and_set_results(link: str):
-            res = await get_ipfs_file(link)
-            logging.info(f'got response from {link}')
-            if not res or res.status_code != 200:
-                logging.warning(f'couldn\'t get ipfs binary data at {link}!')
+        res = await get_ipfs_file(ipfs_link)
+        logging.info(f'got response from {ipfs_link}')
+        if not res or res.status_code != 200:
+            logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link}!')
 
-            else:
-                try:
-                    with Image.open(io.BytesIO(res.raw)) as image:
-                        w, h = image.size
+        else:
+            try:
+                with Image.open(io.BytesIO(res.raw)) as image:
+                    w, h = image.size
 
-                        if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
-                            logging.warning(f'result is of size {image.size}')
-                            image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
+                    if w > TG_MAX_WIDTH or h > TG_MAX_HEIGHT:
+                        logging.warning(f'result is of size {image.size}')
+                        image.thumbnail((TG_MAX_WIDTH, TG_MAX_HEIGHT))
 
-                        tmp_buf = io.BytesIO()
-                        image.save(tmp_buf, format='PNG')
-                        png_img = tmp_buf.getvalue()
+                    tmp_buf = io.BytesIO()
+                    image.save(tmp_buf, format='PNG')
+                    png_img = tmp_buf.getvalue()
 
-                        results[link] = png_img
-
-                except UnidentifiedImageError:
-                    logging.warning(f'couldn\'t get ipfs binary data at {link}!')
-
-        tasks = [
-            get_and_set_results(ipfs_link),
-            get_and_set_results(ipfs_link_legacy)
-        ]
-        await asyncio.gather(*tasks)
-
-        png_img = None
-        if ipfs_link_legacy in results:
-            png_img = results[ipfs_link_legacy]
-
-        if ipfs_link in results:
-            png_img = results[ipfs_link]
+            except UnidentifiedImageError:
+                logging.warning(f'couldn\'t get ipfs binary data at {ipfs_link}!')
 
         if not png_img:
             await self.update_status_message(

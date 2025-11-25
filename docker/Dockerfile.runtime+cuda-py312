@@ -1,0 +1,43 @@
+from nvidia/cuda:12.4.1-devel-ubuntu22.04
+
+env DEBIAN_FRONTEND=noninteractive
+
+run apt-get update && apt-get install -y \
+    git \
+    curl \
+    libgl1 \
+    libglib2.0-0 \
+    libglu1-mesa \
+    libgl1-mesa-glx
+
+env PATH="/opt/uv:$PATH"
+
+arg USER_ID=1000
+arg GROUP_ID=1000
+
+run groupadd -g $GROUP_ID skynet \
+    && useradd -l -u $USER_ID -g skynet -s /bin/bash skynet \
+    && mkdir -p /home/skynet \
+    && chown -R skynet:skynet /home/skynet
+
+run curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/opt/uv" sh
+
+run chown -R skynet:skynet /opt/uv
+
+run ls /opt/uv -lah
+
+user skynet
+
+workdir /home/skynet
+
+run uv venv --python 3.12
+
+workdir /home/skynet/target
+
+env PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+env NVIDIA_VISIBLE_DEVICES=all
+
+copy docker/entrypoint.sh /entrypoint.sh
+entrypoint ["/entrypoint.sh"]
+
+cmd ["skynet", "--help"]

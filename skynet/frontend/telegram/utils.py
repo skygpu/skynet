@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import json
 import logging
 import traceback
@@ -72,7 +70,7 @@ def generate_reply_caption(
 ):
     explorer_link = hlink(
         'SKYNET Transaction Explorer',
-        f'https://explorer.{explorer_domain}/v2/explore/transaction/{tx_hash}'
+        f'https://{explorer_domain}/v2/explore/transaction/{tx_hash}'
     )
 
     meta_info = prepare_metainfo_caption(tguser, worker, reward, params)
@@ -95,11 +93,11 @@ def generate_reply_caption(
 
 async def get_global_config(cleos):
     return (await cleos.aget_table(
-        'telos.gpu', 'telos.gpu', 'config'))[0]
+        'gpu.scd', 'gpu.scd', 'config'))[0]
 
 async def get_user_nonce(cleos, user: str):
     return (await cleos.aget_table(
-        'telos.gpu', 'telos.gpu', 'users',
+        'gpu.scd', 'gpu.scd', 'users',
         index_position=1,
         key_type='name',
         lower_bound=user,

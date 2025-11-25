@@ -1,8 +1,4 @@
-#!/usr/bin/python
-
 import logging
-import traceback
-
 from datetime import datetime, timedelta
 
 import trio
@@ -44,8 +40,8 @@ class SkynetPinner:
 
     async def capture_enqueues(self, after: datetime):
         enqueues = await self.hyperion.aget_actions(
-            account='telos.gpu',
-            filter='telos.gpu:enqueue',
+            account='gpu.scd',
+            filter='gpu.scd:enqueue',
             sort='desc',
             after=after.isoformat(),
             limit=1000
@@ -55,16 +51,16 @@ class SkynetPinner:
 
         cids = []
         for action in enqueues['actions']:
-            cid = action['act']['data']['binary_data']
-            if cid and not self.is_pinned(cid):
-                cids.append(cid)
+            for cid in action['act']['data']['binary_data'].split(','):
+                if cid and not self.is_pinned(cid):
+                    cids.append(cid)
 
         return cids
 
     async def capture_submits(self, after: datetime):
         submits = await self.hyperion.aget_actions(
-            account='telos.gpu',
-            filter='telos.gpu:submit',
+            account='gpu.scd',
+            filter='gpu.scd:submit',
             sort='desc',
             after=after.isoformat(),
             limit=1000
@@ -118,8 +114,8 @@ class SkynetPinner:
                     for cid in cids:
                         n.start_soon(self.task_pin, cid)
 
-                except OSError as e:
-                    traceback.print_exc()
+                except OSError:
+                    logging.exception('OSError while trying to pin?')
 
                 except KeyboardInterrupt:
                     break

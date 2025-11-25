@@ -11,14 +11,22 @@ class SkynetView(discord.ui.View):
     def __init__(self, bot):
         self.bot = bot
         super().__init__(timeout=None)
-        self.add_item(RedoButton('redo', discord.ButtonStyle.primary, self.bot))
-        self.add_item(Txt2ImgButton('txt2img', discord.ButtonStyle.primary, self.bot))
-        self.add_item(Img2ImgButton('img2img', discord.ButtonStyle.primary, self.bot))
-        self.add_item(StatsButton('stats', discord.ButtonStyle.secondary, self.bot))
-        self.add_item(DonateButton('donate', discord.ButtonStyle.secondary, self.bot))
-        self.add_item(ConfigButton('config', discord.ButtonStyle.secondary, self.bot))
-        self.add_item(HelpButton('help', discord.ButtonStyle.secondary, self.bot))
-        self.add_item(CoolButton('cool', discord.ButtonStyle.secondary, self.bot))
+        self.add_item(RedoButton(
+            'redo', discord.ButtonStyle.primary, self.bot))
+        self.add_item(Txt2ImgButton(
+            'txt2img', discord.ButtonStyle.primary, self.bot))
+        self.add_item(Img2ImgButton(
+            'img2img', discord.ButtonStyle.primary, self.bot))
+        self.add_item(StatsButton(
+            'stats', discord.ButtonStyle.secondary, self.bot))
+        self.add_item(DonateButton(
+            'donate', discord.ButtonStyle.secondary, self.bot))
+        self.add_item(ConfigButton(
+            'config', discord.ButtonStyle.secondary, self.bot))
+        self.add_item(HelpButton(
+            'help', discord.ButtonStyle.secondary, self.bot))
+        self.add_item(CoolButton(
+            'cool', discord.ButtonStyle.secondary, self.bot))
 
 
 class Txt2ImgButton(discord.ui.Button):
@@ -44,9 +52,8 @@ class Txt2ImgButton(discord.ui.Button):
         prompt = msg.content
 
         if len(prompt) == 0:
-            await status_msg.edit(content=
-                'Empty text prompt ignored.'
-            )
+            await status_msg.edit(content='Empty text prompt ignored.'
+                                  )
             await db_call('update_user_request', status_msg.id, 'Empty text prompt ignored.')
             return
 
@@ -111,25 +118,34 @@ class Img2ImgButton(discord.ui.Button):
         file_id = str(file.id)
         # file bytes
         image_raw = await file.read()
+
+        user_config = {**user_row}
+        del user_config['id']
+
         with Image.open(io.BytesIO(image_raw)) as image:
             w, h = image.size
 
-            if w > 512 or h > 512:
+            if w > user_config['width'] or h > user_config['height']:
                 logging.warning(f'user sent img of size {image.size}')
-                image.thumbnail((512, 512))
+                image.thumbnail(
+                    (user_config['width'], user_config['height']))
                 logging.warning(f'resized it to {image.size}')
 
-            image.save(f'ipfs-docker-staging/image.png', format='PNG')
+            # if w > 512 or h > 512:
+            #     logging.warning(f'user sent img of size {image.size}')
+            #     image.thumbnail((512, 512))
+            #     logging.warning(f'resized it to {image.size}')
+            # image.save(f'ipfs-docker-staging/image.png', format='PNG')
+            image_loc = 'ipfs-staging/image.png'
+            image.save(image_loc, format='PNG')
 
-            ipfs_hash = ipfs_node.add('image.png')
-            ipfs_node.pin(ipfs_hash)
+            ipfs_info = await ipfs_node.add(image_loc)
+            ipfs_hash = ipfs_info['Hash']
+            await ipfs_node.pin(ipfs_hash)
 
             logging.info(f'published input image {ipfs_hash} on ipfs')
 
         logging.info(f'mid: {msg.id}')
-
-        user_config = {**user_row}
-        del user_config['id']
 
         params = {
             'prompt': prompt,
@@ -140,8 +156,8 @@ class Img2ImgButton(discord.ui.Button):
             'update_user_stats',
             user.id,
             'img2img',
-            last_file=file_id,
             last_prompt=prompt,
+            last_file=file_id,
             last_binary=ipfs_hash
         )
 
@@ -307,5 +323,3 @@ async def grab(prompt, interaction):
     await interaction.response.send_message(prompt, ephemeral=True)
     message = await interaction.client.wait_for('message', check=vet)
     return message
-
-

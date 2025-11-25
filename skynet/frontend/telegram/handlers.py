@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import io
 import json
 import logging
@@ -47,7 +45,7 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
     async def queue(message):
         an_hour_ago = datetime.now() - timedelta(hours=1)
         queue = await cleos.aget_table(
-            'telos.gpu', 'telos.gpu', 'queue',
+            'gpu.scd', 'gpu.scd', 'queue',
             index_position=2,
             key_type='i64',
             sort='desc',
@@ -254,7 +252,7 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
         success = await work_request(
             user, status_msg, 'img2img', params,
             file_id=file_id,
-            binary_data=ipfs_hash
+            inputs=ipfs_hash
         )
 
         if success:
@@ -320,7 +318,7 @@ def create_handler_context(frontend: 'SkynetTelegramFrontend'):
         success = await work_request(
             user, status_msg, 'redo', params,
             file_id=file_id,
-            binary_data=binary
+            inputs=binary
         )
 
         if success:

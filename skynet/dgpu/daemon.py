@@ -1,25 +1,24 @@
-#!/usr/bin/python
-
 import json
-import random
 import logging
+import random
 import time
-import traceback
-
-from hashlib import sha256
 from datetime import datetime
 from functools import partial
+from hashlib import sha256
 
 import trio
 
-from quart import jsonify
-from quart_trio import QuartTrio as Quart
-
-from skynet.constants import MODELS, VERSION
-
-from skynet.dgpu.errors import *
-from skynet.dgpu.compute import SkynetMM
-from skynet.dgpu.network import SkynetGPUConnector
+from skynet.config import DgpuConfig as Config
+from skynet.constants import (
+    MODELS,
+    VERSION,
+)
+from skynet.dgpu.errors import (
+    DGPUComputeError,
+)
+from skynet.dgpu.tui import maybe_update_tui, maybe_update_tui_async
+from skynet.dgpu.compute import maybe_load_model, compute_one
+from skynet.dgpu.network import NetConnector
 
 
 def convert_reward_to_int(reward_str):
@@ -30,197 +29,182 @@ def convert_reward_to_int(reward_str):
     return int(int_part + decimal_part)
 
 
-class SkynetDGPUDaemon:
+async def maybe_update_tui_balance(conn: NetConnector):
+    async def _fn(tui):
+        # update balance
+        balance = await conn.get_worker_balance()
+        tui.set_header_text(new_balance=f'balance: {balance}')
 
-    def __init__(
-        self,
-        mm: SkynetMM,
-        conn: SkynetGPUConnector,
-        config: dict
+    await maybe_update_tui_async(_fn)
+
+
+async def maybe_serve_one(
+    config: Config,
+    conn: NetConnector,
+    req: dict,
+):
+    rid = req['id']
+    logging.info(f'maybe serve request #{rid}')
+
+    # parse request
+    body = json.loads(req['body'])
+    model = body['params']['model']
+
+    # if model not known, ignore.
+    if model not in MODELS:
+        logging.warning(f'unknown model {model}!, skip...')
+        return
+
+    # only handle whitelisted models
+    if (
+        len(config.model_whitelist) > 0
+        and
+        model not in config.model_whitelist
     ):
-        self.mm = mm
-        self.conn = conn
-        self.auto_withdraw = (
-            config['auto_withdraw']
-            if 'auto_withdraw' in config else False
-        )
+        logging.warning('model not whitelisted!, skip...')
+        return
 
-        self.account = config['account']
+    # if blacklist contains model skip
+    if (
+        len(config.model_blacklist) > 0
+        and
+        model in config.model_blacklist
+    ):
+        logging.warning('model not blacklisted!, skip...')
+        return
 
-        self.non_compete = set()
-        if 'non_compete' in config:
-            self.non_compete = set(config['non_compete'])
+    results = [res['request_id'] for res in conn._tables['results']]
 
-        self.model_whitelist = set()
-        if 'model_whitelist' in config:
-            self.model_whitelist = set(config['model_whitelist'])
+    # if worker already produced a result for this request
+    if rid in results:
+        logging.info(f'worker already submitted a result for request #{rid}, skip...')
+        return
 
-        self.model_blacklist = set()
-        if 'model_blacklist' in config:
-            self.model_blacklist = set(config['model_blacklist'])
+    statuses = conn._tables['requests'][rid]
 
-        self.backend = 'sync-on-thread'
-        if 'backend' in config:
-            self.backend = config['backend']
+    # skip if workers in non_compete already on it
+    competitors = set((status['worker'] for status in statuses))
+    if bool(config.non_compete & competitors):
+        logging.info('worker in configured non_compete list already working on request, skip...')
+        return
 
-        self._snap = {
-            'queue': [],
-            'requests': {},
-            'my_results': []
-        }
+    # resolve the ipfs hashes into the actual data behind them
+    inputs = []
+    raw_inputs = req['binary_data'].split(',')
+    if raw_inputs:
+        logging.info(f'fetching IPFS inputs: {raw_inputs}')
 
-        self._benchmark = []
-        self._last_benchmark = None
-        self._last_generation_ts = None
+    retry = 3
+    for _input in req['binary_data'].split(','):
+        if _input:
+            for r in range(retry):
+                try:
+                    # user `GPUConnector` to IO with
+                    # storage layer to seed the compute
+                    # task.
+                    img = await conn.get_input_data(_input)
+                    inputs.append(img)
+                    logging.info(f'retrieved {_input}!')
+                    break
 
-    def _get_benchmark_speed(self) -> float:
-        if not self._last_benchmark:
-            return 0
+                except BaseException:
+                    logging.exception(
+                        f'IPFS fetch input error !?! retries left {retry - r - 1}\n'
+                    )
 
-        start = self._last_benchmark[0]
-        end = self._last_benchmark[-1]
+    # compute unique request hash used on submit
+    hash_str = (
+        str(req['nonce'])
+        +
+        req['body']
+        +
+        req['binary_data']
+    )
+    logging.debug(f'hashing: {hash_str}')
+    request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
+    logging.info(f'calculated request hash: {request_hash}')
 
-        elapsed = end - start
-        its = len(self._last_benchmark)
-        speed = its / elapsed
+    params = body['params']
+    total_step = params['step'] if 'step' in params else 1
+    model = body['params']['model']
+    mode = body['method']
 
-        logging.info(f'{elapsed} s total its: {its}, at {speed} it/s ')
+    # TODO: validate request
 
-        return speed
+    resp = await conn.begin_work(rid)
+    if not resp or 'code' in resp:
+        logging.info('begin_work error, probably being worked on already... skip.')
+        return
 
-    async def should_cancel_work(self, request_id: int):
-        self._benchmark.append(time.time())
-        competitors = set([
-            status['worker']
-            for status in self._snap['requests'][request_id]
-            if status['worker'] != self.account
-        ])
-        return bool(self.non_compete & competitors)
+    with maybe_load_model(model, mode) as model:
+        try:
+            maybe_update_tui(lambda tui: tui.set_progress(0, done=total_step))
+
+            output_type = 'png'
+            if 'output_type' in body['params']:
+                output_type = body['params']['output_type']
+
+            output = None
+            output_hash = None
+            match config.backend:
+                case 'sync-on-thread':
+                    output_hash, output = await trio.to_thread.run_sync(
+                        partial(
+                            compute_one,
+                            model,
+                            rid,
+                            mode, params,
+                            inputs=inputs,
+                            should_cancel=conn.should_cancel_work,
+                        )
+                    )
+
+                case _:
+                    raise DGPUComputeError(
+                        f'Unsupported backend {config.backend}'
+                    )
+
+            maybe_update_tui(lambda tui: tui.set_progress(total_step))
+
+            ipfs_hash = await conn.publish_on_ipfs(output, typ=output_type)
+
+            await conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
+
+            await maybe_update_tui_balance(conn)
 
 
-    async def snap_updater_task(self):
+        except BaseException as err:
+            if 'network cancel' not in str(err):
+                logging.exception('Failed to serve model request !?\n')
+
+            if rid in conn._tables['requests']:
+                await conn.cancel_work(rid, 'reason not provided')
+
+
+async def dgpu_serve_forever(config: Config, conn: NetConnector):
+    await maybe_update_tui_balance(conn)
+
+    last_poll_idx = -1
+    try:
         while True:
-            self._snap = await self.conn.get_full_queue_snapshot()
-            await trio.sleep(1)
+            await conn.wait_data_update()
+            if conn.poll_index == last_poll_idx:
+                await trio.sleep(config.poll_time)
+                continue
 
-    async def generate_api(self):
-        app = Quart(__name__)
+            last_poll_idx = conn.poll_index
 
-        @app.route('/')
-        async def health():
-            return jsonify(
-                account=self.account,
-                version=VERSION,
-                last_generation_ts=self._last_generation_ts,
-                last_generation_speed=self._get_benchmark_speed()
+            queue = conn._tables['queue']
+
+            random.shuffle(queue)
+            queue = sorted(
+                queue,
+                key=lambda req: convert_reward_to_int(req['reward']),
+                reverse=True
             )
 
-        return app
+            if len(queue) > 0:
+                await maybe_serve_one(config, conn, queue[0])
 
-    async def serve_forever(self):
-        try:
-            while True:
-                if self.auto_withdraw:
-                    await self.conn.maybe_withdraw_all()
-
-                queue = self._snap['queue']
-
-                random.shuffle(queue)
-                queue = sorted(
-                    queue,
-                    key=lambda req: convert_reward_to_int(req['reward']),
-                    reverse=True
-                )
-
-                for req in queue:
-                    rid = req['id']
-
-                    # parse request
-                    body = json.loads(req['body'])
-                    model = body['params']['model']
-
-                    # if model not known
-                    if model not in MODELS:
-                        logging.warning(f'Unknown model {model}')
-                        continue
-
-                    # if whitelist enabled and model not in it continue
-                    if (len(self.model_whitelist) > 0 and
-                        not model in self.model_whitelist):
-                        continue
-
-                    # if blacklist contains model skip
-                    if model in self.model_blacklist:
-                        continue
-
-                    my_results = [res['id'] for res in self._snap['my_results']]
-                    if rid not in my_results and rid in self._snap['requests']:
-                        statuses = self._snap['requests'][rid]
-
-                        if len(statuses) == 0:
-                            binary, input_type = await self.conn.get_input_data(req['binary_data'])
-
-                            hash_str = (
-                                str(req['nonce'])
-                                +
-                                req['body']
-                                +
-                                req['binary_data']
-                            )
-                            logging.info(f'hashing: {hash_str}')
-                            request_hash = sha256(hash_str.encode('utf-8')).hexdigest()
-
-                            # TODO: validate request
-
-                            # perform work
-                            logging.info(f'working on {body}')
-
-                            resp = await self.conn.begin_work(rid)
-                            if 'code' in resp:
-                                logging.info(f'probably being worked on already... skip.')
-
-                            else:
-                                try:
-                                    output_type = 'png'
-                                    if 'output_type' in body['params']:
-                                        output_type = body['params']['output_type']
-
-                                    output = None
-                                    output_hash = None
-                                    match self.backend:
-                                        case 'sync-on-thread':
-                                            self.mm._should_cancel = self.should_cancel_work
-                                            output_hash, output = await trio.to_thread.run_sync(
-                                                partial(
-                                                    self.mm.compute_one,
-                                                    rid,
-                                                    body['method'], body['params'],
-                                                    input_type=input_type,
-                                                    binary=binary
-                                                )
-                                            )
-
-                                        case _:
-                                            raise DGPUComputeError(f'Unsupported backend {self.backend}')
-                                    self._last_generation_ts = datetime.now().isoformat()
-                                    self._last_benchmark = self._benchmark
-                                    self._benchmark = []
-
-                                    ipfs_hash = await self.conn.publish_on_ipfs(output, typ=output_type)
-
-                                    await self.conn.submit_work(rid, request_hash, output_hash, ipfs_hash)
-
-                                except BaseException as e:
-                                    traceback.print_exc()
-                                    await self.conn.cancel_work(rid, str(e))
-
-                                finally:
-                                    break
-
-                    else:
-                        logging.info(f'request {rid} already beign worked on, skip...')
-
-                await trio.sleep(1)
-
-        except KeyboardInterrupt:
-            ...
+    except KeyboardInterrupt:
+        ...

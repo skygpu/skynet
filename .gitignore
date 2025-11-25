@@ -11,3 +11,4 @@ docs
 ipfs-docker-data
 ipfs-staging
 weights
+*.png
