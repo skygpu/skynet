@@ -1,5 +1,4 @@
 import os
-import toml
 
 import msgspec
 
@@ -59,7 +58,18 @@ class Config(msgspec.Struct):
     user: UserConfig | None = None
 
 
+__config_override = None
+def set_config_override(config: Config):
+    global __config_override
+    __config_override = config
+
+
 def load_skynet_toml(file_path=DEFAULT_CONFIG_PATH) -> Config:
+    global __config_override
+
+    if __config_override:
+        return __config_override
+
     with open(file_path, 'r') as file:
         return msgspec.toml.decode(file.read(), type=Config)
 

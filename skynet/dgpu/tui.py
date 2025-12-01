@@ -2,7 +2,6 @@ import json
 import logging
 import warnings
 
-import trio
 import urwid
 
 from skynet.config import DgpuConfig as Config
@@ -79,6 +78,11 @@ class WorkerMonitor:
         """
         row_widgets = []
 
+        requests = sorted(
+            requests,
+            key=lambda r: r['id']
+        )
+
         for req in requests:
             # Build a columns widget for the request row
             prompt = req['prompt'] if 'prompt' in req else 'UPSCALE'
@@ -137,10 +141,6 @@ class WorkerMonitor:
 
         self.progress_bar.current = current
 
-        pct = 0
-        if self.progress_bar.done != 0:
-            pct = int((self.progress_bar.current / self.progress_bar.done) * 100)
-
     def update_requests(self, new_requests):
         """
         Replace the data in the existing ListBox with new request widgets.
@@ -157,14 +157,16 @@ class WorkerMonitor:
         if new_balance is not None:
             self.balance_widget.set_text(new_balance)
 
-    def network_update(self, snapshot: dict):
+    def network_update(self, state_mngr):
         queue = [
             {
-                **r,
-                **(json.loads(r['body'])['params']),
-                'workers': [s['worker'] for s in snapshot['requests'][r['id']]]
+                'id': r.id,
+                'user': r.user,
+                'reward': r.reward,
+                **(json.loads(r.body)['params']),
+                'workers': [s.worker for s in state_mngr._status_by_rid[r.id]]
             }
-            for r in snapshot['queue']
+            for r in state_mngr._queue
         ]
         self.update_requests(queue)
 

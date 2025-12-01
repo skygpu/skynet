@@ -1,7 +1,6 @@
 import io
 import os
 import sys
-import time
 import random
 import logging
 import importlib
@@ -76,6 +75,9 @@ class DummyPB:
     def update(self):
         ...
 
+
+type Pipeline = DiffusionPipeline | RealESRGANer
+
 @torch.compiler.disable
 @contextmanager
 def dummy_progress_bar(*args, **kwargs):
@@ -91,7 +93,7 @@ def pipeline_for(
     mode: str,
     mem_fraction: float = 1.0,
     cache_dir: str | None = None
-) -> DiffusionPipeline:
+) -> Pipeline:
     diffusers.utils.logging.disable_progress_bar()
 
     logging.info(f'pipeline_for {model} {mode}')
@@ -125,6 +127,9 @@ def pipeline_for(
     except ImportError:
         logging.info(f'didn\'t find a custom pipeline file for {shortname}')
 
+    # for now, upscaler special case...
+    if mode == 'upscale':
+        return init_upscaler()
 
     req_mem = model_info.mem
 

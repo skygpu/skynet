@@ -1,15 +1,7 @@
 import json
 import logging
-import random
-
-from functools import partial
 
 import click
-
-from leap.protocol import (
-    Name,
-    Asset,
-)
 
 from .config import (
     load_skynet_toml,
@@ -49,7 +41,7 @@ def txt2img(*args, **kwargs):
 
     config = load_skynet_toml()
     set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
-    utils.txt2img(hf_token, **kwargs)
+    utils.txt2img(config.dgpu.hf_token, **kwargs)
 
 
 @click.command()
@@ -74,7 +66,7 @@ def img2img(model, prompt, input, output, strength, guidance, steps, seed):
     config = load_skynet_toml()
     set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
     utils.img2img(
-        hf_token,
+        config.dgpu.hf_token,
         model=model,
         prompt=prompt,
         img_path=input,
@@ -102,7 +94,7 @@ def inpaint(model, prompt, input, mask, output, strength, guidance, steps, seed)
     config = load_skynet_toml()
     set_hf_vars(config.dgpu.hf_token, config.dgpu.hf_home)
     utils.inpaint(
-        hf_token,
+        config.dgpu.hf_token,
         model=model,
         prompt=prompt,
         img_path=input,

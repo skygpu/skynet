@@ -1,0 +1,29 @@
+name: CI
+
+on: [push]
+
+jobs:
+  auto-tests:
+    name: Pytest Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v5
+
+      - uses: actions/cache@v3
+        name: Cache venv
+        with:
+          path: ./.venv
+          key: venv-${{ hashFiles('uv.lock') }}
+
+      - name: Install with dev
+        run: uv sync
+
+      - name: Run tests
+        run: |
+          uv run pytest

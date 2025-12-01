@@ -6,7 +6,7 @@ import msgspec
 
 
 __model = {
-    'name': 'skygpu/txt2img-mocker'
+    'name': 'skygpu/mocker'
 }
 
 class MockPipelineResult(msgspec.Struct):

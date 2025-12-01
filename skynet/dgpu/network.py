@@ -1,9 +1,10 @@
 import io
 import json
 import time
+import random
 import logging
 from pathlib import Path
-from typing import AsyncGenerator
+from contextlib import asynccontextmanager as acm
 from functools import partial
 
 import trio
@@ -11,15 +12,21 @@ import leap
 import anyio
 import httpx
 import outcome
+import msgspec
 from PIL import Image
 from leap.cleos import CLEOS
 from leap.protocol import Asset
 from skynet.dgpu.tui import maybe_update_tui
-from skynet.config import DgpuConfig as Config
-from skynet.constants import (
-    DEFAULT_IPFS_DOMAIN,
-    GPU_CONTRACT_ABI,
+from skynet.config import DgpuConfig as Config, load_skynet_toml
+from skynet.types import (
+    ConfigV0,
+    AccountV0,
+    BodyV0,
+    RequestV0,
+    WorkerStatusV0,
+    ResultV0
 )
+from skynet.constants import GPU_CONTRACT_ABI
 
 from skynet.ipfs import (
     AsyncIPFSHTTP,
@@ -67,21 +74,12 @@ class NetConnector:
 
         self.ipfs_client = AsyncIPFSHTTP(config.ipfs_url)
 
-        # poll_index is used to detect stale data
-        self.poll_index = 0
-        self._tables = {
-            'queue': [],
-            'requests': {},
-            'results': []
-        }
-        self._data_event = trio.Event()
-
         maybe_update_tui(lambda tui: tui.set_header_text(new_worker_name=self.config.account))
 
 
     # blockchain helpers
 
-    async def get_work_requests_last_hour(self):
+    async def get_work_requests_last_hour(self) -> list[RequestV0]:
         logging.info('get_work_requests_last_hour')
         rows = await failable(
             partial(
@@ -89,28 +87,30 @@ class NetConnector:
                 'gpu.scd', 'gpu.scd', 'queue',
                 index_position=2,
                 key_type='i64',
-                lower_bound=int(time.time()) - 3600
+                lower_bound=int(time.time()) - 3600,
+                resp_cls=RequestV0
             ), ret_fail=[])
 
         logging.info(f'found {len(rows)} requests on queue')
         return rows
 
-    async def get_status_by_request_id(self, request_id: int):
+    async def get_status_by_request_id(self, request_id: int) -> list[WorkerStatusV0]:
         logging.info('get_status_by_request_id')
         rows = await failable(
             partial(
                 self.cleos.aget_table,
-                'gpu.scd', request_id, 'status'), ret_fail=[])
+                'gpu.scd', request_id, 'status', resp_cls=WorkerStatusV0), ret_fail=[])
 
-        logging.info(f'found status for workers: {[r["worker"] for r in rows]}')
+        logging.info(f'found status for workers: {[r.worker for r in rows]}')
         return rows
 
-    async def get_global_config(self):
+    async def get_global_config(self) -> ConfigV0:
         logging.info('get_global_config')
         rows = await failable(
             partial(
                 self.cleos.aget_table,
-                'gpu.scd', 'gpu.scd', 'config'))
+                'gpu.scd', 'gpu.scd', 'config',
+                resp_cls=ConfigV0))
 
         if rows:
             cfg = rows[0]
@@ -120,7 +120,7 @@ class NetConnector:
             logging.error('global config not found, is the contract initialized?')
             return None
 
-    async def get_worker_balance(self):
+    async def get_worker_balance(self) -> str:
         logging.info('get_worker_balance')
         rows = await failable(
             partial(
@@ -129,76 +129,17 @@ class NetConnector:
                 index_position=1,
                 key_type='name',
                 lower_bound=self.config.account,
-                upper_bound=self.config.account
+                upper_bound=self.config.account,
+                resp_cls=AccountV0
             ))
 
         if rows:
-            b = rows[0]['balance']
+            b = rows[0].balance
             logging.info(f'balance: {b}')
             return b
         else:
             logging.info('no balance info found')
             return None
-
-    async def get_full_queue_snapshot(self):
-        '''
-        Get a "snapshot" of current contract table state
-
-        '''
-        snap = {
-            'requests': {},
-            'results': []
-        }
-
-        snap['queue'] = await self.get_work_requests_last_hour()
-
-        async def _run_and_save(d, key: str, fn, *args, **kwargs):
-            d[key] = await fn(*args, **kwargs)
-
-        async with trio.open_nursery() as n:
-            n.start_soon(_run_and_save, snap, 'results', self.find_results)
-            for req in snap['queue']:
-                n.start_soon(
-                    _run_and_save, snap['requests'], req['id'], self.get_status_by_request_id, req['id'])
-
-
-        maybe_update_tui(lambda tui: tui.network_update(snap))
-
-        return snap
-
-    async def wait_data_update(self):
-        await self._data_event.wait()
-
-    async def iter_poll_update(self, poll_time: float):
-        '''
-        Long running task, polls gpu contract tables latest table rows,
-        awakes any self._data_event waiters
-
-        '''
-        while True:
-            start_time = time.time()
-            self._tables = await self.get_full_queue_snapshot()
-            elapsed = time.time() - start_time
-            self._data_event.set()
-            await trio.sleep(max(poll_time - elapsed, 0.1))
-            self._data_event = trio.Event()
-            self.poll_index += 1
-
-    async def should_cancel_work(self, request_id: int) -> bool:
-        logging.info('should cancel work?')
-        if request_id not in self._tables['requests']:
-            logging.info(f'request #{request_id} no longer in queue, likely its been filled by another worker, cancelling work...')
-            return True
-
-        competitors = set([
-            status['worker']
-            for status in self._tables['requests'][request_id]
-            if status['worker'] != self.config.account
-        ])
-        logging.info(f'competitors: {competitors}')
-        should_cancel = bool(self.config.non_compete & competitors)
-        logging.info(f'cancel: {should_cancel}')
-        return should_cancel
 
     async def begin_work(self, request_id: int):
         '''
@@ -261,7 +202,7 @@ class NetConnector:
                 )
             )
 
-    async def find_results(self):
+    async def find_results(self) -> list[ResultV0]:
         logging.info('find_results')
         rows = await failable(
             partial(
@@ -270,7 +211,8 @@ class NetConnector:
                 index_position=4,
                 key_type='name',
                 lower_bound=self.config.account,
-                upper_bound=self.config.account
+                upper_bound=self.config.account,
+                resp_cls=ResultV0
             )
         )
         return rows
@@ -344,3 +286,158 @@ class NetConnector:
         logging.info('decoded as image successfully')
 
         return input_data
+
+
+
+def convert_reward_to_int(reward_str):
+    int_part, decimal_part = (
+        reward_str.split('.')[0],
+        reward_str.split('.')[1].split(' ')[0]
+    )
+    return int(int_part + decimal_part)
+
+
+class ContractState:
+
+    def __init__(self, conn: NetConnector):
+        self._conn = conn
+
+        self._poll_index = 0
+
+        self._queue: list[RequestV0] = []
+        self._status_by_rid: dict[int, list[WorkerStatusV0]] = {}
+        self._results: list[ResultV0] = []
+
+        self._new_data = trio.Event()
+
+    @property
+    def poll_index(self) -> int:
+        return self._poll_index
+
+    async def _fetch_results(self):
+        self._results = await self._conn.find_results()
+
+    async def _fetch_statuses_for_id(self, rid: int):
+        self._status_by_rid[rid] = await self._conn.get_status_by_request_id(rid)
+
+    async def update_state(self):
+        '''
+        Get a "snapshot" of current contract table state
+
+        '''
+        # raw queue from chain
+        _queue = await self._conn.get_work_requests_last_hour()
+
+        # filter out invalids
+        self._queue = []
+        for req in _queue:
+            try:
+                msgspec.json.decode(req.body, type=BodyV0)
+                self._queue.append(req)
+
+            except msgspec.ValidationError:
+                logging.exception(f'dropping req {req.id} due to:')
+                ...
+
+        random.shuffle(self._queue)
+        self._queue = sorted(
+            self._queue,
+            key=lambda req: convert_reward_to_int(req.reward),
+            reverse=True
+        )
+
+        async with trio.open_nursery() as n:
+            n.start_soon(self._fetch_results)
+            for req in self._queue:
+                n.start_soon(
+                    self._fetch_statuses_for_id, req.id)
+
+
+        maybe_update_tui(lambda tui: tui.network_update(self))
+
+    async def wait_data_update(self):
+        await self._new_data.wait()
+
+    async def _state_update_task(self, poll_time: float):
+        '''
+        Long running task, polls gpu contract tables latest table rows,
+        awakes any self._data_event waiters
+
+        '''
+        while True:
+            start_time = time.time()
+            await self.update_state()
+            elapsed = time.time() - start_time
+            self._new_data.set()
+            await trio.sleep(max(poll_time - elapsed, 0.1))
+            self._new_data = trio.Event()
+            self._poll_index += 1
+
+    # views into data
+
+    @property
+    def queue_len(self) -> int:
+        return len(self._queue)
+
+    @property
+    def first(self) -> RequestV0 | None:
+        if len(self._queue) > 0:
+            return self._queue[0]
+
+        else:
+            return None
+
+    def competitors_for_id(self, request_id: int) -> set[str]:
+        return set((
+            status.worker
+            for status in self._status_by_rid[request_id]
+            if status.worker != self._conn.config.account
+        ))
+
+    # predicates
+
+    def is_request_filled(self, request_id: int) -> bool:
+        return request_id in [
+            result.request_id for result in self._results
+        ]
+
+    def is_request_in_progress(self, request_id: int) -> bool:
+        return request_id in self._status_by_rid
+
+    def should_compete_for_id(self, request_id: int) -> bool:
+        return not bool(
+            self._conn.config.non_compete &
+            self.competitors_for_id(request_id)
+        )
+
+    async def should_cancel_work(self, request_id: int) -> bool:
+        logging.info('should cancel work?')
+        if request_id not in self._status_by_rid:
+            logging.info(f'request #{request_id} no longer in queue, likely its been filled by another worker, cancelling work...')
+            return True
+
+        should_cancel = not self.should_compete_for_id(request_id)
+        logging.info(f'cancel: {should_cancel}')
+        return should_cancel
+
+
+
+__state_mngr = None
+
+@acm
+async def maybe_open_contract_state_mngr(conn: NetConnector):
+    global __state_mngr
+
+    if __state_mngr:
+        yield __state_mngr
+        return
+
+    config = load_skynet_toml().dgpu
+
+    mngr = ContractState(conn)
+    async with trio.open_nursery() as n:
+        await mngr.update_state()
+        n.start_soon(mngr._state_update_task, config.poll_time)
+        __state_mngr = mngr
+        yield mngr
+        n.cancel_scope.cancel()
